@@ -1,3 +1,5 @@
+pub mod websocket;
+
 fn main() {
-    println!("Hello, world!");
+    // todo: stuff
 }
