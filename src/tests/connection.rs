@@ -1,54 +1,41 @@
 // basic connection tests to the computercraft emulator.
 
-use std::time::Duration;
-
-use crate::websocket::CCWebsocket;
-use tokio::net::TcpListener;
-
-
+use std::net::{Ipv4Addr, SocketAddrV4};
+use crate::tests::test_common::{get_test_computer, TestEmulatorConfig};
 
 #[tokio::test]
+#[ntest::timeout(2000)]
+/// Just try to start the emulator to make sure it exists at all.
 async fn try_start_emulator() {
-
-    // TODO: this stinky, clean
-
-    #[cfg(not(windows))]
-    panic!("todo, this test needs to work on other platforms.");
-    // really need a dedicated test harness / starter.
-
-    // bind localhost
-    let address = "127.0.0.1:8080";
-
-    let bind = TcpListener::bind(address).await.unwrap();
-
-    // start craftos emulator
-    let mut process_command = std::process::Command::new("C:\\Program Files\\CraftOS-PC\\CraftOS-PC.exe");
-    let cc_emulator = process_command
-        .arg("--exec")
-        .arg(TEMP_TEST_SCRIPT);
-
-
-
-
-    let mut spawned = cc_emulator.spawn().unwrap();
-        
-
-    // wait for computercraft to start and open the websocket
-    std::thread::sleep(Duration::from_millis(16));
+    // we assume that the address is localhost, bc yk, test.
+    let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080);
+    // dont pass anything for the emulator to run, also use the default ID
+    let config = TestEmulatorConfig::new(None, addr, SOCKET_TEMPLATE_LUA.to_string());
+    let (handle, _) = get_test_computer(config).await;
     
-    // accept the stream from the emulator
-    let (stream, _) = bind.accept().await.unwrap();
+    // with no lua, the bot wont close itself, so we will just kill the process.
+    drop(handle)
+}
+
+#[tokio::test]
+#[ntest::timeout(2000)]
+/// Try a basic handshake with the emulator to make sure that networking is working.
+async fn try_handshake() {
     
-    let (socket, mut incoming) = CCWebsocket::new(stream).await;
+    // we assume that the address is localhost, bc yk, test.
+    let addr = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8080);
+    // default ID
+    let config = TestEmulatorConfig::new(None, addr, TEMP_TEST_SCRIPT.to_string());
+    let (mut handle, mut incoming) = get_test_computer(config).await;
+    let socket = &handle.websocket;
+    let spawned = &mut handle.child_process;
     
     // get the hello
     let hello = incoming.recv().await.unwrap();
-    
     assert_eq!(hello, "hello");
     
     // send da ack
     socket.send("ack".to_string()).unwrap();
-    std::thread::sleep(Duration::from_millis(16));
     
     // we should hear an ack back before it closes.
     let ack = incoming.recv().await.unwrap();
@@ -83,6 +70,19 @@ end
 
 ws.send("ack")
 print("ack")
+os.sleep(0.05)
+ws.close()
+os.shutdown()
+"#;
+
+// Just open and close the socket, for basic tests
+const SOCKET_TEMPLATE_LUA: &str = r#"
+local url = "ws://127.0.0.1:8080"
+local ws, err = http.websocket(url)
+if not ws then
+    -- ded.
+    os.shutdown()
+end
 os.sleep(0.05)
 ws.close()
 os.shutdown()

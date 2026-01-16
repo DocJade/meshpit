@@ -13,7 +13,6 @@ pub struct CCWebsocket {
 
 impl CCWebsocket {
     /// Make a new websocket connection.
-    /// Returns a `(CCWebsocket, 
     pub async fn new(stream: TcpStream) -> (Self, mpsc::UnboundedReceiver<String>) {
         // TODO: error handling
         let websocket_stream = accept_async(stream).await.expect("Failed to accept websocket!");
