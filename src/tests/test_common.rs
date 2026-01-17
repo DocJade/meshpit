@@ -79,6 +79,57 @@ pub struct SocketLessTestHandle {
     // pub websocket: CCWebsocket
 }
 
+pub struct ComputerPeripheralConfig {
+    peripherals: Vec<(ComputerPeripheral, ComputerSide)>
+}
+
+pub struct ComputerPeripheral {
+    peripheral: PeripheralType,
+    side: ComputerSide
+}
+
+pub enum PeripheralType {
+    Drive,
+    WiredModem,
+    WirelessModem,
+    // Monitor,
+    // Speaker,
+    // Chest,
+    Computer
+}
+
+pub enum ComputerSide {
+    Top,
+    Bottom,
+    Left,
+    Right,
+    Front,
+    Back,
+}
+
+impl std::fmt::Display for PeripheralType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PeripheralType::Drive => todo!(),
+            PeripheralType::WiredModem => todo!(),
+            PeripheralType::WirelessModem => todo!(),
+            PeripheralType::Computer => todo!(),
+        }
+    }
+}
+
+impl std::fmt::Display for ComputerSide {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ComputerSide::Top => write!(f, "top"),
+            ComputerSide::Bottom => write!(f, "bottom"),
+            ComputerSide::Left => write!(f, "left"),
+            ComputerSide::Right => write!(f, "right"),
+            ComputerSide::Front => write!(f, "front"),
+            ComputerSide::Back => write!(f, "back"),
+        }
+    }
+}
 pub struct ProcessGuard {
     pub child: Child
 }
