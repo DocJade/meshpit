@@ -44,8 +44,24 @@ async fn test_start_server() {
         .lock()
         .expect("We should have the only reference");
     let server: &mut MinecraftEnvironment = &mut guard;
-    info!("Test: {server:#?}");
     assert!(server.is_running());
+}
+
+#[tokio::test]
+// #[ntest::timeout(1000)]
+/// Test RCON functionality
+async fn test_server_rcon() {
+    let mut guard = MINECRAFT_ENV
+        .lock()
+        .expect("We should have the only reference");
+    let server: &mut MinecraftEnvironment = &mut guard;
+
+    // just try to get the world seed.
+    let server_seed = server
+        .send_rcon("/seed")
+        .await
+        .expect("rcon should not fail");
+    info!("World seed is {server_seed}");
 }
 
 // TODO: basic computer networking test.

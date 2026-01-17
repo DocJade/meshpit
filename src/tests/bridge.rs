@@ -9,6 +9,8 @@ use std::{
     sync::Arc,
 };
 
+use rcon::{AsyncStdStream, Connection};
+
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::time::{Duration, timeout};
@@ -18,6 +20,9 @@ use once_cell::sync::Lazy;
 
 // Urls for the installers and such.
 static CURRENT_MINECRAFT_VERSION: &str = "1.21.1";
+static MINECRAFT_RCON_PORT: &str = "25575";
+// nobody will ever guess 1235
+static MINECRAFT_RCON_PASSWORD: &str = "1235";
 static JVM_ARGS: &str = "-XX:+UseZGC -XX:+ZGenerational";
 static NEOFORGE_INSTALLER_URL: &str = "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.218/neoforge-21.1.218-installer.jar";
 static MOD_URLS: &[&str] = &[
@@ -51,9 +56,10 @@ pub static MINECRAFT_ENV: Lazy<Arc<std::sync::Mutex<MinecraftEnvironment>>> = La
 });
 
 /// Information to keep track of where mc tests are done.
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct MinecraftEnvironment {
     process: Option<tokio::process::Child>, // into sandwich
+    rcon_connection: Option<rcon::Connection<AsyncStdStream>>,
     server_dir: PathBuf,
 }
 
@@ -76,6 +82,7 @@ impl MinecraftEnvironment {
 
         let mut server = MinecraftEnvironment {
             process: None,
+            rcon_connection: None,
             server_dir: server_dir.clone(),
         };
 
@@ -93,6 +100,9 @@ impl MinecraftEnvironment {
             server.process.is_some(),
             "We need a child process at this point."
         );
+
+        // attach rcon
+        server.attach_rcon().await;
 
         server
     }
@@ -188,6 +198,7 @@ impl MinecraftEnvironment {
 
         let mut server = MinecraftEnvironment {
             process: None,
+            rcon_connection: None,
             server_dir: server_dir.clone(),
         };
 
@@ -251,6 +262,44 @@ impl MinecraftEnvironment {
             .expect("Should be able to update file.");
         info!("Done!");
 
+        // Enable rcon
+        info!("Setting up server.properties...");
+        let server_properties_file = server_dir.join("server.properties");
+        let mut properties_text =
+            fs::read_to_string(&server_properties_file).expect("Should exist.");
+
+        // Since its plaintext, editing this is a bit more annoying.
+        // Enable RCON
+        properties_text = properties_text.replace("enable-rcon=false", "enable-rcon=true");
+        properties_text = properties_text.replace(
+            "rcon.port=25575",
+            &format!("rcon.port={MINECRAFT_RCON_PORT}"),
+        );
+        properties_text = properties_text.replace(
+            "rcon.password=",
+            &format!("rcon.password={MINECRAFT_RCON_PASSWORD}"),
+        );
+
+        // motd bc why not
+        properties_text = properties_text.replace("motd=A Minecraft Server", "motd=Meshpit Test");
+
+        // spectator gamemode
+        properties_text = properties_text.replace("gamemode=survival", "gamemode=spectator");
+
+        // Superflat world
+        properties_text = properties_text.replace(
+            "level-type=minecraft\\:normal",
+            "level-type=minecraft\\:flat",
+        );
+
+        // No spawn protection
+        properties_text = properties_text.replace("spawn-protection=16", "spawn-protection=0");
+
+        // replace the old config
+        fs::write(server_properties_file, properties_text).expect("Should be able to replace it.");
+
+        info!("Done!");
+
         // All done!
         info!("Done setting up Minecraft server!");
     }
@@ -287,6 +336,36 @@ impl MinecraftEnvironment {
         self.process = Some(child);
         self.scan_output(")! For help, type \"help\"").await;
         assert!(self.process.is_some())
+    }
+
+    /// Set up RCON for the server
+    async fn attach_rcon(&mut self) {
+        let build = <Connection<AsyncStdStream>>::builder();
+        let connection = build
+            .enable_minecraft_quirks(true)
+            .connect(
+                format!("localhost:{MINECRAFT_RCON_PORT}"),
+                MINECRAFT_RCON_PASSWORD,
+            )
+            .await
+            .expect("Should be able to open rcon.");
+        self.rcon_connection = Some(connection)
+    }
+
+    /// Send an RCON message.
+    ///
+    /// Returns `None` if rcon is not open.
+    pub async fn send_rcon(&mut self, command: &str) -> Option<String> {
+        if let Some(ref mut connection) = self.rcon_connection {
+            let response = connection
+                .cmd(command)
+                .await
+                .expect("rcon should not fail.");
+            Some(response)
+        } else {
+            debug!("Tried send RCON while RCON was not set up.");
+            None
+        }
     }
 
     /// Scan the output of the starting Minecraft process to wait for the server ready message.
