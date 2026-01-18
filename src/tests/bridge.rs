@@ -1,13 +1,12 @@
 // Bridge between Minecraft and this repo. Since for testing we need to start a server.
 
 use std::{
-    cell::OnceCell,
     fs::{self, OpenOptions},
     io::Write,
     num::NonZero,
     path::{Path, PathBuf},
     process::Stdio,
-    sync::{Arc, OnceLock},
+    sync::OnceLock,
 };
 
 use rcon::{AsyncStdStream, Connection};
@@ -17,7 +16,6 @@ use tokio::process::Command;
 use tokio::time::{Duration, timeout};
 
 use log::{debug, error, info, warn};
-use once_cell::sync::Lazy;
 
 // Urls for the installers and such.
 static CURRENT_MINECRAFT_VERSION: &str = "1.21.1";
@@ -65,8 +63,7 @@ fn post_test_shutdown() {
         #[allow(clippy::await_holding_lock)] //TODO: idk what it wants, fix later
         rt.block_on(async {
             let mut guard = crate::tests::test_harness::MINECRAFT_TESTING_ENV
-                .lock()
-                .expect("We should have the only reference");
+                .lock().await;
             let server: &mut MinecraftEnvironment = &mut guard.environment;
             server.shutdown_and_wait().await;
         })

@@ -2,10 +2,9 @@
 
 use std::time::Duration;
 
-use crate::tests::test_harness::{
-    ComputerConfigs, ComputerKind, ComputerSetup, MINECRAFT_TESTING_ENV, MinecraftFacingDirection,
-    MinecraftPosition, MinecraftTest, TestArea, TestPassCondition, TestSetupCommand,
-};
+use crate::{minecraft::types::*, tests::test_harness::{
+    ComputerConfigs, ComputerKind, ComputerSetup, MinecraftTest, TestArea, TestPassCondition, TestSetupCommand, MINECRAFT_TESTING_ENV
+}};
 
 #[tokio::test]
 /// Make a herobrine spawner
@@ -19,40 +18,40 @@ async fn basic_block_test() {
     let base = TestSetupCommand::Fill(
         MinecraftPosition { x: 1, y: 1, z: 1 },
         MinecraftPosition { x: 3, y: 1, z: 3 },
-        crate::tests::test_harness::MinecraftBlock::GoldBlock,
+        MinecraftBlock::GoldBlock,
     );
 
     // netherrack
     let rack = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 2, y: 2, z: 2 },
-        crate::tests::test_harness::MinecraftBlock::Netherrack,
+        MinecraftBlock::Netherrack,
     );
 
     // fire
     let fire = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 2, y: 3, z: 2 },
-        crate::tests::test_harness::MinecraftBlock::Fire,
+        MinecraftBlock::Fire,
     );
 
     // torch1
     let torch1 = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 1, y: 2, z: 2 },
-        crate::tests::test_harness::MinecraftBlock::RedstoneTorch,
+        MinecraftBlock::RedstoneTorch,
     );
     // torch2
     let torch2 = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 2, y: 2, z: 1 },
-        crate::tests::test_harness::MinecraftBlock::RedstoneTorch,
+        MinecraftBlock::RedstoneTorch,
     );
     // torch3
     let torch3 = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 3, y: 2, z: 2 },
-        crate::tests::test_harness::MinecraftBlock::RedstoneTorch,
+        MinecraftBlock::RedstoneTorch,
     );
     // torch4
     let torch4 = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 2, y: 2, z: 3 },
-        crate::tests::test_harness::MinecraftBlock::RedstoneTorch,
+        MinecraftBlock::RedstoneTorch,
     );
 
     let setup_commands: Vec<TestSetupCommand> =
@@ -66,7 +65,7 @@ async fn basic_block_test() {
 
     let test = MinecraftTest::new(area, setup_commands, computers, passing_condition, timeout);
 
-    let result = MINECRAFT_TESTING_ENV.lock().unwrap().run(test).await;
+    let result = MINECRAFT_TESTING_ENV.lock().await.run(test).await;
 
     assert!(result)
 }
@@ -98,7 +97,7 @@ async fn basic_computer_test() {
 
     let test = MinecraftTest::new(area, setup_commands, computers, passing_condition, timeout);
 
-    let result = MINECRAFT_TESTING_ENV.lock().unwrap().run(test).await;
+    let result = MINECRAFT_TESTING_ENV.lock().await.run(test).await;
 
     assert!(result)
 }

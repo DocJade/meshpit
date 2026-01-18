@@ -1,9 +1,11 @@
 // Testing galore
 
-use std::{fmt::Display, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
+use crate::minecraft::types::*;
 
 use log::info;
 use once_cell::sync::Lazy;
+use tokio::sync::Mutex;
 
 use crate::tests::bridge::MinecraftEnvironment;
 
@@ -17,7 +19,7 @@ pub struct MinecraftTestEnvironment {
 // this is the minecraft instance that all of the tests will use, so we have to make it once and then hold it here, otherwise
 // we would have to re-start the server for every test, and that would be stupid as hell.
 // TODO: I think i can refactor this into that ctor startup block that sets up logging for tests.
-pub static MINECRAFT_TESTING_ENV: Lazy<Arc<std::sync::Mutex<MinecraftTestEnvironment>>> =
+pub static MINECRAFT_TESTING_ENV: Lazy<Arc<Mutex<MinecraftTestEnvironment>>> =
     Lazy::new(|| {
         let env = MinecraftTestEnvironment::setup();
         Arc::new(env.into())
@@ -97,44 +99,6 @@ pub struct TestArea {
     pub size_z: u16,
 }
 
-// TODO: this should not live in the test harness lmao
-#[derive(Clone, Copy)]
-pub struct MinecraftPosition {
-    pub x: i64,
-    pub y: i64,
-    pub z: i64,
-}
-
-impl MinecraftPosition {
-    /// Offset the position by an amount
-    fn with_offset(&self, offset: MinecraftPosition) -> MinecraftPosition {
-        Self {
-            x: self.x + offset.x,
-            y: self.y + offset.y,
-            z: self.z + offset.z,
-        }
-    }
-}
-
-// TODO: this should not live in the test harness lmao
-#[derive(Clone, Copy)]
-pub enum MinecraftFacingDirection {
-    North,
-    East,
-    South,
-    West,
-}
-impl ToString for MinecraftFacingDirection {
-    fn to_string(&self) -> String {
-        match self {
-            MinecraftFacingDirection::North => "north".to_string(),
-            MinecraftFacingDirection::East => "east".to_string(),
-            MinecraftFacingDirection::South => "south".to_string(),
-            MinecraftFacingDirection::West => "west".to_string(),
-        }
-    }
-}
-
 /// A command that a test runs during setup.
 /// All positions are relative to the test corner.
 pub enum TestSetupCommand {
@@ -207,14 +171,15 @@ pub enum ComputerKind {
     Turtle(TurtleFuelSetup),
 }
 
-impl Into<MinecraftBlock> for ComputerKind {
-    fn into(self) -> MinecraftBlock {
-        match self {
+impl From<ComputerKind> for MinecraftBlock {
+    fn from(value: ComputerKind) -> Self {
+        match value {
             ComputerKind::Basic => MinecraftBlock::CCComputerNormal,
             ComputerKind::Turtle(_) => MinecraftBlock::CCTurtleNormal,
         }
     }
 }
+
 #[derive(Clone, Copy)]
 pub enum TurtleFuelSetup {
     /// No fuel (you wont be able to move!)
@@ -255,19 +220,6 @@ pub enum TestPassCondition {
     Dummy,
 }
 
-// TODO: this should not be in the test harness lmao
-#[derive(Clone, Copy)]
-pub enum MinecraftBlock {
-    LimeConcrete,
-    RedConcrete,
-    YellowConcrete,
-    Netherrack,
-    GoldBlock,
-    RedstoneTorch,
-    Fire,
-    CCComputerNormal,
-    CCTurtleNormal,
-}
 
 // we can turn on turtles with nbt set commands
 // /data modify block { coords } On set value 1b
@@ -283,29 +235,6 @@ pub enum MinecraftBlock {
 // you can put items into turtles with hoppers
 
 //TODO: test if the test escapes the boundaries of the test.
-
-impl ToString for MinecraftBlock {
-    fn to_string(&self) -> String {
-        match self {
-            MinecraftBlock::LimeConcrete => "minecraft:lime_concrete".to_string(),
-            MinecraftBlock::RedConcrete => "minecraft:red_concrete".to_string(),
-            MinecraftBlock::YellowConcrete => "minecraft:yellow_concrete".to_string(),
-            MinecraftBlock::CCComputerNormal => "computercraft:computer_normal".to_string(),
-            MinecraftBlock::CCTurtleNormal => "computercraft:turtle_normal".to_string(),
-            MinecraftBlock::Netherrack => "minecraft:netherrack".to_string(),
-            MinecraftBlock::GoldBlock => "minecraft:gold_block".to_string(),
-            MinecraftBlock::RedstoneTorch => "minecraft:redstone_torch".to_string(),
-            MinecraftBlock::Fire => "minecraft:fire".to_string(),
-        }
-    }
-}
-
-impl MinecraftPosition {
-    /// Get the position as a string, used in commands (no commas)
-    fn as_command_string(&self) -> String {
-        format!("{} {} {}", self.x, self.y, self.z)
-    }
-}
 
 impl MinecraftTestEnvironment {
     /// Run a test
@@ -459,6 +388,18 @@ impl MinecraftTestEnvironment {
             let this_computer_dir = computer_directory.join(id.to_string());
             std::fs::create_dir_all(&this_computer_dir).unwrap();
             std::fs::write(this_computer_dir.join("startup.lua"), c.config.to_file()).unwrap();
+
+            // now turn on the computer again
+            // we know the ID now so we can just use the computercraft command.
+            // /computercraft turn-on 0
+            let command_5 = format!("computercraft turn-on {id}");
+            let result = self
+                .environment
+                .send_rcon(&command_5)
+                .await
+                .expect("Computer should be there");
+            info!("{result}");
+
 
             // all done making the computer :D
         }

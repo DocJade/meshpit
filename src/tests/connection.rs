@@ -20,7 +20,7 @@ async fn test_start_server() {
     assert!(
         MINECRAFT_TESTING_ENV
             .lock()
-            .unwrap()
+            .await
             .environment
             .is_running()
     );
@@ -32,7 +32,7 @@ async fn test_start_server() {
 async fn test_server_rcon() {
     let mut guard = MINECRAFT_TESTING_ENV
         .lock()
-        .expect("We should have the only reference");
+        .await;
     let server: &mut MinecraftEnvironment = &mut guard.environment;
 
     // just try to get the world seed.
