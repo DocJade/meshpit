@@ -53,7 +53,7 @@ fn post_test_shutdown() {
     info!("Running post-test cleanup...");
 
     // TODO: Add a flag to keep the server running and to delay tests starting initially to allow player to join.
-    std::thread::sleep(Duration::from_secs(30));
+    // std::thread::sleep(Duration::from_secs(300));
 
     // function is async so we need another thread.
     let handle = std::thread::spawn(|| {
@@ -126,6 +126,10 @@ impl MinecraftEnvironment {
     /// Check if server is still running
     pub fn is_running(&self) -> bool {
         self.process.is_some()
+    }
+    /// Get the server folder
+    pub fn get_server_folder(&self) -> PathBuf {
+        self.server_dir.clone()
     }
     /// Set up the server environment via downloading, installing, and configuring.
     async fn setup(server_dir: PathBuf) {
@@ -312,6 +316,14 @@ impl MinecraftEnvironment {
         // No spawn protection
         properties_text = properties_text.replace("spawn-protection=16", "spawn-protection=0");
 
+        // no villages
+        properties_text = properties_text.replace("generate-structures=true", "generate-structures=false");
+
+        // no mobs
+        properties_text = properties_text.replace("spawn-animals=true", "spawn-animals=false"); 
+        properties_text = properties_text.replace("spawn-monsters=true", "spawn-monsters=false"); 
+        properties_text = properties_text.replace("spawn-npcs=true", "spawn-npcs=false"); 
+
         // replace the old config
         fs::write(server_properties_file, properties_text).expect("Should be able to replace it.");
 
@@ -361,7 +373,7 @@ impl MinecraftEnvironment {
         let connection = build
             .enable_minecraft_quirks(true)
             .connect(
-                format!("localhost:{MINECRAFT_RCON_PORT}"),
+                format!("localhost:{MINECRAFT_RCON_PORT}"), //TODO: make the address configurable
                 MINECRAFT_RCON_PASSWORD,
             )
             .await
@@ -378,6 +390,11 @@ impl MinecraftEnvironment {
                 .cmd(command)
                 .await
                 .expect("rcon should not fail.");
+
+            // we have to wait a tiny bit between every rcon command to make sure that
+            // block states and stuff have time to update. So we wait just over a tick.
+            std::thread::sleep(Duration::from_millis(60));
+
             Some(response)
         } else {
             debug!("Tried send RCON while RCON was not set up.");

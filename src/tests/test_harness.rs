@@ -233,6 +233,22 @@ pub enum ComputerConfigs {
     Websocket(u16),
 }
 
+impl ComputerConfigs {
+    fn to_file(self) -> Vec<u8> {
+        match self {
+            ComputerConfigs::Empty => {
+                include_bytes!("../tests/startup_scripts/empty.lua").to_vec()
+            },
+            ComputerConfigs::Websocket(socket) => {
+                let file = include_str!("../tests/startup_scripts/eval_socket.lua");
+                let mut fixed = file.replace("###URL###", "localhost"); //TODO: make the address configurable
+                fixed = fixed.replace("###SOCKET###", &socket.to_string());
+                fixed.as_bytes().into()
+            },
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum TestPassCondition {
     //TODO: real conditions
@@ -331,6 +347,7 @@ impl MinecraftTestEnvironment {
 
     /// Build a computer within a test
     async fn setup_computers(&mut self, test: &mut MinecraftTest) {
+        let computer_directory = self.environment.get_server_folder().join("world/computercraft/computer");
         for c in &mut test.computers {
             // TODO: refactor things into ComputerSetup
 
@@ -381,7 +398,10 @@ impl MinecraftTestEnvironment {
                 .expect("Should fit.");
 
             // and turn the computer off again. lol.
-            let command_4 = format!("data modify block {computer_position_string} On set value 0b");
+            // setting the block data here does not actually turn off the computer, so we have to use the
+            // comptuercraft command instead. 
+            // /computercraft shutdown 0  
+            let command_4 = format!("computercraft shutdown {id}");
             let result = self
                 .environment
                 .send_rcon(&command_4)
@@ -433,6 +453,12 @@ impl MinecraftTestEnvironment {
                 }
                 _ => { /* doesn't need anything else done */ }
             }
+
+            // Now set up the lua it runs
+            // make the folder for the computer
+            let this_computer_dir = computer_directory.join(id.to_string());
+            std::fs::create_dir_all(&this_computer_dir).unwrap();
+            std::fs::write(this_computer_dir.join("startup.lua"), c.config.to_file()).unwrap();
 
             // all done making the computer :D
         }
