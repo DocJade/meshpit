@@ -1,12 +1,13 @@
 // Bridge between Minecraft and this repo. Since for testing we need to start a server.
 
 use std::{
+    cell::OnceCell,
     fs::{self, OpenOptions},
     io::Write,
     num::NonZero,
     path::{Path, PathBuf},
     process::Stdio,
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 use rcon::{AsyncStdStream, Connection};
@@ -37,24 +38,6 @@ static MOD_URLS: &[&str] = &[
 // we are assuming you run `cargo test` while in `/meshpit`
 static SERVER_DIRECTORY: &str = "./test_server";
 
-// this is the minecraft instance that all of the tests will use, so we have to make it once and then hold it here, otherwise
-// we would have to re-start the server for every test, and that would be stupid as hell.
-// TODO: I think i can refactor this into that ctor startup block that sets up logging for tests.
-pub static MINECRAFT_ENV: Lazy<Arc<std::sync::Mutex<MinecraftEnvironment>>> = Lazy::new(|| {
-    let handle = std::thread::spawn(|| {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Should be able to spawn a runtime for lazy making.");
-
-        rt.block_on(async { MinecraftEnvironment::start().await })
-    });
-
-    let env = handle.join().expect("well crap");
-    assert!(env.process.is_some());
-    Arc::new(env.into())
-});
-
 /// Information to keep track of where mc tests are done.
 // #[derive(Debug)]
 pub struct MinecraftEnvironment {
@@ -63,9 +46,43 @@ pub struct MinecraftEnvironment {
     server_dir: PathBuf,
 }
 
+// When we are running tests, this will run afterwards to make sure we shut down the server.
+#[cfg(test)]
+#[ctor::dtor] // When all of the tests are over, we need to clean up (ie shut down) the minecraft server.
+fn post_test_shutdown() {
+    info!("Running post-test cleanup...");
+
+    // TODO: Add a flag to keep the server running and to delay tests starting initially to allow player to join.
+    std::thread::sleep(Duration::from_secs(30));
+
+    // function is async so we need another thread.
+    let handle = std::thread::spawn(|| {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("Should be able to spawn a runtime for lazy making.");
+
+        #[allow(clippy::await_holding_lock)] //TODO: idk what it wants, fix later
+        rt.block_on(async {
+            let mut guard = crate::tests::test_harness::MINECRAFT_TESTING_ENV
+                .lock()
+                .expect("We should have the only reference");
+            let server: &mut MinecraftEnvironment = &mut guard.environment;
+            server.shutdown_and_wait().await;
+        })
+    });
+    info!("Done cleaning up. Goodbye.");
+}
+
 impl MinecraftEnvironment {
     /// Start the Minecraft server
-    async fn start() -> Self {
+    pub(super) async fn start() -> Self {
+        // Don't let us start the server multiple times.
+        static NO_REPEATS: OnceLock<bool> = OnceLock::new();
+        if NO_REPEATS.set(true).is_err() {
+            panic!("Tried to start the test server twice!")
+        };
+
         info!("Starting test server... ({CURRENT_MINECRAFT_VERSION})");
         // Check if the server directory already exists
         let server_dir = Path::new(SERVER_DIRECTORY).to_path_buf();
