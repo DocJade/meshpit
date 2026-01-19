@@ -17,22 +17,14 @@ fn init_test_logging() {
 #[ntest::timeout(300_000)]
 /// Basic test to see if the Minecraft server is actually running.
 async fn test_start_server() {
-    assert!(
-        MINECRAFT_TESTING_ENV
-            .lock()
-            .await
-            .environment
-            .is_running()
-    );
+    assert!(MINECRAFT_TESTING_ENV.lock().await.environment.is_running());
 }
 
 #[tokio::test]
 // #[ntest::timeout(1000)]
 /// Test RCON functionality
 async fn test_server_rcon() {
-    let mut guard = MINECRAFT_TESTING_ENV
-        .lock()
-        .await;
+    let mut guard = MINECRAFT_TESTING_ENV.lock().await;
     let server: &mut MinecraftEnvironment = &mut guard.environment;
 
     // just try to get the world seed.

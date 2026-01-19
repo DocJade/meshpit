@@ -50,7 +50,3 @@ impl Display for MinecraftFacingDirection {
         }
     }
 }
-
-// ==
-// 
-// ==

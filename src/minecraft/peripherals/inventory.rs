@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::minecraft::item::item_type::MinecraftItem;
+use crate::minecraft::vanilla::item_type::MinecraftItem;
 
 // TODO: if we implement the methods as a trait, then it would be easier to add new things.
 pub struct GenericInventory {
@@ -16,5 +16,5 @@ pub struct GenericInventorySlot {
     // What item is in this slot.
     item: Option<MinecraftItem>,
     /// How many of that item are in the slot.
-    count: Option<u8>
+    count: Option<u8>,
 }

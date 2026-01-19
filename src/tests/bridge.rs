@@ -17,8 +17,9 @@ use tokio::time::{Duration, timeout};
 
 use log::{debug, error, info, warn};
 
+use crate::minecraft::vanilla::data_globals::CURRENT_MINECRAFT_VERSION;
+
 // Urls for the installers and such.
-static CURRENT_MINECRAFT_VERSION: &str = "1.21.1";
 static MINECRAFT_RCON_PORT: &str = "25575";
 // nobody will ever guess 1235
 static MINECRAFT_RCON_PASSWORD: &str = "1235";
@@ -44,6 +45,7 @@ pub struct MinecraftEnvironment {
     server_dir: PathBuf,
 }
 
+// TODO: This doesn't seem to run if tests fail.
 // When we are running tests, this will run afterwards to make sure we shut down the server.
 #[cfg(test)]
 #[ctor::dtor] // When all of the tests are over, we need to clean up (ie shut down) the minecraft server.
@@ -63,7 +65,8 @@ fn post_test_shutdown() {
         #[allow(clippy::await_holding_lock)] //TODO: idk what it wants, fix later
         rt.block_on(async {
             let mut guard = crate::tests::test_harness::MINECRAFT_TESTING_ENV
-                .lock().await;
+                .lock()
+                .await;
             let server: &mut MinecraftEnvironment = &mut guard.environment;
             server.shutdown_and_wait().await;
         })
@@ -314,12 +317,13 @@ impl MinecraftEnvironment {
         properties_text = properties_text.replace("spawn-protection=16", "spawn-protection=0");
 
         // no villages
-        properties_text = properties_text.replace("generate-structures=true", "generate-structures=false");
+        properties_text =
+            properties_text.replace("generate-structures=true", "generate-structures=false");
 
         // no mobs
-        properties_text = properties_text.replace("spawn-animals=true", "spawn-animals=false"); 
-        properties_text = properties_text.replace("spawn-monsters=true", "spawn-monsters=false"); 
-        properties_text = properties_text.replace("spawn-npcs=true", "spawn-npcs=false"); 
+        properties_text = properties_text.replace("spawn-animals=true", "spawn-animals=false");
+        properties_text = properties_text.replace("spawn-monsters=true", "spawn-monsters=false");
+        properties_text = properties_text.replace("spawn-npcs=true", "spawn-npcs=false");
 
         // replace the old config
         fs::write(server_properties_file, properties_text).expect("Should be able to replace it.");

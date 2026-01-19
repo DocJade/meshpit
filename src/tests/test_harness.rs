@@ -1,7 +1,7 @@
 // Testing galore
 
+use crate::minecraft::{types::*, vanilla::block_type::MinecraftBlock};
 use std::{sync::Arc, time::Duration};
-use crate::minecraft::{item::item_type::MinecraftItem, types::*};
 
 use log::info;
 use once_cell::sync::Lazy;
@@ -19,11 +19,10 @@ pub struct MinecraftTestEnvironment {
 // this is the minecraft instance that all of the tests will use, so we have to make it once and then hold it here, otherwise
 // we would have to re-start the server for every test, and that would be stupid as hell.
 // TODO: I think i can refactor this into that ctor startup block that sets up logging for tests.
-pub static MINECRAFT_TESTING_ENV: Lazy<Arc<Mutex<MinecraftTestEnvironment>>> =
-    Lazy::new(|| {
-        let env = MinecraftTestEnvironment::setup();
-        Arc::new(env.into())
-    });
+pub static MINECRAFT_TESTING_ENV: Lazy<Arc<Mutex<MinecraftTestEnvironment>>> = Lazy::new(|| {
+    let env = MinecraftTestEnvironment::setup();
+    Arc::new(env.into())
+});
 
 impl MinecraftTestEnvironment {
     /// Make a new test environment.
@@ -103,9 +102,9 @@ pub struct TestArea {
 /// All positions are relative to the test corner.
 pub enum TestSetupCommand {
     /// Place a block.
-    SetBlock(MinecraftPosition, MinecraftItem),
+    SetBlock(MinecraftPosition, MinecraftBlock),
     /// Fill some blocks.
-    Fill(MinecraftPosition, MinecraftPosition, MinecraftItem),
+    Fill(MinecraftPosition, MinecraftPosition, MinecraftBlock),
 }
 
 impl TestSetupCommand {
@@ -114,15 +113,15 @@ impl TestSetupCommand {
         let corner = test.corner.expect("Needs to be set by this point");
         match self {
             TestSetupCommand::SetBlock(minecraft_position, minecraft_block) => {
-                // TODO: support facing directions. maybe facing should go into the MinecraftItem?
+                // TODO: support facing directions. maybe facing should go into the MinecraftBlock?
                 let position = corner.with_offset(*minecraft_position).as_command_string();
-                let block_string = minecraft_block.to_string();
+                let block_string = minecraft_block.get_full_name();
                 format!("setblock {position} {block_string}")
             }
             TestSetupCommand::Fill(pos1, pos2, minecraft_block) => {
                 let position1 = corner.with_offset(*pos1).as_command_string();
                 let position2 = corner.with_offset(*pos2).as_command_string();
-                let block_string = minecraft_block.to_string();
+                let block_string = minecraft_block.get_full_name();
                 format!("fill {position1} {position2} {block_string}")
             }
         }
@@ -163,6 +162,7 @@ impl ComputerSetup {
     }
 }
 
+// TODO: get this out of here into the computercraft folder
 #[derive(Clone, Copy)]
 pub enum ComputerKind {
     /// Normal computer.
@@ -171,11 +171,11 @@ pub enum ComputerKind {
     Turtle(TurtleFuelSetup),
 }
 
-impl From<ComputerKind> for MinecraftItem {
+impl From<ComputerKind> for MinecraftBlock {
     fn from(value: ComputerKind) -> Self {
         match value {
-            ComputerKind::Basic => MinecraftItem::CCComputerNormal,
-            ComputerKind::Turtle(_) => MinecraftItem::CCTurtleNormal,
+            ComputerKind::Basic => MinecraftBlock::from_string("computer_normal").unwrap(),
+            ComputerKind::Turtle(_) => MinecraftBlock::from_string("turtle_normal").unwrap(),
         }
     }
 }
@@ -201,15 +201,13 @@ pub enum ComputerConfigs {
 impl ComputerConfigs {
     fn to_file(self) -> Vec<u8> {
         match self {
-            ComputerConfigs::Empty => {
-                include_bytes!("../tests/startup_scripts/empty.lua").to_vec()
-            },
+            ComputerConfigs::Empty => include_bytes!("../tests/startup_scripts/empty.lua").to_vec(),
             ComputerConfigs::Websocket(socket) => {
                 let file = include_str!("../tests/startup_scripts/eval_socket.lua");
                 let mut fixed = file.replace("###URL###", "localhost"); //TODO: make the address configurable
                 fixed = fixed.replace("###SOCKET###", &socket.to_string());
                 fixed.as_bytes().into()
-            },
+            }
         }
     }
 }
@@ -219,7 +217,6 @@ pub enum TestPassCondition {
     //TODO: real conditions
     Dummy,
 }
-
 
 // we can turn on turtles with nbt set commands
 // /data modify block { coords } On set value 1b
@@ -247,8 +244,11 @@ impl MinecraftTestEnvironment {
 
         // setup the ground for the test.
         // start as yellow, since test is running
-        self.update_floor(&test, MinecraftItem::YellowConcrete)
-            .await;
+        self.update_floor(
+            &test,
+            MinecraftBlock::from_string("yellow_concrete").unwrap(),
+        )
+        .await;
 
         // run the startup commands
         for command in &test.setup_commands {
@@ -266,9 +266,11 @@ impl MinecraftTestEnvironment {
         let test_passed = true;
 
         if test_passed {
-            self.update_floor(&test, MinecraftItem::LimeConcrete).await;
+            self.update_floor(&test, MinecraftBlock::from_string("lime_concrete").unwrap())
+                .await;
         } else {
-            self.update_floor(&test, MinecraftItem::RedConcrete).await;
+            self.update_floor(&test, MinecraftBlock::from_string("red_concrete").unwrap())
+                .await;
         };
 
         test_passed
@@ -276,7 +278,10 @@ impl MinecraftTestEnvironment {
 
     /// Build a computer within a test
     async fn setup_computers(&mut self, test: &mut MinecraftTest) {
-        let computer_directory = self.environment.get_server_folder().join("world/computercraft/computer");
+        let computer_directory = self
+            .environment
+            .get_server_folder()
+            .join("world/computercraft/computer");
         for c in &mut test.computers {
             // TODO: refactor things into ComputerSetup
 
@@ -287,8 +292,8 @@ impl MinecraftTestEnvironment {
                 .expect("Should be set by now")
                 .with_offset(c.offset);
             let computer_position_string = computer_position.as_command_string();
-            let as_block: MinecraftItem = c.kind.into();
-            let computer_block = as_block.to_string();
+            let as_block: MinecraftBlock = c.kind.into();
+            let computer_block = as_block.get_full_name();
             let facing = c.facing.to_string();
             let command =
                 format!("setblock {computer_position_string} {computer_block}[facing={facing}]");
@@ -328,8 +333,8 @@ impl MinecraftTestEnvironment {
 
             // and turn the computer off again. lol.
             // setting the block data here does not actually turn off the computer, so we have to use the
-            // comptuercraft command instead. 
-            // /computercraft shutdown 0  
+            // comptuercraft command instead.
+            // /computercraft shutdown 0
             let command_4 = format!("computercraft shutdown {id}");
             let result = self
                 .environment
@@ -400,13 +405,12 @@ impl MinecraftTestEnvironment {
                 .expect("Computer should be there");
             info!("{result}");
 
-
             // all done making the computer :D
         }
     }
 
     /// Change the floor of a test
-    async fn update_floor(&mut self, test: &MinecraftTest, floor_block: MinecraftItem) {
+    async fn update_floor(&mut self, test: &MinecraftTest, floor_block: MinecraftBlock) {
         let corner = test.corner.expect("Should have the corner set by now.");
         let p1 = corner.as_command_string();
         let p2 = MinecraftPosition {
@@ -415,7 +419,7 @@ impl MinecraftTestEnvironment {
             z: corner.z + i64::from(test.area.size_z),
         }
         .as_command_string();
-        let block = floor_block.to_string();
+        let block = floor_block.get_full_name();
         // run the fill command
         let command = format!("fill {p1} {p2} {block}");
         let result = self.environment.send_rcon(&command).await;

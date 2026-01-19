@@ -2,9 +2,13 @@
 
 use std::time::Duration;
 
-use crate::{minecraft::{item::item_type::MinecraftItem, types::*}, tests::test_harness::{
-    ComputerConfigs, ComputerKind, ComputerSetup, MinecraftTest, TestArea, TestPassCondition, TestSetupCommand, MINECRAFT_TESTING_ENV
-}};
+use crate::{
+    minecraft::{types::*, vanilla::block_type::MinecraftBlock},
+    tests::test_harness::{
+        ComputerConfigs, ComputerKind, ComputerSetup, MINECRAFT_TESTING_ENV, MinecraftTest,
+        TestArea, TestPassCondition, TestSetupCommand,
+    },
+};
 
 #[tokio::test]
 /// Make a herobrine spawner
@@ -18,40 +22,40 @@ async fn basic_block_test() {
     let base = TestSetupCommand::Fill(
         MinecraftPosition { x: 1, y: 1, z: 1 },
         MinecraftPosition { x: 3, y: 1, z: 3 },
-        MinecraftItem::GoldBlock,
+        MinecraftBlock::from_string("gold_block").unwrap(),
     );
 
     // netherrack
     let rack = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 2, y: 2, z: 2 },
-        MinecraftItem::Netherrack,
+        MinecraftBlock::from_string("netherrack").unwrap(),
     );
 
     // fire
     let fire = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 2, y: 3, z: 2 },
-        MinecraftItem::Fire,
+        MinecraftBlock::from_string("fire").unwrap(),
     );
 
     // torch1
     let torch1 = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 1, y: 2, z: 2 },
-        MinecraftItem::RedstoneTorch,
+        MinecraftBlock::from_string("redstone_torch").unwrap(),
     );
     // torch2
     let torch2 = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 2, y: 2, z: 1 },
-        MinecraftItem::RedstoneTorch,
+        MinecraftBlock::from_string("redstone_torch").unwrap(),
     );
     // torch3
     let torch3 = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 3, y: 2, z: 2 },
-        MinecraftItem::RedstoneTorch,
+        MinecraftBlock::from_string("redstone_torch").unwrap(),
     );
     // torch4
     let torch4 = TestSetupCommand::SetBlock(
         MinecraftPosition { x: 2, y: 2, z: 3 },
-        MinecraftItem::RedstoneTorch,
+        MinecraftBlock::from_string("redstone_torch").unwrap(),
     );
 
     let setup_commands: Vec<TestSetupCommand> =
