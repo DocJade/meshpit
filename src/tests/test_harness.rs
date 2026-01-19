@@ -1,7 +1,7 @@
 // Testing galore
 
 use std::{sync::Arc, time::Duration};
-use crate::minecraft::types::*;
+use crate::minecraft::{item::item_type::MinecraftItem, types::*};
 
 use log::info;
 use once_cell::sync::Lazy;
@@ -103,9 +103,9 @@ pub struct TestArea {
 /// All positions are relative to the test corner.
 pub enum TestSetupCommand {
     /// Place a block.
-    SetBlock(MinecraftPosition, MinecraftBlock),
+    SetBlock(MinecraftPosition, MinecraftItem),
     /// Fill some blocks.
-    Fill(MinecraftPosition, MinecraftPosition, MinecraftBlock),
+    Fill(MinecraftPosition, MinecraftPosition, MinecraftItem),
 }
 
 impl TestSetupCommand {
@@ -114,7 +114,7 @@ impl TestSetupCommand {
         let corner = test.corner.expect("Needs to be set by this point");
         match self {
             TestSetupCommand::SetBlock(minecraft_position, minecraft_block) => {
-                // TODO: support facing directions. maybe facing should go into the MinecraftBlock?
+                // TODO: support facing directions. maybe facing should go into the MinecraftItem?
                 let position = corner.with_offset(*minecraft_position).as_command_string();
                 let block_string = minecraft_block.to_string();
                 format!("setblock {position} {block_string}")
@@ -171,11 +171,11 @@ pub enum ComputerKind {
     Turtle(TurtleFuelSetup),
 }
 
-impl From<ComputerKind> for MinecraftBlock {
+impl From<ComputerKind> for MinecraftItem {
     fn from(value: ComputerKind) -> Self {
         match value {
-            ComputerKind::Basic => MinecraftBlock::CCComputerNormal,
-            ComputerKind::Turtle(_) => MinecraftBlock::CCTurtleNormal,
+            ComputerKind::Basic => MinecraftItem::CCComputerNormal,
+            ComputerKind::Turtle(_) => MinecraftItem::CCTurtleNormal,
         }
     }
 }
@@ -247,7 +247,7 @@ impl MinecraftTestEnvironment {
 
         // setup the ground for the test.
         // start as yellow, since test is running
-        self.update_floor(&test, MinecraftBlock::YellowConcrete)
+        self.update_floor(&test, MinecraftItem::YellowConcrete)
             .await;
 
         // run the startup commands
@@ -266,9 +266,9 @@ impl MinecraftTestEnvironment {
         let test_passed = true;
 
         if test_passed {
-            self.update_floor(&test, MinecraftBlock::LimeConcrete).await;
+            self.update_floor(&test, MinecraftItem::LimeConcrete).await;
         } else {
-            self.update_floor(&test, MinecraftBlock::RedConcrete).await;
+            self.update_floor(&test, MinecraftItem::RedConcrete).await;
         };
 
         test_passed
@@ -287,7 +287,7 @@ impl MinecraftTestEnvironment {
                 .expect("Should be set by now")
                 .with_offset(c.offset);
             let computer_position_string = computer_position.as_command_string();
-            let as_block: MinecraftBlock = c.kind.into();
+            let as_block: MinecraftItem = c.kind.into();
             let computer_block = as_block.to_string();
             let facing = c.facing.to_string();
             let command =
@@ -406,7 +406,7 @@ impl MinecraftTestEnvironment {
     }
 
     /// Change the floor of a test
-    async fn update_floor(&mut self, test: &MinecraftTest, floor_block: MinecraftBlock) {
+    async fn update_floor(&mut self, test: &MinecraftTest, floor_block: MinecraftItem) {
         let corner = test.corner.expect("Should have the corner set by now.");
         let p1 = corner.as_command_string();
         let p2 = MinecraftPosition {

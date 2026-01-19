@@ -1,43 +1,10 @@
 // Minecraft related types
 
 // ==
-// Minecraft Block
+// Minecraft Position
 // ==
 
 use std::fmt::Display;
-
-#[derive(Clone, Copy)]
-pub enum MinecraftBlock {
-    LimeConcrete,
-    RedConcrete,
-    YellowConcrete,
-    Netherrack,
-    GoldBlock,
-    RedstoneTorch,
-    Fire,
-    CCComputerNormal,
-    CCTurtleNormal,
-}
-
-impl Display for MinecraftBlock {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MinecraftBlock::LimeConcrete => write!(f, "minecraft:lime_concrete"),
-            MinecraftBlock::RedConcrete => write!(f, "minecraft:red_concrete"),
-            MinecraftBlock::YellowConcrete => write!(f, "minecraft:yellow_concrete"),
-            MinecraftBlock::CCComputerNormal => write!(f, "computercraft:computer_normal"),
-            MinecraftBlock::CCTurtleNormal => write!(f, "computercraft:turtle_normal"),
-            MinecraftBlock::Netherrack => write!(f, "minecraft:netherrack"),
-            MinecraftBlock::GoldBlock => write!(f, "minecraft:gold_block"),
-            MinecraftBlock::RedstoneTorch => write!(f, "minecraft:redstone_torch"),
-            MinecraftBlock::Fire => write!(f, "minecraft:fire"),
-        }
-    }
-}
-
-// ==
-// Minecraft Position
-// ==
 
 #[derive(Clone, Copy)]
 pub struct MinecraftPosition {
