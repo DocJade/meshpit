@@ -1,0 +1,5 @@
+I wrote some specs, then realized they couldn't possibly work due to computercraft limitations.
+- Networking
+- - ~~Due to needing to yield to accept or send packets, this would limit us to a theoretical max transfer rate per-turtle of 20 packets per second. Lets say in a perfect words, 10 in, 10 out, and the turtles dont do anything else. If the turtles reached out with a single packet of information that needed to hit the control computer every 60 seconds, you would saturate the maximum possible throughput with 600 turtles. With actual overhead, this would probably be quite a bit lower than that. This makes the spec doc impossible to scale.~~ This may still be possible based on what ive seen, but is very complicated and i dont wanna do it right now.
+- GPS
+- - We make the assumption that moving will always return true after a turtle has correctly moved to and end position, and false when it cannot move to a position. We assume that turtles positions will never desync. if this happens, doc was right and will write documentation and the GPS to fix it.
