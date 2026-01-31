@@ -8,13 +8,13 @@ use std::fmt::Display;
 
 #[derive(Clone, Copy)]
 /// The world position of something in Minecraft.
-/// 
+///
 /// This may contain a facing direction, but is not mandatory.
 pub struct MinecraftPosition {
     pub x: i64,
     pub y: i64,
     pub z: i64,
-    pub facing: Option<MinecraftFacingDirection>
+    pub facing: Option<MinecraftFacingDirection>,
 }
 
 impl MinecraftPosition {
@@ -29,7 +29,7 @@ impl MinecraftPosition {
             x: self.x + offset.x,
             y: self.y + offset.y,
             z: self.z + offset.z,
-            facing: self.facing
+            facing: self.facing,
         }
     }
 }

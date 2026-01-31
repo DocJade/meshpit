@@ -9,6 +9,8 @@ use std::{
     sync::OnceLock,
 };
 
+use crate::tests::test_harness::test_enviroment::MINECRAFT_TESTING_ENV;
+
 use rcon::{AsyncStdStream, Connection};
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -64,9 +66,7 @@ fn post_test_shutdown() {
 
         #[allow(clippy::await_holding_lock)] //TODO: idk what it wants, fix later
         rt.block_on(async {
-            let mut guard = crate::tests::test_harness::MINECRAFT_TESTING_ENV
-                .lock()
-                .await;
+            let mut guard = MINECRAFT_TESTING_ENV.lock().await;
             let server: &mut MinecraftEnvironment = &mut guard.environment;
             server.shutdown_and_wait().await;
         })
@@ -207,16 +207,16 @@ impl MinecraftEnvironment {
                 .expect("Should be able to cast to bytes.");
             fs::write(mod_folder.join(mod_filename), download).expect("Should be able to write");
         }
-        
+
         info!("Finished downloading mods!");
-        
+
         info!("Accepting EULA...");
         let eula_path = server_dir.join("eula.txt");
         fs::write(eula_path, "eula=true").expect("should be able to make the eula file");
-        
+
         // now, since we need to edit the computercraft toml, we actually have to start the server for a split second.
         info!("Starting server to get things ready... (This may take a while)");
-        
+
         // We're going to move the server dir into the following struct, so we'll set up the rest of the relative paths here
         let config_dir = server_dir.join("config");
         let java_args_file = server_dir.join("user_jvm_args.txt");

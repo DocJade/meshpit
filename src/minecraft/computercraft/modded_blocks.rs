@@ -481,10 +481,11 @@ fn check_modded_blocks() {
     // check for duplicate Block id's per vec
     assert!(!modded_values.windows(2).any(|w| w[0].id == w[1].id));
     assert!(!vanilla_values.windows(2).any(|w| w[0].id == w[1].id));
-    
+
     // check if any Block id is in both vecs
     // this is easily done by just combining the vecs and sorting again.
-    let combined: &mut Vec<&Block> = &mut Vec::with_capacity(vanilla_values.len() + modded_values.len());
+    let combined: &mut Vec<&Block> =
+        &mut Vec::with_capacity(vanilla_values.len() + modded_values.len());
     combined.extend(&*vanilla_values); // how does dereferencing and borrowing again work here? Beats me.
     combined.extend(&*modded_values);
     // this should already be in order anyways, if all goes well.

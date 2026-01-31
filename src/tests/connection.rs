@@ -2,7 +2,9 @@
 
 use log::info;
 
-use crate::tests::{bridge::MinecraftEnvironment, test_harness::MINECRAFT_TESTING_ENV};
+use crate::tests::{
+    bridge::MinecraftEnvironment, test_harness::test_enviroment::MINECRAFT_TESTING_ENV,
+};
 
 #[cfg(test)]
 #[ctor::ctor] // ctor forces this to run before everything else, so the logger outputs correctly. Yeah a bit heavy handed lol.
