@@ -14,6 +14,9 @@ Do note that moving between positions have rotations associated with them, but w
 # Walkback methods
 As walkback is our primary method of movement, it also keeps track of all of our movement for use in the main walkback methods.
 ## New methods
+### Initialization
+- `walkback.setup(x, y, z, facing)`
+- - sets our initial position. Should only be called once!
 ### Rewind related
 - `walkback.mark()`
 - - This sets the new start of the walkback chain, and clears all previous stored positions. This completely resets walkback to be ready to start tracking again.
