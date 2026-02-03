@@ -8,5 +8,5 @@ pub use crate::minecraft::{
 
 // Test types
 pub use crate::tests::test_harness::{
-    commands::*, computer_builder::*, test_enviroment::*, types::*,
+    commands::*, computer_builder::*, test_enviroment::*, types::*, test_websocket::TestWebsocket,
 };

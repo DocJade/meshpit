@@ -1,8 +1,5 @@
 -- Used when things get out of hand!
 
--- Requires networking to be able to communicate.
-local networking = require("networking")
-
 -- Table that is used to call the panic handler.
 -- Empty, as it is just for calling the method.
 panic = {}
@@ -22,6 +19,9 @@ panic = {}
 --- @param messageOnly? boolean
 --- @return nil
 function panic.panic(message, messageOnly)
+    print("Panic! : " .. message)
+    -- Requires networking to be able to communicate.
+    local networking = require("networking")
     -- Traceback automatically adds the message to the top.
     local trace = debug.traceback(message)
     -- Only grab the variables if needed.
@@ -98,9 +98,11 @@ end
 --- Use this when you know the networking is completely unreachable and you cannot recover.
 --- @param message string
 function panic.force_reboot(message)
+    print("Forced reboot panic! : " .. message)
     -- Not much we can do here, but to prevent fast boot-looping, we will stall for 30 seconds.
     -- We will also shout out the message on as many outputs as we can.
-    print(message)
+    ---@diagnostic disable-next-line: undefined-global
+    printError(message)
     ---@diagnostic disable-next-line: undefined-field
     os.setComputerLabel(message)
     

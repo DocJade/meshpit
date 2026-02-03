@@ -1,7 +1,7 @@
 // Testing galore
 
 use crate::tests::{prelude::*, test_harness::computer_builder::COMPUTER_STATE_CHANGE_TIME};
-use std::{cmp::max, path::PathBuf, sync::Arc};
+use std::{cmp::max, sync::Arc};
 
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
@@ -161,15 +161,6 @@ impl MinecraftTestHandle {
         position: &MinecraftPosition,
         setup: ComputerSetup,
     ) -> TestComputer {
-        // Open the path for the computer folders.
-        // Use a block here so we dont keep the env locked.
-        let computer_directory = {
-            let env = MINECRAFT_TESTING_ENV.lock().await;
-            env.environment
-                .get_server_folder()
-                .join("world/computercraft/computer")
-        };
-
         // Place the computer and turn it on, then get it's ID.
         // We want to use the other methods as much as possible here so we don't have a bunch
         // of raw commands.
@@ -243,10 +234,21 @@ impl MinecraftTestHandle {
                 /* nothing to do */
             }
             // ComputerConfigs::Websocket(port) => todo!(),
-            ComputerConfigs::Startup(string) => {
-                set_computer_startup(new_computer.id, computer_directory, string)
+            ComputerConfigs::Startup(startup) => {
+                add_file_to_computer(new_computer.id, startup, "startup.lua")
                     .await
-                    .expect("Unable to write startup lua file.")
+                    .expect("Unable to write startup lua file.");
+            }
+            ComputerConfigs::StartupIncludingLibraries(startup, libraries) => {
+                add_file_to_computer(new_computer.id, startup, "startup.lua")
+                    .await
+                    .expect("Unable to write startup lua file.");
+                // Loop over he libraries and add them
+                for path in libraries.to_files() {
+                    let file_contents = std::fs::read_to_string(&path).expect("Unable to read lua file!");
+                    let file_name = path.file_name().expect("Should have a file name").to_str().expect("Should be valid.");
+                    add_file_to_computer(new_computer.id, file_contents, file_name).await.expect("Unable to write a lua file to the computer!");
+                }
             }
         }
 
@@ -255,20 +257,30 @@ impl MinecraftTestHandle {
     }
 }
 
-/// Setup the startup file in a computer.
+/// Create a file on a computer.
+/// 
+/// Make sure to include the file extension if needed.
 ///
 /// This function assumes the computer has already created its folder.
-async fn set_computer_startup(
+async fn add_file_to_computer<S: ToString + AsRef<[u8]>, P: AsRef<std::path::Path>>(
     id: u16,
-    computer_directory: PathBuf,
-    string: String,
+    file_contents: S,
+    file_name: P,
 ) -> Result<(), std::io::Error> {
+    // Open the path for the computer folders.
+    // Use a block here so we dont keep the env locked.
+    let computer_directory = {
+        let env = MINECRAFT_TESTING_ENV.lock().await;
+        env.environment
+            .get_server_folder()
+            .join("world/computercraft/computer")
+    };
     // We will re-create the folder structure just in case...
     let this_computer_dir = computer_directory.join(id.to_string());
     std::fs::create_dir_all(&this_computer_dir)?;
 
     // Write the file
-    std::fs::write(this_computer_dir.join("startup.lua"), string)?;
+    std::fs::write(this_computer_dir.join(file_name), file_contents)?;
     Ok(())
 }
 

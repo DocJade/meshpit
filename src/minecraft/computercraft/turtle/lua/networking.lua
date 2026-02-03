@@ -1,6 +1,8 @@
 ---@diagnostic disable: undefined-global, undefined-field
 -- Everything related to networking. Currently very basic.
+print("Setting up networking...")
 local panic = require("panic")
+local helpers = require("helpers")
 
 -- Should be a good enough seed.
 math.randomseed(os.getComputerID() * os.epoch("utc"))
@@ -11,7 +13,7 @@ local networking = {}
 -- All compuers communicate over the same websocket, only differentiated by their computer ID
 -- via sending it in the initial handshake.
 -- TODO: This is currently pinned to localhost. Should we do this another way?
-local SERVER_URL = "ws://127.0.0.1:8080/meshpit"
+local SERVER_URL = "localhost:4816/meshpit"
 local websocket = nil
 local HEADERS = {
     ["Computer-ID"] = tostring(os.getComputerID())
@@ -61,7 +63,9 @@ end
 -- Do the initial connection.
 -- This will block, but thats fine, we we really shouldn't be doing anything
 -- without a connection.
+print("Calling connect...")
 connect()
+print("Done!")
 
 
 --- Constructs a packet in a the set format.
@@ -85,8 +89,8 @@ local function formatPacket(message, UUID)
     -- Now turn that into a json string.
     -- There may be duplicate tables. If there are, then we will allow them.
     -- Wrap this in a pcall, and panic if it fails.
-    local worked, result = pcall(helpers.serializeJSON, packet)
-    if not worked then
+    local ok, result = pcall(helpers.serializeJSON, packet)
+    if not ok then
         -- Failure. Give up!
         -- Chances are that this will make panic fail too, so we disable
         -- the variable output.
@@ -112,17 +116,52 @@ local function send(message, UUID)
         -- We cannot run healthy here. We assume
         -- callers have already ran healthy. The is nothing we can do.
         panic.force_reboot("Tried to send a message without a websocket!")
-        return false
+        return false -- this never gets returned
     end
-    local message_copy
-    if type(message) == "table" then
-        message_copy = helpers.deepCopy(message)
-        message_copy = cleanTableForJson(message_copy)
-    else
-        message_copy = message
-    end
+    -- diagnostic disables since i am casting in place.
+    local message_copy = helpers.deepCopy(message)
+    ---@diagnostic disable-next-line: cast-local-type
+    message_copy = helpers.serializeJSON(message_copy)
+    ---@diagnostic disable-next-line: cast-local-type
     message_copy = formatPacket(message_copy, UUID)
-    return pcall(websocket.send, message_copy)
+    local ok, result = pcall(websocket.send, message_copy)
+    return ok
+end
+
+--- Waits for any message to come into the websocket. Calling this with zero timeout will not block.
+---@param timeout number|nil
+---@returns boolean, any
+local function receive(timeout)
+    local timeout = timeout
+    if timeout == nil then
+        print("Please specify timeouts!")
+        timeout = 0
+    end
+    if not websocket then
+        -- No websocket to listen on!
+        panic.force_reboot("Cannot listen without a websocket!")
+        return false, "impossible" -- this never gets returned
+    end
+    -- Wait for a message
+    local ok, result = pcall(websocket.receive, timeout)
+    if not ok then
+        -- Did it just time out?
+        if result == "Timed out" then
+            return false, result
+        end
+        -- Something actually failed.
+        -- TODO: handling errors here
+        panic.force_reboot("Failed receive packet for reason other than timeout! : " .. tostring(result))
+    end
+    
+    -- unpack the returned packet
+    local ok, second_result = pcall(helpers.deserializeJSON, result)
+    if not ok then
+        -- Unpacking failed for some reason!
+        panic.force_reboot("Failed to unpack received packet! : " .. tostring(second_result))
+    end
+
+    return true, second_result
 end
 
 --- Check if the socket is healthy, automatically re-connects if needed.
@@ -132,7 +171,8 @@ local function healthy()
     -- will make 2 packets for every packet, but its fine for now.
     local worked = true -- if we skip the test, this needs to be true
     if websocket then -- Skip if there is already no websocket
-        worked = send("ping", getUUID())
+        websocket.
+        worked = send("health", getUUID())
     end
     if not worked then
         -- Sending didn't work. Either that timed out, or the websocket is dead.
@@ -172,5 +212,17 @@ function networking.sendToControl(message)
     panic.force_reboot("Failed to send a message after 5 attempts!")
 end
 
+--- Wait for any incoming message. This is a temporary method for testing, i think? TODO:
+--- 
+--- Takes in a timeout. Returns a boolean on wether we got anything before the timeout ended.
+---@param timeout number
+---@return boolean, any
+function networking.waitForPacket(timeout)
+    -- very hollow wrapper at the moment lol.
+    local bool, result = receive(timeout)
+    return bool, result
+end
+
 -- And finally return the functions for use.
+print("Done setting up networking!")
 return networking

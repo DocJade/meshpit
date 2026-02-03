@@ -1,4 +1,4 @@
 mod bridge;
 mod connection;
-mod prelude;
+pub mod prelude;
 mod test_harness;

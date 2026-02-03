@@ -3,7 +3,7 @@
 // Annoyingly, computers do not turn on and off instantly, and can take a weirdly long time. So we control a delay here.
 pub(super) const COMPUTER_STATE_CHANGE_TIME: Duration = Duration::from_millis(1000);
 
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 use crate::tests::prelude::*;
 
@@ -21,6 +21,53 @@ impl ComputerSetup {
         Self { kind, config }
     }
 }
+
+/// Some libraries implicitly require other libraries. This will put the libraries into the turtle's storage,
+/// but will not load them, you will still have to load them yourself.
+/// 
+/// You can create invalid combinations, and this is by design.
+#[derive(Debug, Clone, Copy)]
+pub struct MeshpitLibraries {
+    /// Networking
+    pub networking: Option<bool>,
+    /// Walkback
+    pub walkback: Option<bool>,
+    /// The panic handler. You will not see any output without networking.
+    pub panic: Option<bool>,
+    /// Helpers.
+    pub helpers: Option<bool>,
+}
+
+impl MeshpitLibraries {
+    /// Get a Vec containing all of the paths to the libraries.
+    pub fn to_files(self) -> Vec<PathBuf> {
+        let mut paths: Vec<PathBuf> = vec![];
+        
+        let lua_folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/minecraft/computercraft/turtle/lua");
+        if self.networking.unwrap_or(false) {
+            paths.push(lua_folder.join("networking.lua"));
+        };
+        if self.walkback.unwrap_or(false) {
+            paths.push(lua_folder.join("walkback.lua"));
+        };
+        if self.panic.unwrap_or(false) {
+            paths.push(lua_folder.join("panic.lua"));
+        };
+        if self.helpers.unwrap_or(false) {
+            paths.push(lua_folder.join("helpers.lua"));
+        };
+        paths
+    }
+    pub fn new() -> Self {
+        Self { networking: None, walkback: None, panic: None, helpers: None }
+    }
+}
+impl Default for MeshpitLibraries {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 
 // TODO: Use the same type as the computer kind we store in the database, whenever that is made.
 #[derive(Clone, Copy)]
@@ -50,27 +97,12 @@ pub enum ComputerConfigs {
     /// such as a turtle with no config that is already pre-fueled
     #[deprecated(note = "See value doc comment.")]
     Empty,
-    // /// Opens a websocket on the computer, all data fed through this websocket will be ran as lua code.
-    // ///
-    // /// You should obtain this websocket instead of picking a number yourself. You have been warned.
-    // Websocket(u16),
-    /// Adds a `startup.lua` file to this computer with the contents of the incoming string.
+    /// Adds a `startup.lua` file to this computer with the contents of the incoming string. This does
+    /// not include any of the standard libraries that meshpit uses. Use StartupIncludingLibraries instead.
     Startup(String),
+    /// Adds a `startup.lua` file to this computer, additionally including some meshpit libraries.
+    StartupIncludingLibraries(String, MeshpitLibraries)
 }
-
-// impl ComputerConfigs {
-//     fn to_file(self) -> Vec<u8> {
-//         match self {
-//             ComputerConfigs::Empty => include_bytes!("../tests/startup_scripts/empty.lua").to_vec(),
-//             ComputerConfigs::Websocket(socket) => {
-//                 let file = include_str!("../tests/startup_scripts/eval_socket.lua");
-//                 let mut fixed = file.replace("###URL###", "localhost"); //TODO: make the address configurable
-//                 fixed = fixed.replace("###SOCKET###", &socket.to_string());
-//                 fixed.as_bytes().into()
-//             }
-//         }
-//     }
-// }
 
 // =========
 // TestComputer
@@ -84,7 +116,7 @@ pub struct TestComputer {
     ///
     /// This is set automatically when they are placed in the world.
     ///
-    /// This is not public, and is only used internally to start / stop computers.
+    /// This is not public, and is used internally to start / stop computers.
     pub(super) id: u16,
     // We do not store anything about the type of this computer, where it is, how it was set up,
     // or anything of that sort, since we do not want tests to be able to query information about
@@ -109,6 +141,11 @@ impl TestComputer {
 
         // This takes a moment, so we must wait.
         std::thread::sleep(COMPUTER_STATE_CHANGE_TIME);
+    }
+
+    /// Get the ID of the computer. You should avoid doing this unless you need it to keep tests agnostic.
+    pub fn id(&self) -> u16 {
+        self.id
     }
 
     /// Turn off the computer. Does nothing if computer is already off.

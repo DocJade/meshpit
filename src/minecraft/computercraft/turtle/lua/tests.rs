@@ -1,78 +1,100 @@
 // Yes, we even test the lua.
 // Since we have our own json serializer and de-serializer, its important to test these.
 
-use mlua::prelude::*;
+use log::info;
 
 use crate::minecraft::computercraft::lua_types::table::PairedLuaTable;
-
-
-const HELPERS: &str = include_str!("helpers.lua");
+use crate::tests::prelude::*;
 
 #[tokio::test]
-/// Attempt to serialize an array
-async fn lua_array_serialization() {
-    let lua = Lua::new();
-    // Load in the helper functions
-    let helpers: LuaTable = lua.load(HELPERS).eval().unwrap();
+/// Attempt basic ping pong over the websocket.
+async fn basic_networking_test() {
+    // create a test to run a 'puter in
+    let area = TestArea {
+        size_x: 3,
+        size_z: 3,
+    };
+    let mut test = MinecraftTestHandle::new(area).await;
+    // create a computer
+    let position = MinecraftPosition {
+        x: 1,
+        y: 1,
+        z: 1,
+        facing: None,
+    };
 
-    // Grab the json serializers
-    let json_serialize_fn: LuaFunction = helpers.get("serializeJSON").unwrap();
-    let json_deserialize_fn: LuaFunction = helpers.get("deserializeJSON").unwrap();
+    // The file we will run at startup.
+    let test_script = r#"
+    local networking = require("networking")
+    print("sending ping")
+    networking.sendToControl("ping")
+    print("waiting for response")
+    local ok, result = networking.waitForPacket(60)
+    if not ok then
+        print("no response")
+        print(result)
+        networking.sendToControl("fail")
+        -- skip shutting down to keep stuff on screen.
+        goto cancel
+    end
+    print("got response")
+    print("== response ==")
+    print(result)
+    print("== response ==")
+    print("sending pass")
+    networking.sendToControl("pass")
+    print("sending result")
+    networking.sendToControl(result)
+    print("shutting down in 30 seconds.")
+    os.sleep(30)
+    os.shutdown()
+    ::cancel::
+    "#;
 
-    // Try to serialize an array style
-    let array_table = lua.create_table().unwrap();
-    array_table.push("one").unwrap();
-    array_table.push("two").unwrap();
-    array_table.push("three").unwrap();
+    let libraries = MeshpitLibraries {
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        ..Default::default()
+    };
 
-    // Convert that table to json
-    let json_from_lua: String = json_serialize_fn.call(array_table.clone()).expect("lua didn't return a string as expected.");
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
 
-    // try to convert that json back into a table again in lua
-    let lua_deserialized: LuaTable = json_deserialize_fn.call(json_from_lua.clone()).unwrap();
+    let setup = ComputerSetup::new(ComputerKind::Basic, config);
+    let computer = test.build_computer(&position, setup).await;
 
-    // Check that they match
-    assert_eq!(array_table, lua_deserialized); // This should be enough
-    assert_eq!(lua_deserialized.pop::<String>().unwrap(), "three"); // but just in case.
-    assert_eq!(lua_deserialized.pop::<String>().unwrap(), "two");
-    assert_eq!(lua_deserialized.pop::<String>().unwrap(), "one");
+    // Get ready for the websocket connection
+    let mut socket = TestWebsocket::new(computer.id()).await;
 
+    // Turn on the computer, and wait for the ping message
+    computer.turn_on(&mut test).await;
 
-    // Now convert that json into our Rust type
-    let rust_struct: PairedLuaTable = serde_json::from_str(&json_from_lua).expect("Failed to turn lua's json into a rust type.");
+    let ping = socket.receiver.recv().await.expect("Channel should be open.");
+    info!("Got ping!");
+    info!("{ping}");
+    assert!(ping.contains("ping"));
     
-    // Make sure it contains what we expect
-    let mut rust_copy = rust_struct.clone();
-    assert_eq!(rust_copy.pairs.len(), 3);
-    // I'm sure this can be done with iterators some how to make it cleaner.
-    let mut popped = rust_copy.pairs.pop().unwrap();
-    assert!(popped.key.is_number());
-    assert!(popped.value.is_string());
-    assert_eq!(popped.value.as_str().unwrap(), "three");
-    popped = rust_copy.pairs.pop().unwrap();
-    assert!(popped.key.is_number());
-    assert!(popped.value.is_string());
-    assert_eq!(popped.value.as_str().unwrap(), "two");
-    popped = rust_copy.pairs.pop().unwrap();
-    assert!(popped.key.is_number());
-    assert!(popped.value.is_string());
-    assert_eq!(popped.value.as_str().unwrap(), "one");
-
-    // Now cast the table back into json again
-    let json_from_rust = serde_json::to_string(&rust_struct).expect("Failed to serialize rust type into lua json!");
-
-    // Load it back into lua
-    let reload_lua_table: LuaTable = json_deserialize_fn.call(json_from_rust).expect("Unable to deserialize into lua from rust type!");
-
-    // Make sure they are the same
-    // for i in reload_lua_table.pairs().zip(array_table.pairs::<u32, String>()) {
-    //     assert_eq!(i.0.unwrap(), i.1.unwrap());
-    // }
-
-    // Make sure they are the same
-    // This assumes the underlying key value pair is u32 and strings. this same pattern cannot
-    // be used to compare mixed tables, or tables that contain multiple kinds of values.
-    assert!(reload_lua_table.pairs().zip(array_table.pairs::<u32, String>()).all(|p| p.0.unwrap() == p.1.unwrap()));
-
-    // Everything matches!
+    // send back
+    info!("Sending pong...");
+    socket.sender.send("\"pong\"".to_string()).await.expect("Computer should be open to receive this.");
+    info!("Sent.");
+    
+    // Wait for the next response
+    info!("Awaiting response...");
+    let response = socket.receiver.recv().await.expect("Channel should be open.");
+    let pass_fail = response.contains("pass");
+    info!("Got it! {response}");
+    info!("Pass fail? {pass_fail}");
+    if pass_fail {
+        info!("Pass!");
+        // Get the next packet too
+        info!("Waiting for followup packet...");
+        let result = socket.receiver.recv().await.expect("Channel should be open.");
+        info!("Got it!");
+        info!("{result}");
+    } else {
+        info!("fail!")
+    }
+    test.stop(pass_fail).await;
+    assert!(pass_fail);
 }
