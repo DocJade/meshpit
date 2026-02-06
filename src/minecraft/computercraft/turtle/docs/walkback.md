@@ -98,6 +98,12 @@ None of these have been altered from the normal `turtle` call. This is simply a 
 - `walkback.getSelectedSlot()`
 - `walkback.getItemDetail([slot [, detailed]])`
 
+### New methods
+- `walkback.transferFromSlotTo(slot, slot, [count])
+- - Transfers items between two arbitrary slots.
+- `walkback.compareTwoSlots(slot, slot, [count])
+- - Runs the comparison check against 2 arbitrary slots.
+
 ## Environment detection
 These methods are slightly altered to also return `false` on fluids, as detect should be used for movement checks. Secretly calls inspect() under the hood to update our block list.
 - `walkback.detect()`

@@ -3,6 +3,7 @@
 local panic = require("panic")
 local helpers = require("helpers")
 local block_helper = require("block")
+local item_helper = require("item")
 
 -- Table that holds the functions, and holds the state of walkback as well.
 ---@class WalkbackSelf
@@ -59,13 +60,15 @@ local walkback = {
 	---@alias AllSeenBlocks {[string]: Block}
 	---@type AllSeenBlocks
 	all_seen_blocks = {}
+
+	--- In the future, it may be work storing all of the items the turtle is currently holding.
+	--- This would allow fast inventory lookups to see if we have an item, but would require
+	--- keeping slots up to date every time an inventory modifying action occurs.
 }
 
 -- ========================
 -- Type definitions
 -- ========================
-
-
 
 ---@alias FacingDirection
 ---| "n" # North: -Z
@@ -114,6 +117,10 @@ local dir_to_num = {n = 1, e = 2, s = 3, w = 4}
 ---| "d" # Down
 ---| "l" # Turn left
 ---| "r" # Turn right
+
+--- Some turtle command take in a side parameter of the turtle, this is either
+--- left, right, or nil.
+---@alias TurtleSide "left"|"right"|nil
 
 
 --- Movement vectors based on direction
@@ -165,17 +172,58 @@ local movement_vectors = {
 --- Values gathered from:
 --- https://github.com/cc-tweaked/CC-Tweaked/blob/mc-1.20.x/projects/common/src/main/java/dan200/computercraft/shared/turtle/core/TurtleMoveCommand.java
 --- Some values are assumes to just be impossible.
----@alias TurtleMovementError
+---@alias MovementError
 ---| "Movement obstructed" -- Block is solid, or, even with pushing enabled, an entity cannot be pushed out of the way.
 ---| "Out of fuel" -- Self explanatory
----| "Movement failed" -- Failed for a reason outside of CC:Tweaked s control?
+---| "Movement failed" -- Failed for a reason outside of CC:Tweaked s control? Realistically should not happen
 ---| "Too low to move" -- Self explanatory
 ---| "Too high to move" -- Self explanatory
--- ---| "Cannot leave the world" -- Minecraft itself considers the movement to be out of bounds. world.isInWorldBounds(). No idea how that works. 
--- ---| "Cannot enter protected area" -- Apparently spawn protection related. But spawn protection no longer exists, we should never see this.
+---| "Cannot leave the world" -- Minecraft itself considers the movement to be out of bounds. world.isInWorldBounds(). No idea how that works. 
 ---| "Cannot leave loaded world" -- Self explanatory. Should not occur if our chunk loading solution works correctly.
--- ---| "Cannot pass the world border" -- This is so far out that it should be impossible to ever reach this, or take several years.
----@type TurtleMovementError
+-- ---| "Cannot enter protected area" -- Apparently spawn protection related. But spawn protection no longer exists, we should never see this.
+-- ---| "Cannot pass the world border" -- This is so far out that it should be impossible to ever reach this.
+-- ---| "Unknown direction" -- Theoretically impossible to hit.
+---@type MovementError
+
+---@alias ItemError
+---| "No space for items"
+---| "No items to drop"
+---| "No items to take"
+---@type ItemError
+
+---@alias UpgradeError
+---| "Not a valid upgrade"
+---@type UpgradeError
+
+---@alias CraftError
+---| "No matching recipes"
+---@type CraftError
+
+---@alias RefuelError
+---| "No items to combust"
+---| "Items not combustible"
+
+--- This should be covered by Mining and Attacking error.
+---@alias ToolError
+---| "No tool to dig with"
+---| "No tool to attack with"
+---@type ToolError
+
+---@alias PlacementError
+---| "No items to place"
+---| "Cannot place block here"
+---| "Cannot place item here"
+---| "Cannot place in protected area"
+---@type PlacementError
+
+---@alias MiningError
+---| "No tool to dig with"
+---| "Nothing to dig here"
+---| "Cannot break unbreakable block"
+---| "Cannot break protected block"
+---| "Cannot break block with this tool"
+---@type MiningError
+
 
 
 -- ========================
@@ -247,6 +295,7 @@ function findFacingRotation(start_direction, end_direction)
 	for i = 1, times do
 		moves[i] = turn_direction
 	end
+	return moves
 end
 
 --- Apply a transformation to a position.
@@ -255,11 +304,9 @@ end
 ---@param origin CoordPosition The position to transform
 ---@param delta CoordPosition The transformation to apply
 function offsetPosition(origin, delta)
-    origin = {
-        origin.x + delta.x,
-        origin.y + delta.y,
-        origin.z + delta.z,
-    }
+    origin.x = origin.x + delta.x
+    origin.y = origin.y + delta.y
+    origin.z = origin.z + delta.z
 end
 
 --- Invert a position by negating all of its values.
@@ -267,11 +314,9 @@ end
 --- Modifies the incoming table, be careful with vector tables!
 ---@param position CoordPosition
 function invertPosition(position)
-    position = {
-        position.x * -1,
-        position.y * -1,
-        position.z * -1,
-    }
+    position.x = position.x * -1
+    position.y = position.y * -1
+    position.z = position.z * -1
 end
 
 --- Clone a position
@@ -280,9 +325,9 @@ end
 ---@return CoordPosition 
 function clonePosition(position)
     local new = {
-        position.x,
-        position.y,
-        position.z,
+        x = position.x,
+        y = position.y,
+        z = position.z,
     }
     return new
 end
@@ -311,7 +356,7 @@ function transformPosition(direction, facing, start_position)
     end
     -- Up down
     if direction == "u" or direction == "d" then
-        start_position.y = start_position.y + direction == "u" and 1 or -1
+        start_position.y = start_position.y + (direction == "u" and 1 or -1)
         return
     end
     -- Forward back is hard, since its based on facing direction
@@ -369,7 +414,8 @@ end
 ---@param destination CoordPosition
 ---@return nil|MovementDirection[]
 function deduceAdjacentMove(destination)
-	-- Make sure the position is adjacent to our current position.
+	-- Make sure the position is adjacent to our current position, else
+	-- this would cause us to move forwards for no reason.
 	if not isPositionAdjacent(walkback.cur_position.position, destination) then
 		return nil
 	end
@@ -436,9 +482,13 @@ function recordMove(direction)
     transformPosition(direction, walkback.cur_position.facing, walkback.cur_position.position)
     
 	-- Trim movement if needed.
-    trimPosition()
+	-- If we trimmed, that means the end of the chain is already our end
+	-- position and we can skip adding the new step.
+	if trimPosition() then
+		return
+	end
 
-    -- Add on the position to the list, and we're done!
+    -- Step is not currently in the chain. Add it, and we're done!
     addStep()
 end
 
@@ -449,8 +499,17 @@ end
 ---
 --- Takes no parameters as it operates on globals only.
 --- 
+--- Returns true if trimming occurred.
+--- 
 --- Modifies global state. (Updates walkback_chain, seen_positions)
+---@return boolean
 function trimPosition()
+	-- if the end of the chain is already our current position, we can skip all of this.
+	if helpers.deepEquals(walkback.cur_position.position, walkback.walkback_chain[#walkback.walkback_chain]) then
+		return true -- we "trimmed" since we didn't move.
+	end
+
+
     -- Find the position within the walkback that this position is at.
 	local current_pos_key = helpers.keyFromTable(walkback.cur_position.position)
 	if not current_pos_key then
@@ -461,11 +520,12 @@ function trimPosition()
     local index = walkback.chain_seen_positions[current_pos_key]
     if index == nil then
         -- Have not seen this position before, no need for trimming.
-        return
+        return false
     end
     -- We have already visited this position, we will remove all movement
-    -- that occurs after it.
-    local slice = helpers.slice_array(walkback.walkback_chain, index, #walkback.walkback_chain)
+    -- that occurs after it. (so we add one to skip the current position).
+	-- If the index is past the end of the table,
+    local slice = helpers.slice_array(walkback.walkback_chain, index + 1, #walkback.walkback_chain)
     for i, pos in ipairs(slice) do
         -- Remove from the hashset
 		local key = helpers.keyFromTable(pos)
@@ -477,11 +537,13 @@ function trimPosition()
         -- Remove the position from the chain. This is safe to modify in place like this, since
         -- the deleted values will only be fully dropped once all references are dropped to it,
         -- and we are the only ones holding references to it here.
+		-- This will nil out all the way to the end, thus no gaps are made.
         walkback.walkback_chain[index + i] = nil
 		-- We do not trim the all list.
     end
 
 	-- All done, we don't add the current position ourselves here.
+	return true
 end
 
 --- Adds a step to the walkback chain.
@@ -515,7 +577,7 @@ end
 
 --- Perform a turtle movement based off of a MovementDirection.
 ---@param movement MovementDirection
----@return boolean, TurtleMovementError|nil
+---@return boolean, MovementError|nil
 function doMovement(movement)
 	-- No match statements yay.
 	-- Ordered on what i presume to be the most common movement cases.
@@ -557,7 +619,7 @@ function getAdjacentBlock(direction)
 		delta = movement_vectors[facing]
 	elseif direction == "b" then
 		-- Flip that around
-		local f = invertDirection[facing]
+		local f = invertDirection(facing)
 		delta = movement_vectors[f]
 	else
 		-- is either left or right, thus we can rotate to that side and
@@ -605,17 +667,18 @@ end
 -- ======
 
 --- Sets up walkback for the first time. Should only be called once!
---- @param self WalkbackSelf
 --- @param x number X position
 --- @param y number Y position
 --- @param z number Z position
 --- @param facing FacingDirection Facing direction
 --- @return nil
-function walkback.setup(self, x, y, z, facing)
-    self.cur_position.position.x = x
-    self.cur_position.position.y = y
-    self.cur_position.position.z = z
-    self.cur_position.facing = facing
+function walkback.setup(x, y, z, facing)
+    walkback.cur_position.position.x = x
+    walkback.cur_position.position.y = y
+    walkback.cur_position.position.z = z
+    walkback.cur_position.facing = facing
+	-- Add the first step, which our current position.
+	addStep()
 end
 
 -- ======
@@ -645,7 +708,7 @@ function walkback.mark()
     local y = walkback.cur_position.position.y
     local z = walkback.cur_position.position.z
     local facing = walkback.cur_position.facing
-    walkback.setup(walkback, x, y, z, facing)
+    walkback.setup(x, y, z, facing)
     return true
 end
 
@@ -656,7 +719,7 @@ end
 --- 
 --- Will return `"Not enough fuel"` if the rewind could never possibly work due
 --- to being too long.
----@return boolean, TurtleMovementError|"Not enough fuel"|nil
+---@return boolean, MovementError|"Not enough fuel"|nil
 function walkback.rewind()
     -- Composed of other methods for implementation simplicity! :D
     -- Pre-check if we have enough fuel. If we don't, then we won't
@@ -685,14 +748,14 @@ end
 --- Failure reasons:
 --- "fuel" - No fuel, cannot move.
 --- "obstacle" - Could not complete walkback due to a block being in the way.
----@return boolean, TurtleMovementError|nil
+---@return boolean, MovementError|nil
 function walkback.stepBack()
 	-- The previous position should always be adjacent, we're just gonna assume
 	-- that entirely here for speed. Good luck!
 	local dest = helpers.unwrap(walkback.previousPosition())
 	-- There should be at least one move.
 	local moves = helpers.unwrap(deduceAdjacentMove(dest))
-	for move in moves do
+	for _, move in ipairs(moves) do
 		local ok, result = doMovement(move)
 		if not ok then
 			return ok, result
@@ -747,8 +810,8 @@ function walkback.pop()
 	}
 	-- Remove the old walkback
 	-- We do not modify the current position
-	walkback.walkback_chain = nil
-	walkback.chain_seen_positions = nil
+	walkback.walkback_chain = {}
+	walkback.chain_seen_positions = {}
 	return copy
 end
 
@@ -806,9 +869,9 @@ end
 --- control computer, as we really really want that block data, otherwise we
 --- wasted a whole bunch of time and memory.
 function walkback.hardReset()
-	walkback.all_seen_positions = nil
-	walkback.chain_seen_positions = nil
-	walkback.walkback_chain = nil
+	walkback.all_seen_positions = {}
+	walkback.chain_seen_positions = {}
+	walkback.walkback_chain = {}
 	-- Doesn't remove the current position for hopefully obvious reasons.
 end
 
@@ -816,6 +879,8 @@ end
 --- the data contained within the global `walkback` variable.
 --- 
 --- This will not change the global state, this operation is read-only.
+--- 
+--- !!!!! This does not contain the inventory of the turtle !!!!!
 --- 
 --- This may be EXTREMELY slow. Only run when absolutely needed.
 --- 
@@ -826,12 +891,38 @@ function walkback.dataJson()
 	return helpers.serializeJSON(walkback)
 end
 
+--- Returns all of the items the turtle currently has in its inventory as an array.
+--- Empty slots are null.
+---@return string json See function definition for format.
+function walkback.inventoryJSON()
+	---@type Item[]
+	local items = {}
+	for i= 1, 16 do
+		items[i] = walkback.getItemDetail(i, true)
+		-- Fix empty slots
+		if items[i] == nil then
+			---@diagnostic disable-next-line: undefined-global
+			items[i] = textutils.json_null
+		end
+	end
+	return helpers.serializeJSON(items)
+end
+
+
+
 -- ======
 -- Block data related
 -- ======
 
 --- Checks if a block has been seen at a position. Returns the `Block` at that
 --- position if one has been seen.
+--- 
+--- Returns a block, unless:
+--- - We have not documented this position.
+--- - The block was air, and `and_air` was not set.
+--- - - You can only get information about air blocks with `and_air` set and this
+--- - - is by design, since we want a fast check on wether or not a block is solid,
+--- - - we usually do not care if it is air.
 --- 
 --- Returns `nil` if a block has not been logged at that position. Or, if `and_air`
 --- is set to false, if we have logged an air block, we will still return nil.
@@ -858,9 +949,9 @@ end
 --- 
 --- Returns a boolean on wether the move completed or not,
 --- and a string if the movement failed.
----@return boolean, string|nil
+---@return boolean, MovementError|nil
 function walkback.forward()
-	---@type boolean, string|nil
+	---@type boolean, MovementError|nil
 	local a, b
 	---@diagnostic disable-next-line: undefined-global
 	a, b = turtle.forward()
@@ -874,9 +965,9 @@ end
 --- 
 --- Returns a boolean on wether the move completed or not,
 --- and a string if the movement failed.
----@return boolean, string|nil
+---@return boolean, MovementError|nil
 function walkback.back()
-	---@type boolean, string|nil
+	---@type boolean, MovementError|nil
 	local a, b
 	---@diagnostic disable-next-line: undefined-global
 	a, b = turtle.back()
@@ -890,9 +981,9 @@ end
 --- 
 --- Returns a boolean on wether the move completed or not,
 --- and a string if the movement failed.
----@return boolean, string|nil
+---@return boolean, MovementError|nil
 function walkback.up() 
-	---@type boolean, string|nil
+	---@type boolean, MovementError|nil
 	local a, b
 	---@diagnostic disable-next-line: undefined-global
 	a, b = turtle.up()
@@ -906,9 +997,9 @@ end
 --- 
 --- Returns a boolean on wether the move completed or not,
 --- and a string if the movement failed.
----@return boolean, string|nil
+---@return boolean, MovementError|nil
 function walkback.down() 
-	---@type boolean, string|nil
+	---@type boolean, MovementError|nil
 	local a, b
 	---@diagnostic disable-next-line: undefined-global
 	a, b = turtle.down()
@@ -959,7 +1050,7 @@ end
 --- 
 --- Returns a boolean on wether the move completed or not,
 --- and a string if the movement failed.
----@return boolean, string|nil
+---@return boolean, MovementError|nil
 function walkback.forwardScan()
 	local a, b = walkback.forward()
 	if not a then
@@ -989,6 +1080,7 @@ end
 --- 
 --- Returns a boolean on wether the move completed or not,
 --- and a string if the movement failed.
+---@return boolean, MovementError|nil
 function walkback.backScan()
 	-- Fairly niche movement, mostly for rewinding.
 	-- To scan behind us we need to make a full rotation anyways, so
@@ -1008,6 +1100,7 @@ end
 --- 
 --- Returns a boolean on wether the move completed or not,
 --- and a string if the movement failed.
+---@return boolean, MovementError|nil
 function walkback.upScan()
 	-- The blocks on every side of use are different now, spin
 	local a, b = walkback.up()
@@ -1025,6 +1118,7 @@ end
 --- 
 --- Returns a boolean on wether the move completed or not,
 --- and a string if the movement failed.
+---@return boolean, MovementError|nil
 function walkback.downScan()
 	-- The blocks on every side of use are different now, spin
 	local a, b = walkback.down()
@@ -1057,19 +1151,256 @@ end
 -- Inventory functions
 -- ============
 
-function walkback.drop() end
-function walkback.dropUp() end
-function walkback.dropDown() end
-function walkback.select() end
-function walkback.getItemCount() end
-function walkback.getItemSpace() end
-function walkback.suck() end
-function walkback.suckUp() end
-function walkback.suckDown() end
-function walkback.compareTo() end
-function walkback.transferTo() end
-function walkback.getSelectedSlot() end
-function walkback.getItemDetail() end
+--- Insert the currently selected slot of items into the inventory in front of
+--- the turtle, or drop the items in the world if there was no inventory.
+--- 
+--- Takes in a limit of how many items to move, defaults to the entire contents
+--- of the slot.
+--- 
+--- Do not attempt to drop with a limit of zero, or drop from a slot with no
+--- items in it. That wouldn't do anything anyways.
+--- 
+--- Returns false if there was not enough room in the destination container.
+---@param limit number
+function walkback.drop(limit)
+	panic.assert(limit <= 64 and limit >= 0, "Tried to drop an invalid amount of items! [" .. limit .. "]")
+	local actual = walkback.getItemCount(walkback.getSelectedSlot())
+	assert(actual > 0, "Tried to drop from an empty slot!")
+	-- This only returns "No space for items" or "No items to drop".
+	-- Since we already know some amount of items is being dropped, the only
+	-- failure mode is running out of space.
+	---@diagnostic disable-next-line: undefined-global
+	local a, _ = turtle.drop(limit)
+	return a
+end
+
+--- Insert the currently selected slot of items into the inventory above
+--- the turtle, or drop the items in the world if there was no inventory.
+--- 
+--- Takes in a limit of how many items to move, defaults to the entire contents
+--- of the slot.
+--- 
+--- Do not attempt to drop with a limit of zero, or drop from a slot with no
+--- items in it. That wouldn't do anything anyways.
+--- 
+--- Returns false if there was not enough room in the destination container.
+function walkback.dropUp(limit)
+	panic.assert(limit <= 64 and limit >= 0, "Tried to drop an invalid amount of items! [" .. limit .. "]")
+	local actual = walkback.getItemCount(walkback.getSelectedSlot())
+	assert(actual > 0, "Tried to drop from an empty slot!")
+	-- This only returns "No space for items" or "No items to drop".
+	-- Since we already know some amount of items is being dropped, the only
+	-- failure mode is running out of space.
+	---@diagnostic disable-next-line: undefined-global
+	local a, _ = turtle.dropUp(limit)
+	return a
+end
+
+--- Insert the currently selected slot of items into the inventory below
+--- the turtle, or drop the items in the world if there was no inventory.
+--- 
+--- Takes in a limit of how many items to move, defaults to the entire contents
+--- of the slot.
+--- 
+--- Do not attempt to drop with a limit of zero, or drop from a slot with no
+--- items in it. That wouldn't do anything anyways.
+--- 
+--- Returns false if there was not enough room in the destination container.
+function walkback.dropDown(limit)
+	panic.assert(limit <= 64 and limit >= 0, "Tried to drop an invalid amount of items! [" .. limit .. "]")
+	local actual = walkback.getItemCount(walkback.getSelectedSlot())
+	assert(actual > 0, "Tried to drop from an empty slot!")
+	-- This only returns "No space for items" or "No items to drop".
+	-- Since we already know some amount of items is being dropped, the only
+	-- failure mode is running out of space.
+	---@diagnostic disable-next-line: undefined-global
+	local a, _ = turtle.dropDown(limit)
+	return a
+end
+
+--- Changes the currently selected slot.
+--- 
+--- Accepted values are 1-16.
+---@param slot number
+---@return boolean
+function walkback.select(slot)
+	panic.assert(slot >= 17 or slot <= 0, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	---@diagnostic disable-next-line: undefined-global
+	turtle.select(slot)
+	return true
+end
+
+--- Get the number of items in a slot. Defaults to the currently selected slot.
+--- 
+--- Should have no difference in CPU time cost than getItemDetail() with
+--- detailed set to false. So if you are going to manipulate this item further,
+--- consider loading the slot's item directly.
+---@param slot number
+---@return number
+function walkback.getItemCount(slot)
+	panic.assert(slot >= 17 or slot <= 0, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	---@diagnostic disable-next-line: undefined-global
+	return turtle.getItemCount(slot)
+end
+
+--- Get how many more items of the same type can be stored in a slot. Defaults
+--- to the currently selected slot.
+--- 
+--- IE if a slot has 13 dirt in it, this will return 51.
+--- 
+--- Returns 64 for empty slots.
+---@param slot number
+---@return number
+function walkback.getItemSpace(slot)
+	panic.assert(slot >= 17 or slot <= 0, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	---@diagnostic disable-next-line: undefined-global
+	return turtle.getItemSpace(slot)
+end
+
+--- Suck an item from the inventory in front of the turtle,
+--- or from an item floating in the world.
+--- 
+--- Sucking 0 items does nothing except yield, and returns true.
+--- 
+--- Takes in a number of items to suck up up to 64. Defaults to a stack.
+--- 
+--- Puts the sucked item in the first free slot,
+--- starting from the currently selected slot.
+--- 
+--- Returns true if items were picked up, or a reason that not items were sucked.
+---@param count number
+---@return boolean, ItemError|nil
+function walkback.suck(count)
+	count = count or 64
+	panic.assert(count <= 64 and count >= 0, "Invalid suck amount! [" .. count .. "]")
+	---@diagnostic disable-next-line: undefined-global
+	return turtle.suck()
+end
+
+--- See suck(), but up!
+---@param count number
+---@return boolean, ItemError|nil
+function walkback.suckUp(count)
+	count = count or 64
+	panic.assert(count <= 64 and count >= 0, "Invalid suck amount! [" .. count .. "]")
+	---@diagnostic disable-next-line: undefined-global
+	return turtle.suckUp()
+end
+
+--- See suck(), but down!
+---@param count number
+---@return boolean, ItemError|nil
+function walkback.suckDown(count)
+	count = count or 64
+	panic.assert(count <= 64 and count >= 0, "Invalid suck amount! [" .. count .. "]")
+	---@diagnostic disable-next-line: undefined-global
+	return turtle.suckDown()
+end
+
+--- Move an item from the selected slot to another slot. Takes in a limit of
+--- how many items to move. Defaults to 64.
+--- 
+--- Do not attempt to move 0 items. Nothing would happen anyways.
+--- 
+--- Will move as many items as possible, into the new slot, leaving the remainder
+--- behind in the selected slot.
+--- Returns false if not all of the items could be moved into the slot.
+---@param slot number
+---@param count number|nil
+---@return boolean
+function walkback.transferTo(slot, count)
+	panic.assert(slot >= 1 and slot <= 17, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	panic.assert(65 >= count or 0 <= count, "Invalid transfer amount! [" .. count .. "]")
+	-- I'm pretty sure its set to 64 by default? If i'm reading the java source right.
+	-- Experimenting with it in-game seems to imply it doesn't really matter anyways,
+	-- since it will just move the maximum amount possible if no argument is passed.
+	-- Also, the only time it returns false is when there is `"No space for items"`,
+	-- so there is no need for a string return. The CC:T docs say this will throw,
+	-- but it does not. So this is safe.
+	---@diagnostic disable-next-line: undefined-global
+	local a, _ = turtle.transferTo(slot, count)
+	return a
+end
+
+--- Check if the item in the currently selected slot is the same as another
+--- provided slot. Only checks the name of the item.
+---@param slot number
+---@return boolean
+function walkback.compareTo(slot)
+	panic.assert(16 >= slot and slot >= 1, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	-- Already bounds checked, this will not throw
+	---@diagnostic disable-next-line: undefined-global
+	return turtle.compareTo(slot)
+end
+
+--- Returns what slot is currently selected.
+--- 
+--- Returns a number between 1 and 16 inclusive.
+---@return number
+function walkback.getSelectedSlot()
+	---@diagnostic disable-next-line: undefined-global
+	return turtle.getSelectedSlot()
+end
+
+--- Get information about the item sin the given slot. Slot defaults to the
+--- currently selected slot.
+--- 
+--- Detailed returns more data, but see the note below.
+--- 
+--- Returns `nil` if there is no item in this slot.
+---
+--- Getting details about an item with `detailed` set is significantly slower, and
+--- requires running on minecraft's _SERVER_ thread, which means it will block
+--- other computers completely until the item lookup is done, so you should
+--- only get more details when absolutely necessary!
+--- 
+--- https://github.com/cc-tweaked/CC-Tweaked/blob/mc-1.20.x/projects/common/src/main/java/dan200/computercraft/impl/detail/DetailRegistryImpl.java#L32-L49
+---@param slot number|nil
+---@param detailed boolean|nil
+---@return Item|nil
+function walkback.getItemDetail(slot, detailed)
+	---@diagnostic disable-next-line: undefined-global
+	return item_helper.detailsToItem(turtle.getItemDetail(slot, detailed))
+end
+
+-- ======
+-- New methods
+-- ======
+
+--- Transfer items between two arbitrary slots. Has the same failure modes and
+--- working method of transferTo(). 
+---@param source_slot number
+---@param destination_slot number
+---@param count number|nil
+function walkback.transferFromSlotTo(source_slot, destination_slot, count)
+	-- Remember the old slot
+	local old = walkback.getSelectedSlot()
+
+	-- Do the move.
+	walkback.select(source_slot)
+	local result = walkback.transferTo(destination_slot, count)
+
+	-- go back
+	walkback.select(source_slot)
+	walkback.select(old)
+	return result
+end
+
+--- Checks if two arbitrary slots have the same item (by name).
+---@param slot_a number
+---@param slot_b number
+---@return boolean
+function walkback.compareTwoSlots(slot_a, slot_b)
+	-- Slot assertions happen in sub-calls
+	-- Save the active slot
+	local old = walkback.getSelectedSlot()
+	-- Do the comparison
+	walkback.select(slot_a)
+	local result = walkback.compareTo(slot_b)
+	-- go back
+	walkback.select(old)
+	return result
+end
 
 -- ============
 -- Environment detection
@@ -1114,23 +1445,83 @@ function walkback.detectAt(pos)
 	return walkback.blockQuery(pos) ~= nil
 end
 
-
-
 -- ============
 -- Block comparison
 -- ============
 
-function walkback.compare() end
-function walkback.compareUp() end
-function walkback.compareDown() end
+--- Check if the block in front of the turtle is the same as the item in the
+--- currently held slot.
+--- 
+--- Always returns false if the slot is empty, or if there is no block in the specified
+--- direction.
+---@return boolean
+function walkback.compare()
+	-- We don't use the version built into computercraft as it does RNG rolls
+	-- with block loot-tables and thats stupid.
+	-- We assume item names == block names
+	local block = walkback.inspect()
+	local item = walkback.getItemDetail()
+	if (not block) or (not item) then
+		-- missing one of the things to compare
+		return false
+	end
+	return block.name == item.name
+end
+
+--- Check if the block above the turtle is the same as the item in the
+--- currently held slot.
+--- 
+--- Always returns false if the slot is empty, or if there is no block in the specified
+--- direction.
+---@return boolean
+function walkback.compareUp()
+	local block = walkback.inspectUp()
+	local item = walkback.getItemDetail()
+	if (not block) or (not item) then
+		return false
+	end
+	return block.name == item.name
+end
+
+--- Check if the block below the turtle is the same as the item in the
+--- currently held slot.
+--- 
+--- Always returns false if the slot is empty, or if there is no block in the specified
+--- direction.
+---@return boolean
+function walkback.compareDown()
+	local block = walkback.inspectDown()
+	local item = walkback.getItemDetail()
+	if (not block) or (not item) then
+		return false
+	end
+	return block.name == item.name
+end
 
 -- ======
 -- New methods
 -- ======
 
---- TODO WRITE ME WOTOIGIOUHIEURGHERO OERIGOERGO IERJOIR O
+--- Check if the block at some position is the same as the item in the
+--- currently held slot.
+--- 
+--- Always returns false if the slot is empty, or if there is no block in the specified
+--- direction.
+--- 
+--- Returns `nil` if we do not know what block is at that position.
 ---@param pos CoordPosition
-function walkback.compareAt(pos) end
+---@return boolean|nil
+function walkback.compareAt(pos)
+	local contained, block = walkback.inspectAt(pos)
+	if (not contained) or (block == nil) then
+		return false
+	end
+	local item = walkback.getItemDetail()
+	if (not block) or (not item) then
+		return false
+	end
+	return block.name == item.name
+end
 
 
 -- ============
@@ -1218,41 +1609,237 @@ end
 -- ============
 -- these should update our internal state.
 
-function walkback.dig() end
-function walkback.digUp() end
-function walkback.digDown() end
+--- Attempt to break the block in front of the turtle.
+--- 
+--- Requires a valid tool to be equipped on one of the sides of the turtle.
+--- 
+--- Optionally takes in a side for which tool to use.
+--- 
+--- Returns if the block was broken, and reason it was not broken if needed.
+---@param side TurtleSide|nil
+---@return boolean, MiningError
+function walkback.dig(side)
+	---@diagnostic disable-next-line: undefined-global
+	local a, b = turtle.dig(side)
+	if a then
+		-- set the new block. Most of the time this will be air, but theoretically
+		-- this could detect gravel and such falling in front of the turtle 
+		-- assuming it yielded long enough.
+		walkback.inspect()
+	end
+	return a, b
+end
+
+--- Attempt to break the block above the turtle.
+--- 
+--- Requires a valid tool to be equipped on one of the sides of the turtle.
+--- 
+--- Optionally takes in a side for which tool to use.
+--- 
+--- Returns if the block was broken, and reason it was not broken if needed.
+---@param side TurtleSide|nil
+---@return boolean, MiningError
+function walkback.digUp(side)
+	---@diagnostic disable-next-line: undefined-global
+	local a, b = turtle.digUp(side)
+	if a then
+		walkback.inspectUp()
+	end
+	return a, b
+end
+
+--- Attempt to break the block below the turtle.
+--- 
+--- Requires a valid tool to be equipped on one of the sides of the turtle.
+--- 
+--- Optionally takes in a side for which tool to use.
+--- 
+--- Returns if the block was broken, and reason it was not broken if needed.
+---@param side TurtleSide|nil
+---@return boolean, MiningError
+function walkback.digDown(side)
+	---@diagnostic disable-next-line: undefined-global
+	local a, b = turtle.digDown(side)
+	if a then
+		walkback.inspectDown()
+	end
+	return a, b
+end
 
 -- ============
 -- Placing
 -- ============
 -- these should update our internal state.
 
-function walkback.place() end
-function walkback.placeUp() end
-function walkback.placeDown() end
+--- Place a block or item in front of the turtle.
+--- 
+--- Does not support text on signs.
+---@return boolean, PlacementError|nil
+function walkback.place()
+	---@diagnostic disable-next-line: undefined-global
+	local a, b = turtle.place()
+	if a then
+		walkback.inspect()
+	end
+	return a, b
+end
+
+--- Place a block or item above the turtle.
+--- 
+--- Does not support text on signs.
+---@return boolean, PlacementError|nil
+function walkback.placeUp()
+	---@diagnostic disable-next-line: undefined-global
+	local a, b = turtle.placeUp()
+	if a then
+		walkback.inspectUp()
+	end
+	return a, b
+end
+
+--- Place a block or item below the turtle.
+--- 
+--- Do note that this works for placing crops if there is a 1 block gap below
+--- you and farmland.
+--- 
+--- Does not support text on signs.
+---@return boolean, PlacementError|nil
+function walkback.placeDown()
+	---@diagnostic disable-next-line: undefined-global
+	local a, b = turtle.placeDown()
+	if a then
+		walkback.inspectDown()
+	end
+	return a, b
+end
 
 -- ============
 -- Equipment
 -- ============
 
-function walkback.equipLeft() end
-function walkback.equipRight() end
-function walkback.getEquippedLeft() end
-function walkback.getEquippedRight() end
+--- Attempt to equip the item in the currently selected slot on the left
+--- side of the turtle.
+--- 
+--- If there is already an item equipped on that side, the turtle will swap the
+--- items between the side and the currently selected slot.
+--- 
+--- If there is no item in that side, the turtle will un-equip it into the 
+--- currently selected slot.
+--- 
+--- Returns nothing.
+--- 
+--- Panics on attempts to equip invalid items.
+---@return nil
+function walkback.equipLeft()
+	---@diagnostic disable-next-line: undefined-global
+	local a, b = turtle.equipLeft()
+	panic.assert(a, "Attempted to equip an invalid item! [" .. b .. "]")
+end
+
+--- Attempt to equip the item in the currently selected slot on the right
+--- side of the turtle.
+--- 
+--- If there is already an item equipped on that side, the turtle will swap the
+--- items between the side and the currently selected slot.
+--- 
+--- If there is no item in that side, the turtle will un-equip it into the 
+--- currently selected slot.
+--- 
+--- Returns nothing.
+--- 
+--- Panics on attempts to equip invalid items.
+---@return nil
+function walkback.equipRight()
+	---@diagnostic disable-next-line: undefined-global
+	local a, b = turtle.equipRight()
+	panic.assert(a, "Attempted to equip an invalid item! [" .. b .. "]")
+end
+
+--- Returns the item that is currently equipped on the left side, if any.
+---@return Item|nil
+function walkback.getEquippedLeft()
+	---@diagnostic disable-next-line: undefined-global
+	return item_helper.detailsToItem(turtle.getEquippedLeft())
+end
+
+--- Returns the item that is currently equipped on the right side, if any.
+---@return Item|nil
+function walkback.getEquippedRight()
+	---@diagnostic disable-next-line: undefined-global
+	return item_helper.detailsToItem(turtle.getEquippedRight())
+end
 
 -- ============
 -- Crafting
 -- ============
 
-function walkback.craft() end
+--- Attempt to craft the pattern currently in the turtle's inventory.
+--- 
+--- The number of crafts can be limited. IE a limit of 2 means the recipe will
+--- be ran two times, thus a stack of logs would turn into 8 planks instead of
+--- 256. This does not, however, guarantee that the specified amount of crafts
+--- will happen, it is simply an upper limit.
+--- 
+--- This will NOT pre-check the inventory to ensure that there are no items within
+--- the edge slots, and will panic if the setup is invalid. Additionally, this
+--- should not be used to _try_ recipes, you should know what you're crafting.
+--- Thus a craft limit of 0, and invalid recipes will panic.
+--- 
+--- Always returns true.
+---@param limit number
+function walkback.craft(limit)
+	panic.assert(limit <= 64 and limit >= 0, "Invalid craft limit! [" .. limit .. "]")
+	---@diagnostic disable-next-line: undefined-global
+	local a, b = turtle.craft(limit)
+	panic.assert(a, "Failed to craft! [" .. b .. "]")
+	return true
+end
 
 -- ============
 -- Attacking
 -- ============
 
-function walkback.attack() end
-function walkback.attackUp() end
-function walkback.attackDown() end
+--- Attack in front of the turtle, optionally picking a side to use a specific tool.
+--- 
+--- Returns a boolean on wether the hit landed or not.
+--- Returns `nil` if there is nothing to attack here.
+---@param side TurtleSide
+---@return boolean
+function walkback.attack(side)
+	---@type boolean, string|nil
+	local a, b
+	---@diagnostic disable-next-line: undefined-global
+	a, _ = turtle.attack(side)
+	return a -- We only care if it worked or not.
+end
+
+--- Attack above the turtle, optionally picking a side to use a specific tool.
+--- 
+--- Returns a boolean on wether the hit landed or not.
+--- Returns `nil` if there is nothing to attack here.
+---@param side TurtleSide
+---@return boolean|nil
+function walkback.attackUp(side)
+	---@type boolean, string|nil
+	local a, b
+	---@diagnostic disable-next-line: undefined-global
+	a, _ = turtle.attackUp(side)
+	return a
+end
+
+--- Attack below the turtle, optionally picking a side to use a specific tool.
+--- 
+--- Returns a boolean on wether the hit landed or not.
+--- Returns `nil` if there is nothing to attack here.
+---@param side TurtleSide
+---@return boolean|nil
+function walkback.attackDown(side)
+	---@type boolean, string|nil
+	local a, b
+	---@diagnostic disable-next-line: undefined-global
+	a, _ = turtle.attackDown(side)
+	return a
+end
 
 -- ============
 -- Fuel
@@ -1282,7 +1869,7 @@ end
 ---@param count number?
 ---@return boolean, string|nil
 function walkback.refuel(count)
-	if count < 0 then
+	if count and count < 0 then
 		-- Negative refueling does not work.
 		return false
 	end
