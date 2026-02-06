@@ -26,10 +26,10 @@ As walkback is our primary method of movement, it also keeps track of all of our
 - - Calling this will start rewinding to the marked position.
 - - Returns true in the base case.
 - - Returns false if rewinding to the marked position fails. This does not clear the remaining steps that need to be taken to get back to the marked point, but chances are, there is some obstacle preventing the rewind.
-- `walkback.step_back()`
+- `walkback.stepBack()`
 - - Rewinds the position of the turtle back a single time to move to its previous position.
 - - Returns true in the base case, or false if the rewinding fails.
-- `walkback.previous()`
+- `walkback.previousPosition()`
 - - Returns the previous position the turtle occupied, if one exists.
 - - Returns nil if there is no previous position. Otherwise returns a `position`
 - - This does not remove the previous position from the walkback list, and making a movement to the previous position manually is safe, however you should prefer to use `step_back()`.
@@ -43,23 +43,22 @@ As walkback is our primary method of movement, it also keeps track of all of our
 - `walkback.push(walkback_state)`
 - - Pushes a walkback state into the walkback runner.
 - - Returns true, unless a walkback state is already stored within the turtle, in which case it returns `false`
-- `walkback.pos_query(position, strict, all)`
+- `walkback.posQuery(position, all)`
 - - Checks if a given position is already within the walkback state.
-- - If strict is set, the rotation of the input position must match as well.
 - - If all is set, all positions within the buffer, even ones that are not in the current walkback, are checked against.
 - - - This can be used to see if a turtle has (within reason, the previous position buffer does eventually discard old values) _ever_ been at a position.
 - - Returns a boolean.
-- `walkback.hard_reset()`
+- `walkback.hardReset()`
 - - This COMPLETELY resets the state of walkback, including ALL data, such as previously seen blocks. ONLY DO THIS AFTER UPLOADING THIS INFORMATION TO THE CONTROL COMPUTER!
 - - Returns nothing.
-- `walkback.data_json()`
+- `walkback.dataJson()`
 - - This will json-ify all of the walkback data into a string. Do note that this does not clear data, so calling this is safe to do so in any situation, although possibly slow.
 
 ### Block data related
-- `walkback.block_query(position)`
+- `walkback.blockQuery(position)`
 - - This function checks if the walkback data contains information about what block exists at a position.
 - - If the requested target block is directly next to the turtle, regardless if we have stored it or not, the turtle will rotate to face the block if needed, document the block, then rotate back to its original position. Such that we can return the most up-to-date information on that block.
-- - Returns `nil` if block is not documented, or the exact same format that `turtle.inspect()` would return if there is a block.
+- - Returns `nil` if block is not documented, or a `Block` if a block has been logged at that position.
 
 ## Movement functions
 All of the base movement functions internally call the `turtle` equivilant function, thus the return types are the same as they are listed on the cc:tweaked wiki.
@@ -73,12 +72,15 @@ As the turtle travels, it will automatically scan the block forwards, up, and do
 
 ### New methods
 These methods also scan left and right on movement.
-- `walkback.forward_scan()`
-- `walkback.back_scan()`
+- `walkback.forwardScan()`
+- `walkback.backScan()`
 
 Up and down scans do a full rotation of the turtle to get every side.
-- `walkback.up_scan()`
-- `walkback.down_scan()`
+- `walkback.upScan()`
+- `walkback.downScan()`
+
+And a generic scan that does a full 360. Returns nothing and does not move the turtle, and maintains facing angle.
+- `walkback.spinScan()`
 
 ## Inventory functions
 None of these have been altered from the normal `turtle` call. This is simply a layer of indirection.
@@ -97,10 +99,15 @@ None of these have been altered from the normal `turtle` call. This is simply a 
 - `walkback.getItemDetail([slot [, detailed]])`
 
 ## Environment detection
-None of these have been altered from the normal `turtle` call. This is simply a layer of indirection. (secretly we also use this scanned data to update ourselves.)
+These methods are slightly altered to also return `false` on fluids, as detect should be used for movement checks. Secretly calls inspect() under the hood to update our block list.
 - `walkback.detect()`
 - `walkback.detectUp()`
 - `walkback.detectDown()`
+
+### New methods
+- `walkback.detectAt(pos)`
+- - Check if a block at a position is solid.
+- - Returns `nil` if we have not seen that block.
 
 ## Block comparison
 None of these have been altered from the normal `turtle` call.
@@ -108,11 +115,21 @@ None of these have been altered from the normal `turtle` call.
 - `walkback.compareUp()`
 - `walkback.compareDown()`
 
+### New methods
+- `walkback.compareAt(pos)`
+- - Same as the other compare methods, but checking a position instead of a side. 
+- - Returns `nil` if we have not seen that block.
+
 ## Block inspection
 None of these have been altered from the normal `turtle` call.
 - `walkback.inspect()`
 - `walkback.inspectUp()`
 - `walkback.inspectDown()`
+
+### New methods
+- `walkback.inspectAt(pos1)`
+- - Same as the other inspect methods, but checking a position instead of a side. 
+- - The first returned boolean will be `nil` if we have not seen that position.
 
 ## Mining
 None of these have been altered from the normal `turtle` call.
@@ -154,6 +171,7 @@ None of these have been altered from the normal `turtle` call.
 An optimization we can make to prevent pointless movement is nullifying any loops we've made in our movement. For example, if we move 2 steps forwards, and 1 step back, we dont need to rewind by moving forwards first, since we've moved into a position we've already visited.
 
 Therefore, after every movement, we check if we've already visited this position. If we have, we can remove all positions after this one.
+Otherwise, we will push the position to the step list.
 
 Even if the rotations don't match, steps can be added to the walkback to fix the rotation difference.
 

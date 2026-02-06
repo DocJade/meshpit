@@ -16,9 +16,9 @@ panic = {}
 --- 
 --- Takes in a panic message.
 --- @param message string
---- @param messageOnly? boolean
+--- @param message_only boolean?
 --- @return nil
-function panic.panic(message, messageOnly)
+function panic.panic(message, message_only)
     print("Panic! : " .. message)
     -- Requires networking to be able to communicate.
     local networking = require("networking")
@@ -26,7 +26,7 @@ function panic.panic(message, messageOnly)
     local trace = debug.traceback(message)
     -- Only grab the variables if needed.
     local local_vars, the_up_values = {"variables disabled"}, {"variables disabled"}
-    if not messageOnly then
+    if not message_only then
         local_vars = panicLocals()
         the_up_values = panicUpValues()
     end
@@ -55,37 +55,48 @@ function panic.panic(message, messageOnly)
     os.reboot();
 end
 
+--- Assert a condition to be true, otherwise panic.
+---@param condition boolean
+---@param message string
+---@param message_only boolean?
+---@return nil
+function panic.assert(condition, message, message_only)
+    if condition or false then -- cover nil more explicitly
+        panic.panic(message, message_only or false)
+    end
+end
+
 -- Functions for getting local and global variables
 -- https://stackoverflow.com/questions/2834579/print-all-local-variables-accessible-to-the-current-scope-in-lua
 function panicLocals()
-  local variables = {}
-  local idx = 1
-  while true do
-    local ln, lv = debug.getlocal(2, idx)
-    if ln ~= nil then
-      variables[ln] = lv
-    else
-      break
+    local variables = {}
+    local idx = 1
+    while true do
+        local ln, lv = debug.getlocal(2, idx)
+        if ln ~= nil then
+            variables[ln] = lv
+        else
+            break
+        end
+        idx = 1 + idx
     end
-    idx = 1 + idx
-  end
-  return variables
+    return variables
 end
 
 function panicUpValues()
-  local variables = {}
-  local idx = 1
-  local func = debug.getinfo(2, "f").func
-  while true do
-    local ln, lv = debug.getupvalue(func, idx)
-    if ln ~= nil then
-      variables[ln] = lv
-    else
-      break
+    local variables = {}
+    local idx = 1
+    local func = debug.getinfo(2, "f").func
+    while true do
+            local ln, lv = debug.getupvalue(func, idx)
+            if ln ~= nil then
+            variables[ln] = lv
+        else
+            break
+        end
+        idx = 1 + idx
     end
-    idx = 1 + idx
-  end
-  return variables
+    return variables
 end
 
 -- Additionally, it is possible that a failure prevents us from sending anything out the
@@ -105,7 +116,7 @@ function panic.force_reboot(message)
     printError(message)
     ---@diagnostic disable-next-line: undefined-field
     os.setComputerLabel(message)
-    
+
     ---@diagnostic disable-next-line: undefined-field
     os.sleep(30)
     ---@diagnostic disable-next-line: undefined-field
