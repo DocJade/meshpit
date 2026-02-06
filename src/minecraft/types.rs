@@ -12,7 +12,7 @@ use std::fmt::Display;
 /// This may contain a facing direction, but is not mandatory.
 pub struct MinecraftPosition {
     pub position: CoordinatePosition,
-    pub facing: Option<MinecraftFacingDirection>,
+    pub facing: Option<MinecraftCardinalDirection>,
 }
 
 #[derive(Clone, Copy)]
@@ -45,7 +45,7 @@ impl MinecraftPosition {
         }
     }
     /// Move in a specified cardinal direction.
-    pub const fn move_direction(&mut self, direction: MinecraftFacingDirection) {
+    pub const fn move_direction(&mut self, direction: MinecraftCardinalDirection) {
         self.position.with_offset(direction.move_towards());
     }
 }
@@ -72,7 +72,7 @@ impl CoordinatePosition {
 
 #[derive(Clone, Copy)]
 /// The various directions that blocks can face.
-pub enum MinecraftFacingDirection {
+pub enum MinecraftCardinalDirection {
     North,  // -Z
     East,   // +X
     South,  // +Z
@@ -87,7 +87,7 @@ pub enum TurnDirection {
     Right
 }
 
-impl MinecraftFacingDirection {
+impl MinecraftCardinalDirection {
     /// Rotate the facing direction of this position.
     /// 
     /// Does nothing on up or down facing.
@@ -95,17 +95,17 @@ impl MinecraftFacingDirection {
         // yes this is lazy
         *self = match direction {
             TurnDirection::Right => match self {
-                MinecraftFacingDirection::North => MinecraftFacingDirection::East,
-                MinecraftFacingDirection::East => MinecraftFacingDirection::South,
-                MinecraftFacingDirection::South => MinecraftFacingDirection::West,
-                MinecraftFacingDirection::West => MinecraftFacingDirection::North,
+                MinecraftCardinalDirection::North => MinecraftCardinalDirection::East,
+                MinecraftCardinalDirection::East => MinecraftCardinalDirection::South,
+                MinecraftCardinalDirection::South => MinecraftCardinalDirection::West,
+                MinecraftCardinalDirection::West => MinecraftCardinalDirection::North,
                 _ => *self,
             },
             TurnDirection::Left => match self {
-                MinecraftFacingDirection::North => MinecraftFacingDirection::West,
-                MinecraftFacingDirection::West => MinecraftFacingDirection::South,
-                MinecraftFacingDirection::South => MinecraftFacingDirection::East,
-                MinecraftFacingDirection::East => MinecraftFacingDirection::North,
+                MinecraftCardinalDirection::North => MinecraftCardinalDirection::West,
+                MinecraftCardinalDirection::West => MinecraftCardinalDirection::South,
+                MinecraftCardinalDirection::South => MinecraftCardinalDirection::East,
+                MinecraftCardinalDirection::East => MinecraftCardinalDirection::North,
                 _ => *self,
             },
         };
@@ -115,25 +115,25 @@ impl MinecraftFacingDirection {
     /// This returns an offset, not a new position.
     pub const fn move_towards(&self) -> CoordinatePosition {
         match self {
-            MinecraftFacingDirection::North => CoordinatePosition { x: 0, y: 0, z: -1 },
-            MinecraftFacingDirection::East => CoordinatePosition { x: 1, y: 0, z: 0 },
-            MinecraftFacingDirection::South => CoordinatePosition { x: 0, y: 0, z: 1 },
-            MinecraftFacingDirection::West => CoordinatePosition { x: -1, y: 0, z: 0 },
-            MinecraftFacingDirection::Up => CoordinatePosition { x: 0, y: 1, z: 0 },
-            MinecraftFacingDirection::Down => CoordinatePosition { x: 0, y: -1, z: 0 },
+            MinecraftCardinalDirection::North => CoordinatePosition { x: 0, y: 0, z: -1 },
+            MinecraftCardinalDirection::East => CoordinatePosition { x: 1, y: 0, z: 0 },
+            MinecraftCardinalDirection::South => CoordinatePosition { x: 0, y: 0, z: 1 },
+            MinecraftCardinalDirection::West => CoordinatePosition { x: -1, y: 0, z: 0 },
+            MinecraftCardinalDirection::Up => CoordinatePosition { x: 0, y: 1, z: 0 },
+            MinecraftCardinalDirection::Down => CoordinatePosition { x: 0, y: -1, z: 0 },
         }
     }
 }
 
-impl Display for MinecraftFacingDirection {
+impl Display for MinecraftCardinalDirection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MinecraftFacingDirection::North => write!(f, "north"),
-            MinecraftFacingDirection::East => write!(f, "east"),
-            MinecraftFacingDirection::South => write!(f, "south"),
-            MinecraftFacingDirection::West => write!(f, "west"),
-            MinecraftFacingDirection::Up => write!(f, "up"),
-            MinecraftFacingDirection::Down => write!(f, "down"),
+            MinecraftCardinalDirection::North => write!(f, "north"),
+            MinecraftCardinalDirection::East => write!(f, "east"),
+            MinecraftCardinalDirection::South => write!(f, "south"),
+            MinecraftCardinalDirection::West => write!(f, "west"),
+            MinecraftCardinalDirection::Up => write!(f, "up"),
+            MinecraftCardinalDirection::Down => write!(f, "down"),
         }
     }
 }

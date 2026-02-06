@@ -349,7 +349,7 @@ async fn test_startup() {
 
     // Put a piston and sand on top of the computer, since we cant check the data on it... lol.
     position.position.y += 1;
-    position.facing = Some(MinecraftFacingDirection::Up);
+    position.facing = Some(MinecraftCardinalDirection::Up);
     if !TestCommand::SetBlock(position, MinecraftBlock::from_string("piston").unwrap())
         .invoke(&mut test)
         .await

@@ -2,7 +2,7 @@
 
 use crate::minecraft::{
     peripherals::inventory::GenericInventory,
-    types::{MinecraftFacingDirection, MinecraftPosition},
+    types::{MinecraftCardinalDirection, MinecraftPosition},
 };
 
 pub struct Turtle {
@@ -13,7 +13,7 @@ pub struct Turtle {
     /// TODO: we dont want to make this an option, but if we dont know the position of a turtle, we need to signal that somehow.
     position: MinecraftPosition,
     /// What direction the Turtle is facing.
-    facing: MinecraftFacingDirection,
+    facing: MinecraftCardinalDirection,
     /// How much fuel the Turtle currently has.
     fuel_level: u16,
     /// The inventory of the Turtle
