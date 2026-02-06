@@ -12,7 +12,7 @@ pub struct MinecraftTestEnvironment {
     /// The Minecraft environment we're running in.
     pub environment: MinecraftEnvironment,
     /// Where the current offset of the test setup plots are
-    next_plot_corner: MinecraftPosition,
+    next_plot_corner: CoordinatePosition,
     /// The highest z value we've seen, as to not crash into old tests.
     highest_z: i64,
 }
@@ -45,12 +45,12 @@ impl MinecraftTestEnvironment {
         Self {
             environment,
             // This does not need a facing direction.
-            next_plot_corner: MinecraftPosition {
-                x: 0,
-                y: -60,
-                z: 0,
-                facing: None,
-            },
+            next_plot_corner:
+                CoordinatePosition {
+                    x: 0,
+                    y: -60,
+                    z: 0,
+                },
             highest_z: 0,
         }
     }
@@ -68,7 +68,7 @@ pub struct MinecraftTestHandle {
     /// The south-east corner of the test area. All coordinates used in tests are relative to this position.
     ///
     /// This cannot be modified once the test has started, since we cannot move our testing location.
-    corner: MinecraftPosition,
+    corner: CoordinatePosition,
 }
 
 impl MinecraftTestHandle {
@@ -90,12 +90,12 @@ impl MinecraftTestHandle {
 
         // Force load the plot
         let c1 = corner;
-        let offset = MinecraftPosition {
+        let offset = CoordinatePosition {
             x: area.size_x.into(),
             y: 0,
             z: area.size_z.into(),
-            facing: None,
         };
+
         let c2 = corner.with_offset(offset);
 
         let command: String = format!("forceload add {} {} {} {}", c1.x, c1.z, c2.x, c2.z,);
@@ -123,7 +123,7 @@ impl MinecraftTestHandle {
     }
 
     /// Get the corner position of the test
-    pub fn corner(&self) -> MinecraftPosition {
+    pub fn corner(&self) -> CoordinatePosition {
         self.corner
     }
 
@@ -196,7 +196,7 @@ impl MinecraftTestHandle {
 
         // Now that the computer is on, we can get it's ID.
         // /data get block -2 -60 10 ComputerId
-        let id: u16 = TestCommand::GetBlockData(*position, "ComputerId".to_string())
+        let id: u16 = TestCommand::GetBlockData(position.position, "ComputerId".to_string())
             .invoke(self)
             .await
             .data()
@@ -301,18 +301,16 @@ impl MinecraftTestEnvironment {
     /// Change the floor of a test
     async fn update_floor(
         &mut self,
-        corner: MinecraftPosition,
+        corner: CoordinatePosition,
         area: TestArea,
         floor_block: MinecraftBlock,
     ) {
         let p1 = corner.as_command_string();
-        let p2 = MinecraftPosition {
+        let p2 = CoordinatePosition {
             x: corner.x + i64::from(area.size_x),
             y: corner.y,
             z: corner.z + i64::from(area.size_z),
-            facing: None,
-        }
-        .as_command_string();
+        }.as_command_string();
         let block = floor_block.get_full_name();
         // run the fill command
         let command = format!("fill {p1} {p2} {block}");
@@ -328,7 +326,7 @@ impl MinecraftTestEnvironment {
     }
 
     /// Get the next open test position
-    fn get_test_position(&mut self, area: TestArea) -> MinecraftPosition {
+    fn get_test_position(&mut self, area: TestArea) -> CoordinatePosition {
         // we just give the current position, then we update our offsets afterwards
         // to pre-prepare for the next test
         let give_me = self.next_plot_corner;
@@ -359,12 +357,12 @@ impl MinecraftTestEnvironment {
 
         // Increment to the next plot
         next_x += area.size_x as i64 + test_gap;
-        let next: MinecraftPosition = MinecraftPosition {
+        let next: CoordinatePosition = CoordinatePosition {
             x: next_x,
             y: give_me.y, // the y position never changes.
             z: next_z,
-            facing: None,
         };
+
         self.next_plot_corner = next;
 
         give_me

@@ -36,6 +36,10 @@ pub struct MeshpitLibraries {
     pub panic: Option<bool>,
     /// Helpers.
     pub helpers: Option<bool>,
+    /// Block
+    pub block: Option<bool>,
+    /// Item
+    pub item: Option<bool>,
 }
 
 impl MeshpitLibraries {
@@ -57,6 +61,12 @@ impl MeshpitLibraries {
         if self.helpers.unwrap_or(false) {
             paths.push(lua_folder.join("helpers.lua"));
         };
+        if self.block.unwrap_or(false) {
+            paths.push(lua_folder.join("block.lua"));
+        };
+        if self.item.unwrap_or(false) {
+            paths.push(lua_folder.join("item.lua"));
+        };
         paths
     }
     pub fn new() -> Self {
@@ -65,6 +75,8 @@ impl MeshpitLibraries {
             walkback: None,
             panic: None,
             helpers: None,
+            block: None,
+            item: None,
         }
     }
 }

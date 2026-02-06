@@ -15,17 +15,15 @@ async fn basic_block_test() {
 
     // gold base
     let base = TestCommand::Fill(
-        MinecraftPosition {
+        CoordinatePosition {
             x: 1,
             y: 1,
             z: 1,
-            facing: None,
         },
-        MinecraftPosition {
+        CoordinatePosition {
             x: 3,
             y: 1,
-            z: 3,
-            facing: None,
+            z: 3, 
         },
         MinecraftBlock::from_string("gold_block").unwrap(),
     );
@@ -33,9 +31,11 @@ async fn basic_block_test() {
     // netherrack
     let rack = TestCommand::SetBlock(
         MinecraftPosition {
-            x: 2,
-            y: 2,
-            z: 2,
+            position: CoordinatePosition {
+                x: 2,
+                y: 2,
+                z: 2, 
+            },
             facing: None,
         },
         MinecraftBlock::from_string("netherrack").unwrap(),
@@ -44,9 +44,11 @@ async fn basic_block_test() {
     // fire
     let fire = TestCommand::SetBlock(
         MinecraftPosition {
-            x: 2,
-            y: 3,
-            z: 2,
+            position: CoordinatePosition {
+                x: 2,
+                y: 3,
+                z: 2, 
+            },
             facing: None,
         },
         MinecraftBlock::from_string("fire").unwrap(),
@@ -55,9 +57,11 @@ async fn basic_block_test() {
     // torch1
     let torch1 = TestCommand::SetBlock(
         MinecraftPosition {
-            x: 1,
-            y: 2,
-            z: 2,
+            position: CoordinatePosition {
+                x: 1,
+                y: 2,
+                z: 2, 
+            },
             facing: None,
         },
         MinecraftBlock::from_string("redstone_torch").unwrap(),
@@ -65,9 +69,11 @@ async fn basic_block_test() {
     // torch2
     let torch2 = TestCommand::SetBlock(
         MinecraftPosition {
-            x: 2,
-            y: 2,
-            z: 1,
+            position: CoordinatePosition {
+                x: 2,
+                y: 2,
+                z: 1, 
+            },
             facing: None,
         },
         MinecraftBlock::from_string("redstone_torch").unwrap(),
@@ -75,9 +81,11 @@ async fn basic_block_test() {
     // torch3
     let torch3 = TestCommand::SetBlock(
         MinecraftPosition {
-            x: 3,
-            y: 2,
-            z: 2,
+            position: CoordinatePosition {
+                x: 3,
+                y: 2,
+                z: 2, 
+            },
             facing: None,
         },
         MinecraftBlock::from_string("redstone_torch").unwrap(),
@@ -85,9 +93,11 @@ async fn basic_block_test() {
     // torch4
     let torch4 = TestCommand::SetBlock(
         MinecraftPosition {
-            x: 2,
-            y: 2,
-            z: 3,
+            position: CoordinatePosition {
+                x: 2,
+                y: 2,
+                z: 3, 
+            },
             facing: None,
         },
         MinecraftBlock::from_string("redstone_torch").unwrap(),
@@ -104,11 +114,10 @@ async fn basic_block_test() {
 
     // Check that the fire ended up in the correct position.
     let fire_check = TestCommand::TestForBlock(
-        MinecraftPosition {
+        CoordinatePosition {
             x: 2,
             y: 3,
-            z: 2,
-            facing: None,
+            z: 2, 
         },
         MinecraftBlock::from_string("fire").unwrap(),
     );
@@ -131,18 +140,18 @@ async fn place_every_block() {
     let mut test = MinecraftTestHandle::new(area).await;
 
     // Encase the test in barrier blocks so items dont fly everywhere
-    let mut c1 = MinecraftPosition {
+    let mut c1 = CoordinatePosition {
         x: 0,
         y: 1,
-        z: 0,
-        facing: None,
+        z: 0, 
     };
-    let mut c2 = MinecraftPosition {
+
+    let mut c2 = CoordinatePosition {
         x: 4,
         y: 3,
-        z: 4,
-        facing: None,
+        z: 4, 
     };
+
     assert!(
         TestCommand::Fill(c1, c2, MinecraftBlock::from_string("barrier").unwrap())
             .invoke(&mut test)
@@ -164,9 +173,11 @@ async fn place_every_block() {
     );
 
     let block_pos = MinecraftPosition {
-        x: 2,
-        y: 1,
-        z: 2,
+        position: CoordinatePosition {
+            x: 2,
+            y: 1,
+            z: 2, 
+        },
         facing: None,
     };
     let data = get_mc_data();
@@ -207,9 +218,11 @@ async fn basic_computer_test() {
     // Place the computer in the test.
     // Computer position. The direction it faces does not matter for this test.
     let computer_position = MinecraftPosition {
-        x: 1,
-        y: 1,
-        z: 1,
+        position: CoordinatePosition {
+            x: 1,
+            y: 1,
+            z: 1,
+        },
         facing: None,
     };
 
@@ -223,7 +236,7 @@ async fn basic_computer_test() {
     let c = test.build_computer(&computer_position, computer).await;
 
     // command to check the state of the computer
-    let is_on = TestCommand::GetBlockData(computer_position, "On".to_string());
+    let is_on = TestCommand::GetBlockData(computer_position.position, "On".to_string());
 
     // Computer should be off before we start
     let is_this_thing_on = test.command(is_on.clone()).await.data().unwrap();
@@ -261,9 +274,11 @@ async fn turtle_fuel_test() {
     };
 
     let mut turtle_pos = MinecraftPosition {
-        x: 1,
-        y: 1,
-        z: 1,
+        position: CoordinatePosition {
+            x: 1,
+            y: 1,
+            z: 1,
+        },
         facing: None,
     };
 
@@ -276,7 +291,7 @@ async fn turtle_fuel_test() {
         );
         test.build_computer(&turtle_pos, turtle_setup).await;
         // make sure it got the correct amount of fuel
-        let found: u64 = match TestCommand::GetBlockData(turtle_pos, "Fuel".to_string())
+        let found: u64 = match TestCommand::GetBlockData(turtle_pos.position, "Fuel".to_string())
             .invoke(&mut test)
             .await
             .data()
@@ -297,7 +312,7 @@ async fn turtle_fuel_test() {
             );
         }
         // All good, next turtle.
-        turtle_pos.y += 1;
+        turtle_pos.position.y += 1;
     }
     // All good!
     test.stop(true).await;
@@ -312,9 +327,11 @@ async fn test_startup() {
     };
 
     let mut position = MinecraftPosition {
-        x: 1,
-        y: 1,
-        z: 1,
+        position: CoordinatePosition {
+            x: 1,
+            y: 1,
+            z: 1,
+        },
         facing: None,
     };
 
@@ -331,7 +348,7 @@ async fn test_startup() {
     let c = test.build_computer(&position, computer_setup).await;
 
     // Put a piston and sand on top of the computer, since we cant check the data on it... lol.
-    position.y += 1;
+    position.position.y += 1;
     position.facing = Some(MinecraftFacingDirection::Up);
     if !TestCommand::SetBlock(position, MinecraftBlock::from_string("piston").unwrap())
         .invoke(&mut test)
@@ -342,7 +359,7 @@ async fn test_startup() {
         panic!("Failed to place piston!")
     }
 
-    position.y += 1;
+    position.position.y += 1;
     position.facing = None;
     let sand = MinecraftBlock::from_string("sand").unwrap();
     if !TestCommand::SetBlock(position, sand)
@@ -361,8 +378,8 @@ async fn test_startup() {
     std::thread::sleep(Duration::from_secs(1));
 
     // The sand should have moved up.
-    position.y += 1;
-    if !TestCommand::TestForBlock(position, sand)
+    position.position.y += 1;
+    if !TestCommand::TestForBlock(position.position, sand)
         .invoke(&mut test)
         .await
         .success()

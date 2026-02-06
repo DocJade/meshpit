@@ -2,7 +2,7 @@
 
 use crate::{
     minecraft::{types::MinecraftPosition, vanilla::block_type::MinecraftBlock},
-    tests::test_harness::test_enviroment::{MINECRAFT_TESTING_ENV, MinecraftTestHandle},
+    tests::{prelude::CoordinatePosition, test_harness::test_enviroment::{MinecraftTestHandle, MINECRAFT_TESTING_ENV}},
 };
 
 /// Minecraft commands that tests are able to run.
@@ -10,27 +10,28 @@ use crate::{
 /// All positions input into this command are interpreted as offsets from 0,0,0.
 #[derive(Clone)]
 pub enum TestCommand {
-    /// Place a block.
+    /// Place a block. Takes in a MinecraftPosition to allow setting the facing
+    /// direction of the block.
     ///
     /// Returns a pass or fail.
     SetBlock(MinecraftPosition, MinecraftBlock),
 
-    /// Fill some blocks.
+    /// Fill some blocks. Facing direction cannot be set.
     ///
     /// Returns a pass or fail.
-    Fill(MinecraftPosition, MinecraftPosition, MinecraftBlock),
+    Fill(CoordinatePosition, CoordinatePosition, MinecraftBlock),
 
     /// Test for a block at some position.
     ///
     /// Returns a pass or fail.
-    TestForBlock(MinecraftPosition, MinecraftBlock),
+    TestForBlock(CoordinatePosition, MinecraftBlock),
 
     /// Get data from a block entity at some position. Requires the path of the data.
     /// For example, you can get the fuel level of a turtle with "Fuel". Do note that
     /// an empty input string will return all blockdata.
     ///
     /// Returns Data, or None if no data was found, or no block was at that position.
-    GetBlockData(MinecraftPosition, String),
+    GetBlockData(CoordinatePosition, String),
 
     /// Run a raw command. You should not do this.
     #[doc(hidden)]
@@ -46,7 +47,7 @@ impl TestCommand {
         let corner = handle.corner();
         match self {
             TestCommand::SetBlock(minecraft_position, minecraft_block) => {
-                let position = corner.with_offset(*minecraft_position).as_command_string();
+                let position = corner.with_offset(minecraft_position.position).as_command_string();
                 let block_string = minecraft_block.get_full_name();
 
                 // Set the facing if needed.
@@ -80,12 +81,7 @@ impl TestCommand {
                 // Thus we use the block at the corner, offset -1 to move out of the test bounds, then fill that.
                 let position_to_check = corner.with_offset(*minecraft_position).as_command_string();
                 let marking_position = corner
-                    .with_offset(MinecraftPosition {
-                        x: -1,
-                        y: 0,
-                        z: -1,
-                        facing: None,
-                    })
+                    .with_offset(CoordinatePosition { x: -1, y: 0, z: -1,})
                     .as_command_string();
                 let check_block = minecraft_block.get_full_name();
                 let marking_block = MinecraftBlock::from_string("bedrock")
