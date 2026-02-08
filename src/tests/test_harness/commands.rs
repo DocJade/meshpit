@@ -1,7 +1,7 @@
 // Stuff related to running commands.
 
 use crate::{
-    minecraft::{types::MinecraftPosition, vanilla::block_type::MinecraftBlock},
+    minecraft::{types::MinecraftPosition, vanilla::{block_type::MinecraftBlock, item_type::MinecraftItem}},
     tests::{prelude::CoordinatePosition, test_harness::test_enviroment::{MinecraftTestHandle, MINECRAFT_TESTING_ENV}},
 };
 
@@ -32,6 +32,14 @@ pub enum TestCommand {
     ///
     /// Returns Data, or None if no data was found, or no block was at that position.
     GetBlockData(CoordinatePosition, String),
+
+    /// Attempts to put an item inside of a block capable of containing items.
+    /// 
+    /// Takes in a block to put items into, the item to add, a quantity,
+    /// and a slot number inside of the block to replace with that item.
+    /// 
+    /// Returns pass or fail
+    InsertItem(CoordinatePosition, MinecraftItem, u8, u8),
 
     /// Run a raw command. You should not do this.
     #[doc(hidden)]
@@ -130,6 +138,21 @@ impl TestCommand {
                     Some(string) => TestCommandResult::Data(Some(string.trim().to_string())),
                     None => TestCommandResult::Data(None),
                 }
+            },
+            TestCommand::InsertItem(minecraft_position, item, quantity, slot) => {
+                // Luckily there is the `/item` command, didn't know about this until today.
+                // `/item replace block 6 67 7 container.0 with minecraft:mustard 67`
+                let position = corner.with_offset(*minecraft_position).as_command_string();
+                let item_name = item.get_full_name();
+                let command_string = format!("/item replace block {position} container.{slot} with {item_name} {quantity}");
+                let result: String = env.run_command(command_string).await;
+
+                // Did that work?
+                if !result.contains("Replaced a slot at") {
+                    return TestCommandResult::Success(false);
+                }
+
+                TestCommandResult::Success(true)
             }
             #[allow(deprecated)] // Yeah i know.
             TestCommand::RawCommand(command) => {

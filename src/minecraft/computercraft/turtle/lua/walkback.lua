@@ -277,24 +277,35 @@ end
 function findFacingRotation(start_direction, end_direction)
 	local moves = {}
 	if start_direction == end_direction then
+		print("directions match")
 		return moves
 	end
-
+	
 	local start_num = dir_to_num[start_direction]
 	local end_num = dir_to_num[end_direction]
-
+	print("start, end :" .. tostring(start_num) .. ", " .. tostring(end_num))
+	
 	-- Clockwise
 	local right_distance = (end_num - start_num + 4) % 4
+	print("right_distance: " .. tostring(right_distance))
 	-- Counter
 	local left_distance = (start_num - end_num + 4) % 4
-	local times = math.min(right_distance, left_distance)
-
+	print("left_distance: " .. tostring(left_distance))
+	local times = math.min(math.min(right_distance, left_distance), 1)
+	print("times: " .. tostring(times))
+	
 	-- Prefer right turns
-	local turn_direction = right_distance >= left_distance and "r" or "l"
+	local turn_direction = "r"
+	if left_distance < right_distance then
+		turn_direction = "l"
+	end
+	print("turn_direction: " .. tostring(turn_direction))
 
 	for i = 1, times do
+		print("looped")
 		moves[i] = turn_direction
 	end
+	print("return")
 	return moves
 end
 
@@ -492,7 +503,8 @@ function recordMove(direction)
     addStep()
 end
 
---- Checks if position overlaps with 
+--- Checks if our current position overlaps with a previous position in the
+--- walkback chain, trimming out the extra moves after that point if needed.
 --- 
 --- Does not put the final position on the walkback, you are expected to
 --- put it on yourself afterwards.
@@ -888,24 +900,43 @@ end
 --- in the correct order.
 ---@return string json See function definition for format.
 function walkback.dataJson()
-	return helpers.serializeJSON(walkback)
+	-- If we serialize this directly, we would end up also passing
+	-- all of the functions, which we do not care about. So we must extract
+	-- what we do care about by reference.
+	local needed = {
+		cur_position = walkback.cur_position,
+		all_seen_positions = walkback.all_seen_positions,
+		all_seen_blocks = walkback.all_seen_blocks,
+		chain_seen_positions = walkback.chain_seen_positions,
+		walkback_chain = walkback.walkback_chain,
+	}
+	return helpers.serializeJSON(needed)
 end
 
 --- Returns all of the items the turtle currently has in its inventory as an array.
 --- Empty slots are null.
 ---@return string json See function definition for format.
 function walkback.inventoryJSON()
-	---@type Item[]
-	local items = {}
+	--- array of optionals, dont know how to lint that
+	local slots = {}
 	for i= 1, 16 do
-		items[i] = walkback.getItemDetail(i, true)
+		found = walkback.getItemDetail(i, true)
 		-- Fix empty slots
-		if items[i] == nil then
+		if found == nil then
+			-- Replace the entire slot with a null to mark it as `none`
 			---@diagnostic disable-next-line: undefined-global
-			items[i] = textutils.json_null
+			slots[i] = textutils.json_null
 		end
+		slots[i] = {
+			item = found.name,
+			count = found.count
+		}
 	end
-	return helpers.serializeJSON(items)
+	local inv = {
+		size = 16,
+		slots = slots
+	}
+	return helpers.serializeJSON(inv)
 end
 
 
@@ -1924,10 +1955,14 @@ panic.assert(sanity == "n", "Incorrect rotation!")
 panic.assert(mostSignificantDirection(0,0) == "n", "Should default north!")
 
 -- Facing rotation actions
-assert(findFacingRotation("n", "n")[1] == nil, "Finding rotation wrong!")
-assert(findFacingRotation("n", "e")[1] == "r", "Finding rotation wrong!")
-assert(findFacingRotation("n", "s")[2] == "r", "Finding rotation wrong!")
-assert(findFacingRotation("n", "w")[1] == "l", "Finding rotation wrong!")
+local a = findFacingRotation("n", "n")
+assert(not a[1] , "Finding rotation wrong! Got: " .. tostring(a[1]))
+local a = findFacingRotation("n", "e")
+assert(a[1]  == "r", "Finding rotation wrong! Got: " .. tostring(a[1]))
+local a = findFacingRotation("n", "s")
+assert(a[1]  == "r", "Finding rotation wrong! Got: " .. tostring(a[1]))
+local a = findFacingRotation("n", "w")
+assert(a[1]  == "l", "Finding rotation wrong! Got: " .. tostring(a[1]))
 
 -- ========================
 -- All done!

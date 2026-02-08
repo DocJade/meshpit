@@ -67,23 +67,43 @@ print("Calling connect...")
 connect()
 print("Done!")
 
+--- The different kinds of outgoing and incoming packets
+---@alias PacketType
+---| "panic" Used when panics are thrown. Format is very wild as its almost the entire lua state.
+---| "walkback" A popped walkback.
+---| "unknown" Format is not specified.
+---| "debugging" Self explanatory
+
+--- The packet format used to communicate outwards and inwards from the turtle.
+---@class packet
+---@field id number The computer's ID
+---@field uuid string A unique identifier for this packet
+---@field timestamp number Seconds since unix epoch
+---@field packet_type PacketType The kind of packet this is.
+---@field data string The inner data contained within this table.
+
 
 --- Constructs a packet in a the set format.
 --- 
 --- Requires a UUID.
----@param message string|table
+---@param data string|table
+---@param type PacketType The type of this packet. If not set, will set to unknown.
 ---@param UUID string
 ---@return string json a json string
-local function formatPacket(message, UUID)
+local function formatPacket(data, type, UUID)
+    --- Turn the incoming data into json first
+    local ok, packet_data = pcall(helpers.serializeJSON, data)
+    if not ok then
+        panic.panic("Failed to clean a table for json! " .. tostring(result), true)
+     end
+
+    ---@type packet
     local packet = {
-        --TODO: redundant?
         id = os.getComputerID(),
-
         uuid = UUID,
-
         timestamp = os.epoch("utc"),
-
-        data = message
+        packet_type = type or "unknown",
+        data = packet_data
     }
 
     -- Now turn that into a json string.
@@ -91,26 +111,24 @@ local function formatPacket(message, UUID)
     -- Wrap this in a pcall, and panic if it fails.
     local ok, result = pcall(helpers.serializeJSON, packet)
     if not ok then
-        -- Failure. Give up!
-        -- Chances are that this will make panic fail too, so we disable
-        -- the variable output.
         panic.panic("Failed to clean a table for json! " .. tostring(result), true)
     end
 
-    return result
+    return result -- has to go here or linter gets mad lol.
 end
 
 --- Send a message out the websocket. Does not wait for a reply.
 --- 
 --- Takes in a table or a string. Will put the input into a packet before sending.
 --- Deeply copies tables instead of passing them by reference.
---- Requires a UUID.
+--- Requires a UUID and packet type.
 --- 
 --- Returns `false` if sending fails for any reason.
 ---@param message table|string
+---@param type PacketType The type of this packet. If not set, will set to unknown.
 ---@param UUID string
 ---@returns boolean
-local function send(message, UUID)
+local function send(message, type, UUID)
     if not websocket then
         -- No websocket to send on!
         -- We cannot run healthy here. We assume
@@ -123,7 +141,7 @@ local function send(message, UUID)
     ---@diagnostic disable-next-line: cast-local-type
     message_copy = helpers.serializeJSON(message_copy)
     ---@diagnostic disable-next-line: cast-local-type
-    message_copy = formatPacket(message_copy, UUID)
+    message_copy = formatPacket(message_copy, type, UUID)
     local ok, result = pcall(websocket.send, message_copy)
     return ok
 end
@@ -172,7 +190,7 @@ local function healthy()
     local worked = true -- if we skip the test, this needs to be true
     if websocket then -- Skip if there is already no websocket
         websocket.
-        worked = send("health", getUUID())
+        worked = send("health", "debugging", getUUID())
     end
     if not worked then
         -- Sending didn't work. Either that timed out, or the websocket is dead.
@@ -187,15 +205,16 @@ local function healthy()
 end
 
 
---- One way message to the control server, does not expect a response.
+--- One way message to the control server, does not expect a response. Should
+--- only be used for debugging.
 --- 
 --- The incoming type will be converted to a json string, unless the incoming type
 --- is already a string, in which case we assume it is already in the format that you
 --- wish to send.
 ---@param message table|string
-function networking.sendToControl(message)
+function networking.debugSend(message)
     -- Check that the socket is ready first.
-    healthy()
+    -- healthy() --TODO: Do this in a better way.
 
     -- Create a UUID for this message
     local UUID = getUUID()
@@ -203,7 +222,7 @@ function networking.sendToControl(message)
     -- send it!
     -- We try at most 5 times before completely giving up.
     for i = 1, 5 do
-        if send(message, UUID) then
+        if send(message, "debugging", UUID) then
             return
         end
     end
@@ -212,7 +231,7 @@ function networking.sendToControl(message)
     panic.force_reboot("Failed to send a message after 5 attempts!")
 end
 
---- Wait for any incoming message. This is a temporary method for testing, i think? TODO:
+--- Block and wait for any incoming message.
 --- 
 --- Takes in a timeout. Returns a boolean on wether we got anything before the timeout ended.
 ---@param timeout number

@@ -194,7 +194,7 @@ function block_helpers.detailsToBlock(incoming, block_position)
 	---@type ImportantTags[]
 	local tags = {}
 	-- Keep only the tags we care about.
-	for name, value in incoming.state do
+	for name, value in pairs(incoming.state) do
 		if block_helpers.tagIsImportant(name) then
 			tags[name] = value
 		end

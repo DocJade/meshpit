@@ -19,11 +19,13 @@ panic = {}
 --- @param message_only boolean?
 --- @return nil
 function panic.panic(message, message_only)
-    print("Panic! : " .. message)
+    print("Panic! : " .. tostring(message))
     -- Requires networking to be able to communicate.
     local networking = require("networking")
     -- Traceback automatically adds the message to the top.
     local trace = debug.traceback(message)
+    -- Print that for debugging too
+    print(trace)
     -- Only grab the variables if needed.
     local local_vars, the_up_values = {"variables disabled"}, {"variables disabled"}
     if not message_only then
@@ -48,9 +50,12 @@ function panic.panic(message, message_only)
 
     -- Transmit that table to control.
     -- This will automatically turn the table into json.
-    networking.sendToControl(panic_data)
+    networking.debugSend(panic_data)
 
-    -- Reboot.
+    -- Reboot after 30 seconds.
+    print("Rebooting in 30 seconds.")
+    ---@diagnostic disable-next-line: undefined-field
+    os.sleep(30)
     ---@diagnostic disable-next-line: undefined-field
     os.reboot();
 end
@@ -61,8 +66,8 @@ end
 ---@param message_only boolean?
 ---@return nil
 function panic.assert(condition, message, message_only)
-    if condition or false then -- cover nil more explicitly
-        panic.panic(message, message_only or false)
+    if not (condition or false) then -- cover nil more explicitly
+        panic(message, message_only or false)
     end
 end
 

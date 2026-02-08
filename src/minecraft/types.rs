@@ -6,7 +6,9 @@
 
 use std::fmt::Display;
 
-#[derive(Clone, Copy)]
+use serde::Deserialize;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 /// The world position of something in Minecraft.
 ///
 /// This may contain a facing direction, but is not mandatory.
@@ -15,7 +17,8 @@ pub struct MinecraftPosition {
     pub facing: Option<MinecraftCardinalDirection>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Hash)]
+#[serde(try_from = "String")]  // Try to cast from the string when deserializing.
 /// A position in XYZ space with no facing component.
 pub struct CoordinatePosition {
     /// East, West
@@ -70,18 +73,24 @@ impl CoordinatePosition {
 // Minecraft Facing Direction
 // ==
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
 /// The various directions that blocks can face.
 pub enum MinecraftCardinalDirection {
+    #[serde(rename = "n")]
     North,  // -Z
+    #[serde(rename = "e")]
     East,   // +X
+    #[serde(rename = "s")]
     South,  // +Z
+    #[serde(rename = "w")]
     West,   // -X
+    #[serde(rename = "u")]
     Up,     // +Y
+    #[serde(rename = "d")]
     Down,   // -Y
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TurnDirection {
     Left,
     Right

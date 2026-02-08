@@ -7,7 +7,7 @@ use crate::minecraft::{
     computercraft::modded_data::get_modded_data, vanilla::data_globals::get_mc_data,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct MinecraftBlock {
     block: &'static Block,
 }
@@ -63,5 +63,18 @@ impl MinecraftBlock {
                 .get(name)
                 .map(|block| Self { block })
         }
+    }
+}
+
+
+// ======
+// Deserialization
+// ======
+
+impl<'de> serde::de::Deserialize<'de> for MinecraftBlock {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de> {
+        todo!("Implement minecraft block deserializer.")
     }
 }

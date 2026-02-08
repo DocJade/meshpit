@@ -5,13 +5,13 @@ use crate::tests::prelude::*;
 
 #[tokio::test]
 /// Attempt basic ping pong over the websocket.
-async fn basic_networking_test() {
+async fn websocket_ping_pong() {
     // create a test to run a 'puter in
     let area = TestArea {
         size_x: 3,
         size_z: 3,
     };
-    let mut test = MinecraftTestHandle::new(area).await;
+    let mut test = MinecraftTestHandle::new(area, "Websocket ping pong").await;
     // create a computer
     let position = MinecraftPosition {
         position: CoordinatePosition {
@@ -26,13 +26,13 @@ async fn basic_networking_test() {
     let test_script = r#"
     local networking = require("networking")
     print("sending ping")
-    networking.sendToControl("ping")
+    networking.debugSend("ping")
     print("waiting for response")
     local ok, result = networking.waitForPacket(60)
     if not ok then
         print("no response")
         print(result)
-        networking.sendToControl("fail")
+        networking.debugSend("fail")
         -- skip shutting down to keep stuff on screen.
         goto cancel
     end
@@ -41,9 +41,9 @@ async fn basic_networking_test() {
     print(result)
     print("== response ==")
     print("sending pass")
-    networking.sendToControl("pass")
+    networking.debugSend("pass")
     print("sending result")
-    networking.sendToControl(result)
+    networking.debugSend(result)
     print("shutting down in 30 seconds.")
     os.sleep(30)
     os.shutdown()
@@ -68,31 +68,19 @@ async fn basic_networking_test() {
     // Turn on the computer, and wait for the ping message
     computer.turn_on(&mut test).await;
 
-    let ping = socket
-        .receiver
-        .recv()
-        .await
-        .expect("Channel should be open.");
+    let ping = socket.receive().await;
     info!("Got ping!");
     info!("{ping}");
     assert!(ping.contains("ping"));
 
     // send back
     info!("Sending pong...");
-    socket
-        .sender
-        .send("\"pong\"".to_string())
-        .await
-        .expect("Computer should be open to receive this.");
+    socket.send("\"pong\"".to_string()).await;
     info!("Sent.");
 
     // Wait for the next response
     info!("Awaiting response...");
-    let response = socket
-        .receiver
-        .recv()
-        .await
-        .expect("Channel should be open.");
+    let response = socket.receive().await;
     let pass_fail = response.contains("pass");
     info!("Got it! {response}");
     info!("Pass fail? {pass_fail}");
@@ -100,11 +88,7 @@ async fn basic_networking_test() {
         info!("Pass!");
         // Get the next packet too
         info!("Waiting for followup packet...");
-        let result = socket
-            .receiver
-            .recv()
-            .await
-            .expect("Channel should be open.");
+        let result = socket.receive().await;
         info!("Got it!");
         info!("{result}");
     } else {

@@ -8,7 +8,7 @@ use crate::minecraft::{
     computercraft::modded_data::get_modded_data, vanilla::data_globals::get_mc_data,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct MinecraftItem {
     // The inner mcdata item type. We make this wrapper MinecraftItem type so we
     // can implement new methods on it.
@@ -17,6 +17,13 @@ pub struct MinecraftItem {
     // Also, since the item data it references is static, we can make this static as well.
     /// The inner item type
     item: &'static Item,
+}
+
+// Implementation of equality
+impl PartialEq for MinecraftItem {
+    fn eq(&self, _other: &Self) -> bool {
+        todo!("Item equality checks.")
+    }
 }
 
 // On our implementations, we avoid using owned strings, since we don't want to constantly be cloning.
@@ -82,5 +89,18 @@ impl MinecraftItem {
                 .get(name)
                 .map(|item| Self { item })
         }
+    }
+}
+
+
+// ======
+// Deserialization
+// ======
+
+impl<'de> serde::de::Deserialize<'de> for MinecraftItem {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de> {
+        todo!("Implement minecraft item deserializer.")
     }
 }

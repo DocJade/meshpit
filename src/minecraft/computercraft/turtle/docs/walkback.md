@@ -55,10 +55,10 @@ As walkback is our primary method of movement, it also keeps track of all of our
 - - This will json-ify all of the walkback data into a string. Do note that this does not clear data, so calling this is safe to do so in any situation, although possibly slow.
 
 ### Block data related
-- `walkback.blockQuery(position)`
+- `walkback.blockQuery(position, and_air)`
 - - This function checks if the walkback data contains information about what block exists at a position.
 - - If the requested target block is directly next to the turtle, regardless if we have stored it or not, the turtle will rotate to face the block if needed, document the block, then rotate back to its original position. Such that we can return the most up-to-date information on that block.
-- - Returns `nil` if block is not documented, or a `Block` if a block has been logged at that position.
+- - Returns `nil` if block is not documented, or a `Block` if a block has been logged at that position, unless the block is air, in which case this will still return `nil`, UNLESS and_air is true.
 
 ## Movement functions
 All of the base movement functions internally call the `turtle` equivilant function, thus the return types are the same as they are listed on the cc:tweaked wiki.

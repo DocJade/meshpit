@@ -7,7 +7,7 @@ use crate::tests::prelude::*;
 #[tokio::test]
 #[ignore] // Only a sanity test. Doesn't always need to be ran.
 /// Make a herobrine spawner
-async fn basic_block_test() {
+async fn basic_setblock_and_fill_test() {
     let area = TestArea {
         size_x: 5,
         size_z: 5,
@@ -105,7 +105,7 @@ async fn basic_block_test() {
 
     let build_commands: Vec<TestCommand> = vec![base, rack, fire, torch1, torch2, torch3, torch4];
 
-    let mut test = MinecraftTestHandle::new(area).await;
+    let mut test = MinecraftTestHandle::new(area, "Basic setblock and fill test").await;
 
     // build the spawner
     for cmd in build_commands {
@@ -137,7 +137,7 @@ async fn place_every_block() {
         size_z: 5,
     };
 
-    let mut test = MinecraftTestHandle::new(area).await;
+    let mut test = MinecraftTestHandle::new(area, "Place every block").await;
 
     // Encase the test in barrier blocks so items dont fly everywhere
     let mut c1 = CoordinatePosition {
@@ -213,7 +213,7 @@ async fn basic_computer_test() {
         size_z: 3,
     };
 
-    let mut test = MinecraftTestHandle::new(area).await;
+    let mut test = MinecraftTestHandle::new(area, "Basic computer test").await;
 
     // Place the computer in the test.
     // Computer position. The direction it faces does not matter for this test.
@@ -282,7 +282,7 @@ async fn turtle_fuel_test() {
         facing: None,
     };
 
-    let mut test = MinecraftTestHandle::new(area).await;
+    let mut test = MinecraftTestHandle::new(area, "Turtle fuel test").await;
     for turtle_number in 0..10u64 {
         let turtle_setup = ComputerSetup::new(
             ComputerKind::Turtle(Some(turtle_number * 2)),
@@ -320,7 +320,7 @@ async fn turtle_fuel_test() {
 
 #[tokio::test]
 /// Test if we can set a startup file on a computer.
-async fn test_startup() {
+async fn test_startup_file() {
     let area = TestArea {
         size_x: 3,
         size_z: 3,
@@ -335,7 +335,7 @@ async fn test_startup() {
         facing: None,
     };
 
-    let mut test = MinecraftTestHandle::new(area).await;
+    let mut test = MinecraftTestHandle::new(area, "Test startup file").await;
 
     // This lua code when ran in a turtle will turn on the redstone output on the top of the computer
     let lua = "redstone.setOutput(\"top\", true)";

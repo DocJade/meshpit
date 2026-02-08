@@ -3,16 +3,18 @@
 // TODO: This implementation might just end up being what we do for the actual server, and
 // thus will need to be moved out of here.
 
-use std::sync::{Arc, OnceLock};
+use std::{sync::{Arc, OnceLock}, time::Duration};
 
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
-use log::warn;
+use log::{info, warn};
 use tokio::{
     net::TcpListener,
     sync::{OnceCell, mpsc},
 };
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+
+use crate::tests::prelude::MINECRAFT_TESTING_ENV;
 
 // We force move the websocket to another thread, otherwise it would close between tests.
 static WEBSOCKET_RUNNING: OnceCell<()> = OnceCell::const_new();
@@ -34,6 +36,13 @@ async fn run_websocket() {
 
             // Wait a bit for it to bind.
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+            // Wait until the minecraft server is also running. This will prevent
+            // tests from timing out on websocket requests regardless of how long
+            // it might take the server to start.
+            let lock = MINECRAFT_TESTING_ENV.lock().await;
+            // Make sure the server actually started.
+            assert!(lock.environment.is_running());
         })
         .await;
 }
@@ -44,8 +53,28 @@ async fn run_websocket() {
 pub struct TestWebsocket {
     /// The ID of the computer this websocket is tied to.
     id: u16,
-    pub sender: mpsc::Sender<String>,
-    pub receiver: mpsc::Receiver<String>,
+    sender: mpsc::Sender<String>,
+    receiver: mpsc::Receiver<String>,
+}
+
+// Tests need to eventually time out, thus recv() and send() must have a timeout.
+impl TestWebsocket {
+    /// Sent a message down the websocket
+    pub async fn send(&mut self, message: String) {
+        let sent = self.sender.send_timeout(message, Duration::from_secs(5)).await;
+        sent.expect("Test send timed out after 5 seconds.")
+    }
+
+    /// Receive a message from the websocket
+    pub async fn receive(&mut self) -> String {
+        let hang = async {
+            let got = self.receiver.recv().await.unwrap();
+            info!("{got}");
+            got
+        };
+
+        return tokio::time::timeout(Duration::from_secs(5), hang).await.expect("Test receive timed out after 5 seconds.")
+    }
 }
 
 /// Internal storage for our websockets.

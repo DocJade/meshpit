@@ -1,7 +1,7 @@
 // Testing galore
 
 use crate::tests::{prelude::*, test_harness::computer_builder::COMPUTER_STATE_CHANGE_TIME};
-use std::{cmp::max, sync::Arc};
+use std::{cmp::max, fmt::Display, sync::Arc};
 
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
@@ -69,13 +69,17 @@ pub struct MinecraftTestHandle {
     ///
     /// This cannot be modified once the test has started, since we cannot move our testing location.
     corner: CoordinatePosition,
+
+    /// This is set once the test has been marked as pass or fail.
+    done: bool
 }
 
 impl MinecraftTestHandle {
     /// Create the testing plot for this test and return a test handle.
     ///
-    /// Requires a test area, since we need to know how much space this test will use.
-    pub async fn new(area: TestArea) -> Self {
+    /// Requires a test area, since we need to know how much space this test will use,
+    /// and a name to display.
+    pub async fn new<S: ToString + Display>(area: TestArea, test_name: S) -> Self {
         // Account for the area starting at "0" thus being 1 block bigger than expected.
         let area = TestArea {
             size_x: area.size_x - 1,
@@ -109,11 +113,29 @@ impl MinecraftTestHandle {
         )
         .await;
 
-        Self { area, corner }
+        // Offset corner for the armorstand, cant be -1 -1 or it will be in the way of the bedrock test
+        let armor = c1.with_offset(CoordinatePosition { x: 1, y: 0, z: -1 });
+        let a_x = armor.x;
+        let a_z = armor.z;
+
+        // Summon an armor stand with the name of the test to
+        // make it easier to tell what's what.
+        // Has some extra height to make them fall into place because its funny.
+        // This command will break in 1.21.5
+        // from: https://haselkern.com/Minecraft-ArmorStand/
+        // `/summon minecraft:armor_stand ~ ~ ~ {Invisible:true,CustomNameVisible:true,CustomName:'{"text":"TESTNAME","bold":true}'}`
+        let command: String = format!("summon minecraft:armor_stand {a_x} 0 {a_z} {{Invisible:true,CustomNameVisible:true,CustomName:'{{\"text\":\"{test_name}\",\"bold\":true}}'}}");
+        let _ = env.run_command(command).await; // non-critical.
+
+        Self { area, corner, done: false}
     }
 
     /// Run a test command.
     pub async fn command(&mut self, command: TestCommand) -> TestCommandResult {
+        if self.done {
+            // cant run commands after completion
+            panic!("Tried to run command on finished test!")
+        }
         command.invoke(self).await
     }
 
@@ -128,16 +150,26 @@ impl MinecraftTestHandle {
     }
 
     /// Finish the test and clean up. Requires a pass or fail status to update the plot floor.
-    pub async fn stop(self, passed: bool) {
+    pub async fn stop(&mut self, passed: bool) {
+        if self.done {
+            // skip
+            return
+        }
         let mut env = MINECRAFT_TESTING_ENV.lock().await;
+        let corner_string = self.corner.as_command_string();
         // Update floor
         let block = if passed {
+            // pass sound
+            env.run_command(format!("playsound minecraft:block.note_block.bell master @a {corner_string} 1 0.5")).await;
             MinecraftBlock::from_string("lime_concrete").unwrap()
         } else {
+            // fail sound
+            env.run_command(format!("playsound minecraft:block.note_block.bit master @a {corner_string} 1 0.5")).await;
             MinecraftBlock::from_string("red_concrete").unwrap()
         };
 
         env.update_floor(self.corner, self.area, block).await;
+        self.done = true;
         // We do not stop force-loading the chunks, since another test could be contained within it.
         // If we had something else to clean here, we would. but we dont.
         // TODO: Turn off all the computers within this chunk if possible? Maybe replace their blocks if needed.
@@ -161,6 +193,10 @@ impl MinecraftTestHandle {
         position: &MinecraftPosition,
         setup: ComputerSetup,
     ) -> TestComputer {
+        if self.done {
+            // cant build computers after test is over
+            panic!("Can't build computers in finished tests!")
+        }
         // Place the computer and turn it on, then get it's ID.
         // We want to use the other methods as much as possible here so we don't have a bunch
         // of raw commands.
@@ -262,6 +298,13 @@ impl MinecraftTestHandle {
     }
 }
 
+/// Mark tests as failed if the handle is dropped before the test is stopped
+impl Drop for MinecraftTestHandle {
+    fn drop(&mut self) {
+        futures::executor::block_on(self.stop(false))
+    }
+}
+
 /// Create a file on a computer.
 ///
 /// Make sure to include the file extension if needed.
@@ -337,13 +380,13 @@ impl MinecraftTestEnvironment {
         let test_gap: i64 = 4;
 
         // Set the corner of where the next plot will be
-        // If the last test was over 100 blocks away from 0,0 on the x axis, we will
+        // If the last test was over 32 blocks away from 0,0 on the x axis, we will
         // move to a new row of tests. since we wanna look at em :D
 
         let mut next_x: i64 = give_me.x;
         let mut next_z: i64 = give_me.z;
 
-        if next_x >= 100 {
+        if next_x >= 32 {
             // Shift down by the highest width seen, plus the gap
             next_z += self.highest_z + test_gap;
 
