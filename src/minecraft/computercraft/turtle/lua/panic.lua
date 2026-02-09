@@ -2,7 +2,10 @@
 
 -- Table that is used to call the panic handler.
 -- Empty, as it is just for calling the method.
-panic = {}
+local panic = {}
+
+-- Keep track if we are already panicking to prevent panic loops.
+CURRENTLY_PANICKING = false
 
 --- The panic method. Takes in a panic message.
 --- 
@@ -20,8 +23,16 @@ panic = {}
 --- @return nil
 function panic.panic(message, message_only)
     print("Panic! : " .. tostring(message))
-    -- Requires networking to be able to communicate.
-    local networking = require("networking")
+    -- Check if we're already panicking.
+    if CURRENTLY_PANICKING then
+        -- crap!
+        print("Panic recursed! Bailing!")
+        -- Wait for an event that will never come.
+        ---@diagnostic disable-next-line: undefined-field
+        os.pullEvent("dad coming home with the milk")
+    end
+    -- mark the panic as started
+    CURRENTLY_PANICKING = true
     -- Traceback automatically adds the message to the top.
     local trace = debug.traceback(message)
     -- Print that for debugging too
@@ -45,12 +56,17 @@ function panic.panic(message, message_only)
 
         -- Every external variable we are referencing. This table has no overlap with locals.
         -- In the format of an array of pairs.
-        up_values = the_up_values,
+        -- up_values = the_up_values,\
+        -- TODO: this is for debugging
+        up_values = {}
     }
 
     -- Transmit that table to control.
     -- This will automatically turn the table into json.
-    networking.debugSend(panic_data)
+    NETWORKING.debugSend(panic_data)
+
+    -- Done panicking.
+    CURRENTLY_PANICKING = false
 
     -- Reboot after 30 seconds.
     print("Rebooting in 30 seconds.")
@@ -67,7 +83,7 @@ end
 ---@return nil
 function panic.assert(condition, message, message_only)
     if not (condition or false) then -- cover nil more explicitly
-        panic(message, message_only or false)
+        panic.panic(message, message_only or false)
     end
 end
 
@@ -123,7 +139,7 @@ function panic.force_reboot(message)
     os.setComputerLabel(message)
 
     ---@diagnostic disable-next-line: undefined-field
-    os.sleep(30)
+    os.sleep(300)
     ---@diagnostic disable-next-line: undefined-field
     os.reboot()
 end

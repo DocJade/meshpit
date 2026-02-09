@@ -276,36 +276,28 @@ end
 ---@return MovementDirection[]?
 function findFacingRotation(start_direction, end_direction)
 	local moves = {}
-	if start_direction == end_direction then
-		print("directions match")
+	if start_direction == end_direction then	
 		return moves
 	end
 	
 	local start_num = dir_to_num[start_direction]
 	local end_num = dir_to_num[end_direction]
-	print("start, end :" .. tostring(start_num) .. ", " .. tostring(end_num))
 	
 	-- Clockwise
 	local right_distance = (end_num - start_num + 4) % 4
-	print("right_distance: " .. tostring(right_distance))
 	-- Counter
 	local left_distance = (start_num - end_num + 4) % 4
-	print("left_distance: " .. tostring(left_distance))
 	local times = math.min(math.min(right_distance, left_distance), 1)
-	print("times: " .. tostring(times))
 	
 	-- Prefer right turns
 	local turn_direction = "r"
 	if left_distance < right_distance then
 		turn_direction = "l"
 	end
-	print("turn_direction: " .. tostring(turn_direction))
 
 	for i = 1, times do
-		print("looped")
 		moves[i] = turn_direction
 	end
-	print("return")
 	return moves
 end
 
@@ -577,7 +569,9 @@ function addStep()
         panic.panic("Tried to add a position to the walkback_chain that we've already seen!")
     end
     -- Add position to the end of the chain
-    walkback.walkback_chain[#walkback.walkback_chain + 1] = walkback.cur_position.position
+	-- Make a copy so we don't have all of the keys just referencing the current position.
+	local pos_copy = helpers.deepCopy(walkback.cur_position.position)
+    walkback.walkback_chain[#walkback.walkback_chain + 1] = pos_copy
 
     -- Add it to the hashset as an index into the chain.
     walkback.chain_seen_positions[current_pos_key] = #walkback.walkback_chain
@@ -887,7 +881,7 @@ function walkback.hardReset()
 	-- Doesn't remove the current position for hopefully obvious reasons.
 end
 
---- Returns the full walkback state of this turtle as a json'ed table of all of
+--- Returns the full walkback state of this turtle as a table of all of
 --- the data contained within the global `walkback` variable.
 --- 
 --- This will not change the global state, this operation is read-only.
@@ -898,7 +892,9 @@ end
 --- 
 --- Do note that the keys may be in a different order, but arrays will remain
 --- in the correct order.
----@return string json See function definition for format.
+--- 
+--- Returns a table. Will be serialized on the way out.
+---@return table -- See function definition for format.
 function walkback.dataJson()
 	-- If we serialize this directly, we would end up also passing
 	-- all of the functions, which we do not care about. So we must extract
@@ -910,33 +906,38 @@ function walkback.dataJson()
 		chain_seen_positions = walkback.chain_seen_positions,
 		walkback_chain = walkback.walkback_chain,
 	}
-	return helpers.serializeJSON(needed)
+	return needed
 end
 
 --- Returns all of the items the turtle currently has in its inventory as an array.
 --- Empty slots are null.
----@return string json See function definition for format.
+--- 
+--- Returns a table in the inventory format. Must be serialized later.
+---@return table
 function walkback.inventoryJSON()
 	--- array of optionals, dont know how to lint that
 	local slots = {}
+	local json_null = textutils.json_null
 	for i= 1, 16 do
-		found = walkback.getItemDetail(i, true)
+		local found = walkback.getItemDetail(i, true)
 		-- Fix empty slots
-		if found == nil then
-			-- Replace the entire slot with a null to mark it as `none`
-			---@diagnostic disable-next-line: undefined-global
-			slots[i] = textutils.json_null
+		---@diagnostic disable-next-line: undefined-global
+		if found ~= nil then
+			array_value = {
+				["item"] = found.name,
+				["count"] = found.count
+			}
+			slots[#slots+1] = array_value
 		end
-		slots[i] = {
-			item = found.name,
-			count = found.count
-		}
+		-- No item
+		slots[#slots+1] = json_null
 	end
 	local inv = {
-		size = 16,
-		slots = slots
+		["size"] = 16,
+		["slots"] = slots
 	}
-	return helpers.serializeJSON(inv)
+	
+	return inv
 end
 
 

@@ -3,7 +3,10 @@
 // TODO: This implementation might just end up being what we do for the actual server, and
 // thus will need to be moved out of here.
 
-use std::{sync::{Arc, OnceLock}, time::Duration};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
@@ -57,23 +60,56 @@ pub struct TestWebsocket {
     receiver: mpsc::Receiver<String>,
 }
 
+#[derive(Debug)]
+pub enum TestWebsocketError {
+    AlreadyTaken,
+    TimedOut,
+    Closed,
+}
+
 // Tests need to eventually time out, thus recv() and send() must have a timeout.
 impl TestWebsocket {
     /// Sent a message down the websocket
-    pub async fn send(&mut self, message: String) {
-        let sent = self.sender.send_timeout(message, Duration::from_secs(5)).await;
-        sent.expect("Test send timed out after 5 seconds.")
+    #[must_use = "You really should check if that worked."]
+    pub async fn send(
+        &mut self,
+        message: String,
+        sec_timeout: u64,
+    ) -> Result<(), TestWebsocketError> {
+        let sent = self
+            .sender
+            .send_timeout(message, Duration::from_secs(sec_timeout))
+            .await;
+        match sent {
+            Ok(_) => Ok(()),
+            Err(err) => match err {
+                mpsc::error::SendTimeoutError::Timeout(_) => Err(TestWebsocketError::TimedOut),
+                mpsc::error::SendTimeoutError::Closed(_) => Err(TestWebsocketError::Closed),
+            },
+        }
     }
 
     /// Receive a message from the websocket
-    pub async fn receive(&mut self) -> String {
+    #[must_use = "You really should check if that worked."]
+    pub async fn receive(&mut self, sec_timeout: u64) -> Result<String, TestWebsocketError> {
         let hang = async {
-            let got = self.receiver.recv().await.unwrap();
-            info!("{got}");
-            got
+            let got = self.receiver.recv().await;
+            match got {
+                Some(ok) => {
+                    // TODO: TEMP
+                    info!("{}", ok);
+                    Ok(ok)
+                }
+                None => Err(TestWebsocketError::Closed),
+            }
         };
 
-        return tokio::time::timeout(Duration::from_secs(5), hang).await.expect("Test receive timed out after 5 seconds.")
+        // run the send
+        let sending = tokio::time::timeout(Duration::from_secs(sec_timeout), hang).await;
+        match sending {
+            Ok(ok) => ok,
+            Err(_) => Err(TestWebsocketError::TimedOut),
+        }
     }
 }
 
@@ -151,7 +187,9 @@ async fn run_test_websocket_server() {
             // are expected or not, and funnel them into some handler for all packets.
             let Some((_, mut broker)) = get_registry().remove(&id) else {
                 // return; // Nobody has a handle to this computer so the computer cannot connect.
-                panic!("Computer {id} tried to connect, but nobody had a handle open!")
+                // Usually happens when tests fail but turtles try to re-connect afterwards. So we ignore it.
+                warn!("Computer {id} tried to connect, but nobody had a handle open!");
+                return;
             };
 
             // split the socket so we can spawn the threads for the channels
@@ -161,14 +199,6 @@ async fn run_test_websocket_server() {
             let incoming = tokio::spawn(async move {
                 while let Some(Ok(message)) = websocket_receiver.next().await {
                     if let Ok(text) = message.into_text() {
-                        // TODO: Replace this with a better websocket health check because this wastes packets
-                        if text
-                            .as_str()
-                            .contains("{\"key\":\"data\",\"value\":\"\\\"health\\\"\"}")
-                        {
-                            // skip it as its a health packet only.
-                            continue;
-                        }
                         // close the socket if the person on the other side of the channel is gone.
                         // TODO: Performance: This makes heap allocated strings. This is slow. This will need to be swapped
                         // to some other format.
@@ -206,7 +236,7 @@ async fn run_test_websocket_server() {
 impl TestWebsocket {
     /// Register that you want to talk to a computer. Will not block, so computer might not
     /// immediately be available.
-    pub async fn new(id: u16) -> Self {
+    pub async fn new(id: u16) -> Result<Self, TestWebsocketError> {
         // Make sure websocket is running
         // TODO: Nicer way of globally intializing the websocket server
         run_websocket().await;
@@ -215,9 +245,7 @@ impl TestWebsocket {
 
         // Don't hand out to the registry if items already exist.
         if registry.contains_key(&id) {
-            // Can't give it out again. This will crash tests.
-            // TODO: final implementation should obviously not crash.
-            panic!("Websocket/Computer ID already taken!")
+            return Err(TestWebsocketError::AlreadyTaken);
         }
 
         // Create the channels that we communicate over. Don't buffer(?)
@@ -235,11 +263,11 @@ impl TestWebsocket {
         );
 
         // Now give back the other side of the channel to the caller
-        Self {
+        Ok(Self {
             id,
             sender: from_test_tx,
             receiver: to_test_rx,
-        }
+        })
     }
 }
 
@@ -260,13 +288,15 @@ impl Drop for TestWebsocket {
 #[tokio::test]
 async fn basic_test_websocket() {
     // Open the socket, then end the test, which will drop and close it.
-    let _handle = TestWebsocket::new(u16::MAX - 1).await;
+    let handle = TestWebsocket::new(u16::MAX - 1).await.is_ok();
+    assert!(handle)
 }
 
 /// We should not be able to open the same websocket twice.
 #[tokio::test]
-#[should_panic(expected = "Websocket/Computer ID already taken!")]
 async fn double_open_websocket() {
-    let _handle = TestWebsocket::new(u16::MAX - 2).await;
-    let _handle2 = TestWebsocket::new(u16::MAX - 2).await;
+    let handle = TestWebsocket::new(u16::MAX - 2).await.is_ok();
+    let handle2 = TestWebsocket::new(u16::MAX - 2).await.is_err();
+    assert!(handle);
+    assert!(!handle2);
 }

@@ -1,1 +1,0 @@
--- this computer got no startup file.

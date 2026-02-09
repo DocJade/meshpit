@@ -1,5 +1,6 @@
 -- Weirdly, lua doesn't have some methods it really should.
 local helpers = {}
+local panic = require("panic")
 print("Setting up helpers...")
 
 --- Deep-copy a table (or anything), a lot of the time we do NOT want to take tables
@@ -8,6 +9,9 @@ print("Setting up helpers...")
 ---@param seen nil
 ---@return table any a deep copy of the input
 function helpers.deepCopy(input, seen)
+    -- YIELD TEST TODO:
+    os.queueEvent("yield")
+    os.pullEvent("yield")
     -- No need to deep copy if this is not a table.
     if type(input) ~= "table" then
         return input
@@ -243,7 +247,8 @@ end
 ---@return T[]
 function helpers.slice_array(input_table, slice_start, slice_end)
     local slice = {}
-    for i in slice_start or 1, slice_end or #input_table do
+    local slice_start = slice_start or 1
+    for i= slice_start, slice_end do
         slice[#slice+1] = input_table[i]
     end
     return slice
@@ -260,117 +265,211 @@ function helpers.unwrap(value)
     return value
 end
 
---- Turn any incoming type into a type we can turn into json.
---- Takes in values or keys, but do note that it does not take in both at the same time.
---- TODO: I'm worried this may cause computers to not yield for a while if the table is large. There needs to
---- be some yield in here.
+--- Cast a table into a string, no matter the internal data. Will NOT recurse into
+--- sub tables. Meant for debugging only, as the ordering here is not stable.
+---@param table table
+---@return string
+function forceStringTable(table)
+    local final_string = "Data of table (" .. tostring(table) .. "): "
+    for key, value in pairs(table) do
+        final_string = final_string .. "[key: (" .. tostring(key) .. "), value: (" .. tostring(value) .. ")]"
+    end
+    return final_string
+end
+
+--Table types for linting to prevent returning the wrong things.
+
+---@class SeenCleaned table
+---@class Seen table
+
+--- Clean up a type for JSON export. Will panic if the type or any sub-tables
+--- contain mixed table types (ie a table that is both an array and kv pairs) and
+--- will also panic if any of the keys used are not strings.
+--- 
+--- Since mixed table types panic, you make opt-in to completely discarding these
+--- tables instead of panicking, but this WILL lose data.
+--- 
+--- The second returned value is a table of tables. Ignore it if you do not need it.
+--- 
+--- Is meant to be called recursively,
 ---@param value any
----@param seen table an empty table please
----@return any any
-local function packJSON(value, seen)
+---@param seen Seen? an empty table please
+---@param seen_cleaned SeenCleaned? an empty table please
+---@param skip_invalid_tables boolean?
+---@return any, SeenCleaned
+function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
+    local skip_invalid_tables = skip_invalid_tables or false
+    -- TODO: some kind of yield in case this takes too long.
+    os.queueEvent("yield")
+    os.pullEvent("yield")
+
+    ---@diagnostic disable-next-line: undefined-global
+    local json_null = textutils.json_null
+
+    ---@type Seen
+    local seen = seen or {}
+    -- We pass in and back out tables we've already seen to prevent needing to re-do work
+    -- on tables that contain multiple duplicate table values under different keys.
+    ---@type SeenCleaned
+    local seen_cleaned = seen_cleaned or {}
+
+    -- Skip values that don't need extra work.
     local t = type(value)
     
     -- We can directly pass back primitive types.
     if t == "number" or t == "string" or t == "boolean" then
-        return value
+        return value, seen_cleaned
     end
     
     -- If this is a nil, we need to use the special nil type.
     if t == "nil" or t == nil then
-        ---@diagnostic disable-next-line: undefined-global
-        return textutils.json_null
+        return json_null, seen_cleaned
     end
     
     -- If it's a function, unfortunately we cannot get the name
     -- of it, but at least we can get the function ID... We can also tack on
     -- the definition line in case that helps.
     if t == "function" then
-        return tostring(value) .. "defined on line " .. tostring(debug.getinfo(value, "S").linedefined)
+        return tostring(value) .. " defined on line " .. tostring(debug.getinfo(value, "S").linedefined), seen_cleaned
     end
     
     -- We don't care at all about threads or userdata, discard them entirely.
     -- Note on userdata: Its just a type that lets you store C/C++ values in
     -- ...somewhere? But AFAIK we do not use them.
     if t == "thread" or t == "userdata" then
-        -- This is different from a json null, the serializer will completely ignore this value.
-        return nil
+        -- We can't blindly return nil here as that could cause gaps in the final
+        -- array (if we're constructing an array). Since we shouldn't be seeing
+        -- these anyways, we just use strings
+        return t, seen_cleaned
     end
 
-    -- Keep track of tables we've seen, avoids infinite recursion.
-    
-    -- The only remaining type is a table. Thus we will recurse into the table to clean it up.
-    -- Unless we have already seen this table, in which case, we just mark it as a duplicate.
+    -- Is this a json null?
+    if value == json_null then
+        -- It's just a null.
+        return json_null, seen_cleaned
+    end
+
+    -- Must be a table. Have we already seen it?
     if seen[value] then
-        return "Already packed this table."
+        -- Already seen this table.
+        -- Did we already finish this?
+        local maybe_cleaned = seen_cleaned[value]
+        if maybe_cleaned then
+            -- Already processed this table!
+            return maybe_cleaned, seen_cleaned
+        end
+
+        -- If we end up here, that means we've hit a circular dependency. We need
+        -- to break the cycle. Currently cant think of a clean way to resolve
+        -- this situation so we just explode. Don't make self referencing tables!
+        local printable_version = forceStringTable(value)
+        panic.panic("Self referential table! " .. printable_version)
     end
 
-    -- Mark the current value as seen, then start turning it into an object of key value pairs.
+    -- Mark it as seen. We will store the cleaned version once we're done.
     seen[value] = true
 
-    local struct = {
-        pairs = {}
-    }
+    -- Now we have to be careful to not try and store tables with mixed contents,
+    -- as this would silently discard data in textutils.
 
-    for key, value in pairs(value) do
-        -- Recuse into keys and values to pack them.
-        local packed_key = packJSON(key, seen)
-        local packed_value = packJSON(value, seen)
+    local array_item_count = 0
+    -- cant count the hashmap alone, this will also count the array side.
+    local combined_item_count = 0
 
-        -- Now if either the key or the value is nil, we have no need to store it.
-        if packed_key == nil or packed_value == nil then
-            goto continue
-        end
+    for _, _ in ipairs(value) do
+        array_item_count = array_item_count + 1
+    end
 
-        -- Otherwise, this pair is now in a serializable format.
-        table.insert(struct.pairs, {
-            key = packed_key,
-            value = packed_value
-        })
+    for _, _ in pairs(value) do
+        combined_item_count = combined_item_count + 1
+    end
 
-        ::continue::
+    -- Check if table is completely empty, we can skip if so!
+    if (array_item_count == 0) and (combined_item_count == 0) then
+        -- Empty table, return a null since it has `None` value.
+        -- Thus the rust side can also interpret it as an array(?)
+        seen_cleaned[value] = json_null
+        return json_null, seen_cleaned
     end
     
-    -- Return the cleaned table
-    return struct
-end
-
---- Unpack our custom json table format back into a normal lua table.
----@param packed string
----@return any unpacked
-function unpackJSON(packed)
-    -- Only need special logic for tables
-    if type(packed) ~= "table" then
-        return packed
-    end
-
-    -- Check if this is actually a packed table
-    if not packed.pairs or type(packed.pairs) ~= "table" then
-        -- Not our packed format. Cannot unpack.
-        -- Should already be in the correct format then.
-        return packed
-    end
-
-    local new_table = {}
-
-    -- Unpack our table!
-    -- We do not care about the keys from the originating table, as
-    -- the keys we want are packed into the pair.
-    for _, pair in ipairs(packed) do
-        -- If anything is nil (which it should never be) we skip the pair.
-        if pair.key == nil or pair.value == nil then
-            goto continue
+    -- There is content, make sure that the table is not mixed.
+    if (array_item_count < combined_item_count) and array_item_count ~= 0 then
+        -- Table is mixed. Can't work with that.
+        if CURRENTLY_PANICKING or false or skip_invalid_tables then
+            print("Invalid table in cleanForJSON! (Mixed table) Opted to skip.")
+            local xkcd_idk = "Invalid mixed table, skipped"
+            seen_cleaned[value] = xkcd_idk
+            return xkcd_idk, seen_cleaned
         end
-
-        -- Unpack the inner keys and values, then put them into our new table.
-        local unpacked_key = unpackJSON(pair.key)
-        local unpacked_value = unpackJSON(pair.value)
-        new_table[unpacked_key] = unpacked_value
-
-        ::continue::
+        -- I want to at least see what was in the table still
+        local printable_version = forceStringTable(value)
+        panic.panic("Mixed table! Not allowed! table: " .. printable_version)
     end
 
-    -- All done!
-    return new_table
+    -- Table is not mixed. It must be an array if the array item count is greater
+    -- than zero.
+    local is_array = array_item_count ~= 0
+
+    local cleaned_table = {}
+
+    -- If this is an array, we also need to make sure there are no gaps
+    -- > a = {}
+    -- > a[1] = "test"
+    -- > a[100] = "test"
+    -- > print(#a)
+    -- 1
+    -- So we keep track of how many elements we see, and check at the end that
+    -- the length matches
+    local total_items = 0
+
+    for k, v in pairs(value) do
+        total_items = total_items + 1
+        if is_array then
+            -- Array handling
+            -- Don't need to check the value of the key, since we know what type of
+            -- table this is already.
+            -- Recurse into the value
+            -- Putting values in like this is safe in `pairs()` even though its
+            -- not ipairs, since we are directly using the key number instead of
+            -- assuming its sequential.
+            local cleaned
+            cleaned, seen_cleaned = cleanForJSON(v, seen, seen_cleaned, skip_invalid_tables)
+            cleaned_table[k] = cleaned
+        else
+            -- Object/hashmap handling
+            -- Make sure that the key is a string, since that's the only allowed
+            -- type, unless we're panicking then we just need to get _SOMETHING_ out the door.
+            local is_string = type(k) == "string"
+            if (CURRENTLY_PANICKING or false) and not is_string then
+                print("Invalid table in cleanForJSON! (Non string key) Opted to skip.")
+                -- Just toss the whole table.
+                local failure_message = "Invalid mixed table, skipped"
+                return failure_message, seen_cleaned
+            end
+            panic.assert(is_string, "Non string key used in table! Not allowed!")
+
+            local cleaned
+            cleaned, seen_cleaned = cleanForJSON(v, seen, seen_cleaned, skip_invalid_tables)
+            cleaned_table[k] = cleaned
+        end
+    end
+    
+
+    -- Post-array handling
+    if is_array then
+        -- Check for holes.
+        panic.assert(array_item_count == total_items, "Array has holes! Not allowed!") 
+        -- Theoretically we can get back an empty array, so we will fix that as well
+        if #cleaned_table == 0 then
+            -- Return an empty array json thing instead
+            seen_cleaned[value] = json_null
+            return json_null, seen_cleaned
+        end
+    end
+
+    
+    seen_cleaned[value] = value
+    return cleaned_table, seen_cleaned
 end
 
 
@@ -388,7 +487,7 @@ function helpers.serializeJSON(input)
     -- Make a deep copy of the input as to not alter the incoming table, and
     -- clean it up for export.
     local copy = helpers.deepCopy(input)
-    copy = packJSON(copy, {})
+    copy = cleanForJSON(input)
 
     -- Serialize that with the standard serializer, now that it's in a
     -- format that it likes.
@@ -406,19 +505,21 @@ end
 --- 
 --- This assumes the incoming type is proper json! If it is not, the deserialization will throw an error.
 --- It is the Rust-side's job to ensure we never send malformed json.
+--- 
+--- Returns a true, any pair when successful.
+--- Returns a false, string with an error message from unserializeJSON on failure.
 ---@param json string
----@return any anything the result of deserialization. You should hopefully know the type.
+---@return boolean, any -- A success / fail, and the result of deserialization. You should hopefully know the type.
 function helpers.deserializeJSON(json)
-    -- careful! its unserialize instead of deserialize for some stupid reason
+    -- careful! its deserialize instead of deserialize for some stupid reason
     ---@diagnostic disable-next-line: undefined-global
-    local ok, result = pcall(textutils.unserializeJSON, json)
+    local ok, result_or_error = pcall(textutils.unserializeJSON, json)
     if not ok then
         -- Well crap!
-        panic.panic(tostring(result))
+        return false, result_or_error
     end
-    -- unpack the data as needed
-    -- we can pass by value here.
-    return unpackJSON(result)
+    -- Worked!
+    return true, result_or_error
 end
 
 print("Sanity checks...")
@@ -426,9 +527,21 @@ _ = helpers.serializeJSON("test")
 _ = helpers.serializeJSON({})
 _ = helpers.serializeJSON(nil)
 _ = helpers.serializeJSON(1234)
-local circle = {}
-circle["wow"] = circle
-_ = helpers.serializeJSON(circle)
+local temp = {}
+local temp_2 = {}
+temp_2[1] = "inside"
+local temp_3 = {}
+temp_3["string key"] = "wow"
+temp[1] = "test"
+temp[2] = "second_test"
+temp[3] = temp_2
+temp[4] = temp_3
+_ = helpers.serializeJSON(temp)
+-- The following will panic due to self-reference detection.
+-- Dont have a way to catch panics so, don't actually try it.
+-- local circle = {}
+-- circle["wow"] = circle
+-- _ = helpers.serializeJSON(circle)
 print("Done setting up helpers!")
 
 return helpers

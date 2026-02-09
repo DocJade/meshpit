@@ -1,53 +1,64 @@
 // Stuff related to running commands.
 
+use log::info;
+
 use crate::{
-    minecraft::{types::MinecraftPosition, vanilla::{block_type::MinecraftBlock, item_type::MinecraftItem}},
-    tests::{prelude::CoordinatePosition, test_harness::test_enviroment::{MinecraftTestHandle, MINECRAFT_TESTING_ENV}},
+    minecraft::{
+        types::MinecraftPosition,
+        vanilla::{
+            block_type::{HasMinecraftBlock, MinecraftBlock},
+            item_type::MinecraftItem,
+        },
+    },
+    tests::{
+        prelude::CoordinatePosition,
+        test_harness::test_enviroment::{MINECRAFT_TESTING_ENV, MinecraftTestHandle},
+    },
 };
 
 /// Minecraft commands that tests are able to run.
 ///
 /// All positions input into this command are interpreted as offsets from 0,0,0.
 #[derive(Clone)]
-pub enum TestCommand {
+pub enum TestCommand<'a> {
     /// Place a block. Takes in a MinecraftPosition to allow setting the facing
     /// direction of the block.
     ///
     /// Returns a pass or fail.
-    SetBlock(MinecraftPosition, MinecraftBlock),
+    SetBlock(MinecraftPosition, &'a MinecraftBlock),
 
     /// Fill some blocks. Facing direction cannot be set.
     ///
     /// Returns a pass or fail.
-    Fill(CoordinatePosition, CoordinatePosition, MinecraftBlock),
+    Fill(CoordinatePosition, CoordinatePosition, &'a MinecraftBlock),
 
     /// Test for a block at some position.
     ///
     /// Returns a pass or fail.
-    TestForBlock(CoordinatePosition, MinecraftBlock),
+    TestForBlock(CoordinatePosition, &'a MinecraftBlock),
 
     /// Get data from a block entity at some position. Requires the path of the data.
     /// For example, you can get the fuel level of a turtle with "Fuel". Do note that
     /// an empty input string will return all blockdata.
     ///
     /// Returns Data, or None if no data was found, or no block was at that position.
-    GetBlockData(CoordinatePosition, String),
+    GetBlockData(CoordinatePosition, &'a String),
 
     /// Attempts to put an item inside of a block capable of containing items.
-    /// 
+    ///
     /// Takes in a block to put items into, the item to add, a quantity,
     /// and a slot number inside of the block to replace with that item.
-    /// 
+    ///
     /// Returns pass or fail
-    InsertItem(CoordinatePosition, MinecraftItem, u8, u8),
+    InsertItem(CoordinatePosition, &'a MinecraftItem, u8, u8),
 
     /// Run a raw command. You should not do this.
     #[doc(hidden)]
     #[deprecated(note = "I'm too lazy to refactor and make this private. Don't use.")]
-    RawCommand(String),
+    RawCommand(&'a String),
 }
 
-impl TestCommand {
+impl TestCommand<'_> {
     /// Runs a supplied command. Returns a TestCommandResult
     pub(super) async fn invoke(&self, handle: &mut MinecraftTestHandle) -> TestCommandResult {
         // Get the environment so we can run commands
@@ -55,7 +66,9 @@ impl TestCommand {
         let corner = handle.corner();
         match self {
             TestCommand::SetBlock(minecraft_position, minecraft_block) => {
-                let position = corner.with_offset(minecraft_position.position).as_command_string();
+                let position = corner
+                    .with_offset(minecraft_position.position)
+                    .as_command_string();
                 let block_string = minecraft_block.get_full_name();
 
                 // Set the facing if needed.
@@ -65,9 +78,11 @@ impl TestCommand {
                     "".to_string()
                 };
 
-                let result = env
-                    .run_command(format!("setblock {position} {block_string}{face}"))
-                    .await;
+                let command = format!("setblock {position} {block_string}{face}");
+
+                info!("{command}");
+
+                let result = env.run_command(command).await;
                 // If we placed the block, we will get this text.
                 TestCommandResult::Success(result.contains("Changed the block"))
             }
@@ -75,9 +90,11 @@ impl TestCommand {
                 let position1 = corner.with_offset(*pos1).as_command_string();
                 let position2 = corner.with_offset(*pos2).as_command_string();
                 let block_string = minecraft_block.get_full_name();
-                let result = env
-                    .run_command(format!("fill {position1} {position2} {block_string}"))
-                    .await;
+
+                let command = format!("fill {position1} {position2} {block_string}");
+                info!("{command}");
+
+                let result = env.run_command(command).await;
                 // Should fill
                 TestCommandResult::Success(result.contains("Successfully filled"))
             }
@@ -89,12 +106,11 @@ impl TestCommand {
                 // Thus we use the block at the corner, offset -1 to move out of the test bounds, then fill that.
                 let position_to_check = corner.with_offset(*minecraft_position).as_command_string();
                 let marking_position = corner
-                    .with_offset(CoordinatePosition { x: -1, y: 0, z: -1,})
+                    .with_offset(CoordinatePosition { x: -1, y: 0, z: -1 })
                     .as_command_string();
                 let check_block = minecraft_block.get_full_name();
-                let marking_block = MinecraftBlock::from_string("bedrock")
-                    .unwrap()
-                    .get_full_name();
+                let block_marking_block = MinecraftBlock::from_string("bedrock").unwrap();
+                let marking_block = block_marking_block.get_full_name();
 
                 // We will use the execute command to check the position for the block we want, and if it is there, we will place
                 // the marking block.
@@ -102,6 +118,8 @@ impl TestCommand {
                 let check_command = format!(
                     "execute if block {position_to_check} {check_block} run setblock {marking_position} {marking_block}"
                 );
+
+                info!("{check_command}");
 
                 // This will have no result.
                 let _ = env.run_command(check_command).await;
@@ -111,21 +129,24 @@ impl TestCommand {
                 let mark_check_command: String =
                     format!("/setblock {marking_position} {marking_block} keep");
 
+                info!("{mark_check_command}");
+
                 let check_passed = env
                     .run_command(mark_check_command)
                     .await
                     .contains("Could not set the block");
 
                 // now regardless if that block is there or not, clean up afterwards
-                let _ = env
-                    .run_command(format!("/setblock {marking_position} air"))
-                    .await;
+                let cleanup_command = format!("/setblock {marking_position} air");
+                info!("{cleanup_command}");
+                let _ = env.run_command(cleanup_command).await;
 
                 TestCommandResult::Success(check_passed)
             }
             TestCommand::GetBlockData(minecraft_position, path) => {
                 let position = corner.with_offset(*minecraft_position).as_command_string();
                 let command_string = format!("/data get block {position} {path}");
+                info!("{command_string}");
                 let result: String = env.run_command(command_string).await;
 
                 // Could not get data?
@@ -138,13 +159,16 @@ impl TestCommand {
                     Some(string) => TestCommandResult::Data(Some(string.trim().to_string())),
                     None => TestCommandResult::Data(None),
                 }
-            },
+            }
             TestCommand::InsertItem(minecraft_position, item, quantity, slot) => {
                 // Luckily there is the `/item` command, didn't know about this until today.
                 // `/item replace block 6 67 7 container.0 with minecraft:mustard 67`
                 let position = corner.with_offset(*minecraft_position).as_command_string();
                 let item_name = item.get_full_name();
-                let command_string = format!("/item replace block {position} container.{slot} with {item_name} {quantity}");
+                let command_string = format!(
+                    "/item replace block {position} container.{slot} with {item_name} {quantity}"
+                );
+                info!("{command_string}");
                 let result: String = env.run_command(command_string).await;
 
                 // Did that work?
@@ -157,6 +181,7 @@ impl TestCommand {
             #[allow(deprecated)] // Yeah i know.
             TestCommand::RawCommand(command) => {
                 // This is not very safe. but im not writing an interface for tons of commands.
+                info!("{command}");
                 let result = env.run_command(command.to_string()).await;
                 if result.is_empty() {
                     TestCommandResult::Data(None)

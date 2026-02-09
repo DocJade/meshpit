@@ -19,7 +19,7 @@ pub enum LuaValue {
     Bool(bool),
 
     // Empty
-    Null
+    Null,
 }
 
 /// All of the tables we export from minecraft will be in this `key, value`

@@ -8,14 +8,14 @@ local helpers = require("helpers")
 math.randomseed(os.getComputerID() * os.epoch("utc"))
 
 -- All of our local state.
-local networking = {}
+NETWORKING = {}
 
 -- All compuers communicate over the same websocket, only differentiated by their computer ID
 -- via sending it in the initial handshake.
 -- TODO: This is currently pinned to localhost. Should we do this another way?
-local SERVER_URL = "localhost:4816/meshpit"
-local websocket = nil
-local HEADERS = {
+NETWORKING.SERVER_URL = "ws://localhost:4816/meshpit"
+NETWORKING.websocket = nil
+NETWORKING.HEADERS = {
     ["Computer-ID"] = tostring(os.getComputerID())
 }
 
@@ -43,13 +43,13 @@ end
 --- This should be called once on startup.
 local function connect()
     -- skip if the websocket is already open, skip.
-    if websocket then
+    if NETWORKING.websocket then
         return
     end
 
     -- Try connecting, also here we send the headers for the computer's ID.
     -- We wait for at most 10 seconds.
-    local socket, error_string = http.websocket(SERVER_URL, HEADERS, 10)
+    local socket, error_string = http.websocket(NETWORKING.SERVER_URL, NETWORKING.HEADERS, 10)
 
     -- If that didn't work, give up.
     if not socket then
@@ -57,13 +57,14 @@ local function connect()
     end
 
     -- Got a websocket!
-    websocket = socket
+    NETWORKING.websocket = socket
 end
 
 -- Do the initial connection.
 -- This will block, but thats fine, we we really shouldn't be doing anything
 -- without a connection.
 print("Calling connect...")
+-- This network connection is global.
 connect()
 print("Done!")
 
@@ -80,7 +81,7 @@ print("Done!")
 ---@field uuid string A unique identifier for this packet
 ---@field timestamp number Seconds since unix epoch
 ---@field packet_type PacketType The kind of packet this is.
----@field data string The inner data contained within this table.
+---@field data any The inner data contained within this table.
 
 
 --- Constructs a packet in a the set format.
@@ -91,19 +92,13 @@ print("Done!")
 ---@param UUID string
 ---@return string json a json string
 local function formatPacket(data, type, UUID)
-    --- Turn the incoming data into json first
-    local ok, packet_data = pcall(helpers.serializeJSON, data)
-    if not ok then
-        panic.panic("Failed to clean a table for json! " .. tostring(result), true)
-     end
-
     ---@type packet
     local packet = {
         id = os.getComputerID(),
         uuid = UUID,
         timestamp = os.epoch("utc"),
         packet_type = type or "unknown",
-        data = packet_data
+        data = data
     }
 
     -- Now turn that into a json string.
@@ -129,7 +124,7 @@ end
 ---@param UUID string
 ---@returns boolean
 local function send(message, type, UUID)
-    if not websocket then
+    if not NETWORKING.websocket then
         -- No websocket to send on!
         -- We cannot run healthy here. We assume
         -- callers have already ran healthy. The is nothing we can do.
@@ -139,10 +134,8 @@ local function send(message, type, UUID)
     -- diagnostic disables since i am casting in place.
     local message_copy = helpers.deepCopy(message)
     ---@diagnostic disable-next-line: cast-local-type
-    message_copy = helpers.serializeJSON(message_copy)
-    ---@diagnostic disable-next-line: cast-local-type
     message_copy = formatPacket(message_copy, type, UUID)
-    local ok, result = pcall(websocket.send, message_copy)
+    local ok, result = pcall(NETWORKING.websocket.send, message_copy)
     return ok
 end
 
@@ -155,54 +148,46 @@ local function receive(timeout)
         print("Please specify timeouts!")
         timeout = 0
     end
-    if not websocket then
+    if not NETWORKING.websocket then
         -- No websocket to listen on!
         panic.force_reboot("Cannot listen without a websocket!")
         return false, "impossible" -- this never gets returned
     end
     -- Wait for a message
-    local ok, result = pcall(websocket.receive, timeout)
+    local ok, message_or_pcall_error, binary_or_fail = pcall(NETWORKING.websocket.receive, timeout)
+
     if not ok then
-        -- Did it just time out?
-        if result == "Timed out" then
-            return false, result
-        end
-        -- Something actually failed.
-        -- TODO: handling errors here
-        panic.force_reboot("Failed receive packet for reason other than timeout! : " .. tostring(result))
+        -- Pcall itself failed.
+        return false, message_or_pcall_error
+    end
+
+    if type(binary_or_fail) ~= "boolean" then
+        -- Got a failure message.
+        return false, binary_or_fail
+    end
+
+    -- Some other weird error, should have already been caught by the
+    -- error string check
+    if message_or_pcall_error == nil then
+        local panic_message = "Failed to receive message for an unknown reason! | ok: "
+        panic_message = panic_message .. tostring(ok) .. " | message_or_pcall_error: "
+        panic_message = panic_message .. tostring(message_or_pcall_error) .. " | binary_or_fail: "
+        panic_message = panic_message .. tostring(binary_or_fail)
+        panic.panic(panic_message) -- Might still be able to send this out somehow.
     end
     
     -- unpack the returned packet
-    local ok, second_result = pcall(helpers.deserializeJSON, result)
+    local ok, result_or_failure = helpers.deserializeJSON(message_or_pcall_error)
     if not ok then
         -- Unpacking failed for some reason!
-        panic.force_reboot("Failed to unpack received packet! : " .. tostring(second_result))
+        panic.force_reboot("Failed to unpack received packet! : " .. tostring(result_or_failure))
     end
 
-    return true, second_result
+    return true, result_or_failure
 end
 
---- Check if the socket is healthy, automatically re-connects if needed.
-local function healthy()
-    -- Ping pong time
-    -- TODO: Replace this with something that makes more since, yes this
-    -- will make 2 packets for every packet, but its fine for now.
-    local worked = true -- if we skip the test, this needs to be true
-    if websocket then -- Skip if there is already no websocket
-        websocket.
-        worked = send("health", "debugging", getUUID())
-    end
-    if not worked then
-        -- Sending didn't work. Either that timed out, or the websocket is dead.
-        -- Remove the socket.
-        websocket = nil
-    end
-    
-    -- Re-negotiate the websocket if needed.
-    if not websocket then
-        connect()
-    end
-end
+-- TODO: Check if the socket is healthy, automatically re-connects if needed.
+
 
 
 --- One way message to the control server, does not expect a response. Should
@@ -212,7 +197,7 @@ end
 --- is already a string, in which case we assume it is already in the format that you
 --- wish to send.
 ---@param message table|string
-function networking.debugSend(message)
+function NETWORKING.debugSend(message)
     -- Check that the socket is ready first.
     -- healthy() --TODO: Do this in a better way.
 
@@ -236,12 +221,10 @@ end
 --- Takes in a timeout. Returns a boolean on wether we got anything before the timeout ended.
 ---@param timeout number
 ---@return boolean, any
-function networking.waitForPacket(timeout)
+function NETWORKING.waitForPacket(timeout)
     -- very hollow wrapper at the moment lol.
     local bool, result = receive(timeout)
     return bool, result
 end
 
--- And finally return the functions for use.
 print("Done setting up networking!")
-return networking

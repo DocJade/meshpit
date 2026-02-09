@@ -1,6 +1,9 @@
 // Testing galore
 
-use crate::tests::{prelude::*, test_harness::computer_builder::COMPUTER_STATE_CHANGE_TIME};
+use crate::{
+    minecraft::vanilla::block_type::HasMinecraftBlock,
+    tests::{prelude::*, test_harness::computer_builder::COMPUTER_STATE_CHANGE_TIME},
+};
 use std::{cmp::max, fmt::Display, sync::Arc};
 
 use once_cell::sync::Lazy;
@@ -45,12 +48,7 @@ impl MinecraftTestEnvironment {
         Self {
             environment,
             // This does not need a facing direction.
-            next_plot_corner:
-                CoordinatePosition {
-                    x: 0,
-                    y: -60,
-                    z: 0,
-                },
+            next_plot_corner: CoordinatePosition { x: 0, y: -60, z: 0 },
             highest_z: 0,
         }
     }
@@ -71,7 +69,7 @@ pub struct MinecraftTestHandle {
     corner: CoordinatePosition,
 
     /// This is set once the test has been marked as pass or fail.
-    done: bool
+    done: bool,
 }
 
 impl MinecraftTestHandle {
@@ -124,14 +122,20 @@ impl MinecraftTestHandle {
         // This command will break in 1.21.5
         // from: https://haselkern.com/Minecraft-ArmorStand/
         // `/summon minecraft:armor_stand ~ ~ ~ {Invisible:true,CustomNameVisible:true,CustomName:'{"text":"TESTNAME","bold":true}'}`
-        let command: String = format!("summon minecraft:armor_stand {a_x} 0 {a_z} {{Invisible:true,CustomNameVisible:true,CustomName:'{{\"text\":\"{test_name}\",\"bold\":true}}'}}");
+        let command: String = format!(
+            "summon minecraft:armor_stand {a_x} 0 {a_z} {{Invisible:true,CustomNameVisible:true,CustomName:'{{\"text\":\"{test_name}\",\"bold\":true}}'}}"
+        );
         let _ = env.run_command(command).await; // non-critical.
 
-        Self { area, corner, done: false}
+        Self {
+            area,
+            corner,
+            done: false,
+        }
     }
 
     /// Run a test command.
-    pub async fn command(&mut self, command: TestCommand) -> TestCommandResult {
+    pub async fn command(&mut self, command: TestCommand<'_>) -> TestCommandResult {
         if self.done {
             // cant run commands after completion
             panic!("Tried to run command on finished test!")
@@ -153,18 +157,24 @@ impl MinecraftTestHandle {
     pub async fn stop(&mut self, passed: bool) {
         if self.done {
             // skip
-            return
+            return;
         }
         let mut env = MINECRAFT_TESTING_ENV.lock().await;
         let corner_string = self.corner.as_command_string();
         // Update floor
         let block = if passed {
             // pass sound
-            env.run_command(format!("playsound minecraft:block.note_block.bell master @a {corner_string} 1 0.5")).await;
+            env.run_command(format!(
+                "playsound minecraft:block.note_block.bell master @a {corner_string} 1 0.5"
+            ))
+            .await;
             MinecraftBlock::from_string("lime_concrete").unwrap()
         } else {
             // fail sound
-            env.run_command(format!("playsound minecraft:block.note_block.bit master @a {corner_string} 1 0.5")).await;
+            env.run_command(format!(
+                "playsound minecraft:block.note_block.bit master @a {corner_string} 1 0.5"
+            ))
+            .await;
             MinecraftBlock::from_string("red_concrete").unwrap()
         };
 
@@ -202,7 +212,7 @@ impl MinecraftTestHandle {
         // of raw commands.
         let block: MinecraftBlock = setup.kind.into();
         assert!(
-            TestCommand::SetBlock(*position, block)
+            TestCommand::SetBlock(*position, &block)
                 .invoke(self)
                 .await
                 .success()
@@ -215,7 +225,7 @@ impl MinecraftTestHandle {
         // /data modify block -2 -60 10 On set value 1b
         #[allow(deprecated)]
         // used to kickstart computers. We do not have a test command for setting data right now.
-        let turn_on = TestCommand::RawCommand(format!(
+        let turn_on = TestCommand::RawCommand(&format!(
             "/data modify block {position_string} On set value 1b"
         ));
         assert!(
@@ -232,7 +242,7 @@ impl MinecraftTestHandle {
 
         // Now that the computer is on, we can get it's ID.
         // /data get block -2 -60 10 ComputerId
-        let id: u16 = TestCommand::GetBlockData(position.position, "ComputerId".to_string())
+        let id: u16 = TestCommand::GetBlockData(position.position, &"ComputerId".to_string())
             .invoke(self)
             .await
             .data()
@@ -250,7 +260,7 @@ impl MinecraftTestHandle {
         if let ComputerKind::Turtle(amount) = setup.kind {
             let fuel = amount.unwrap_or(0);
             #[allow(deprecated)] // yes another raw command. TODO:!
-            let refuel = TestCommand::RawCommand(format!(
+            let refuel = TestCommand::RawCommand(&format!(
                 "/data modify block {position_string} Fuel set value {fuel}"
             ))
             .invoke(self)
@@ -353,7 +363,8 @@ impl MinecraftTestEnvironment {
             x: corner.x + i64::from(area.size_x),
             y: corner.y,
             z: corner.z + i64::from(area.size_z),
-        }.as_command_string();
+        }
+        .as_command_string();
         let block = floor_block.get_full_name();
         // run the fill command
         let command = format!("fill {p1} {p2} {block}");

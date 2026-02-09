@@ -8,7 +8,7 @@ use crate::minecraft::computercraft::computer_types::lua_types::{LuaPackedTable,
 /// When computers panic they return a special type.
 ///
 /// These contain a lot of funky data, and thus are basically un-derivable.
-/// 
+///
 /// See panicking.md
 #[derive(Debug, Deserialize)]
 pub struct LuaPanic {
@@ -16,5 +16,5 @@ pub struct LuaPanic {
     locals: LuaPackedTable,
     up_values: LuaPackedTable,
     #[serde(flatten)] // Grab all of the fields that are unmatched.
-    unknown_extra_data: HashMap<String, LuaValue>
+    unknown_extra_data: HashMap<String, LuaValue>,
 }

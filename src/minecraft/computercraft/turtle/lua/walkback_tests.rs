@@ -2,13 +2,23 @@
 // Since we have our own json serializer and de-serializer, its important to test these.
 
 use log::info;
+use serde::Deserialize;
 
-use crate::{minecraft::{computercraft::computer_types::{packet_types::{DebuggingPacket, RawTurtlePacket, WalkbackPacket}, walkback_type::Walkback}, peripherals::inventory::GenericInventory}, tests::prelude::*};
+use crate::{
+    minecraft::{
+        computercraft::computer_types::{
+            packet_types::{DebuggingPacket, RawTurtlePacket, WalkbackPacket},
+            walkback_type::Walkback,
+        },
+        peripherals::inventory::GenericInventory,
+        vanilla::block_type::{HasMinecraftBlock, LuaBlock, PositionedMinecraftBlock},
+    },
+    tests::prelude::*,
+};
 
 #[tokio::test]
 /// Attempt the most bog-standard movement you've ever seen
 async fn basic_movement_test() {
-
     // Turtle will: (with waits after every step)
     // pre-wait for the test to start
     // Step forward
@@ -18,7 +28,6 @@ async fn basic_movement_test() {
     // back, up
     // down
 
-
     let area = TestArea {
         size_x: 5,
         size_z: 5,
@@ -26,28 +35,24 @@ async fn basic_movement_test() {
     let mut test = MinecraftTestHandle::new(area, "Basic movement test").await;
     // create a computer
     let mut position = MinecraftPosition {
-        position: CoordinatePosition {
-            x: 3,
-            y: 1,
-            z: 3,
-        },
+        position: CoordinatePosition { x: 2, y: 1, z: 2 },
         facing: Some(MinecraftCardinalDirection::North),
     };
-    
+
     let test_script = r#"
     local walkback = require("walkback")
     local panic = require("panic")
-    local networking = require("networking")
+    require("networking")
     local function wait_step()
-        networking.debugSend("wait")
-        if networking.waitForPacket(5) then
+        NETWORKING.debugSend("wait")
+        if NETWORKING.waitForPacket(5) then
             return
         end
-        networking.debugSend("fail, no response from harness.")
-        while true do end -- inf loop to time out the turtle.
+        NETWORKING.debugSend("fail, no response from harness.")
+        os.setComputerLabel("step failure")
     end
 
-    walkback.setup(3,1,3,"n")
+    walkback.setup(2,1,2,"n")
     wait_step()
     panic.assert(walkback.forward())
     wait_step()
@@ -67,7 +72,7 @@ async fn basic_movement_test() {
     panic.assert(walkback.up())
     wait_step()
     panic.assert(walkback.down())
-    os.shutdown()
+    wait_step()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -83,55 +88,88 @@ async fn basic_movement_test() {
 
     let setup = ComputerSetup::new(ComputerKind::Turtle(Some(50)), config);
     let computer = test.build_computer(&position, setup).await;
-    let mut socket = TestWebsocket::new(computer.id()).await;
-
-    let air = MinecraftBlock::from_string("minecraft:air").unwrap();
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
 
     computer.turn_on(&mut test).await;
 
     // Initial handshake
     let str = String::from("go");
-    let _ = socket.receive().await;
-    socket.send(str.clone()).await;
+    let wanted_data = String::from("id");
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
 
     // Forwards
     // Wait for turtle to finish moving
-    let _ = socket.receive().await;
+    socket.receive(10).await.expect("Should receive");
     // Check new position.
     position.move_direction(MinecraftCardinalDirection::North);
-    // Make sure there is NOT air at the expected position
-    assert!(!test.command(TestCommand::TestForBlock(position.position, air)).await.success());
+
+    // Check for the turtle by querying block data
+
+    assert!(
+        test.command(TestCommand::GetBlockData(position.position, &wanted_data))
+            .await
+            .data()
+            .is_some()
+    );
     // Good, start next movement
-    socket.send(str.clone()).await;
-    
-    let _ = socket.receive().await;
+    socket.send(str.clone(), 10).await.expect("Should send");
+
+    socket.receive(10).await.expect("Should receive");
     position.move_direction(MinecraftCardinalDirection::South);
     position.move_direction(MinecraftCardinalDirection::South);
-    assert!(!test.command(TestCommand::TestForBlock(position.position, air)).await.success());
-    socket.send(str.clone()).await;
-    
-    let _ = socket.receive().await;
+    assert!(
+        test.command(TestCommand::GetBlockData(position.position, &wanted_data))
+            .await
+            .data()
+            .is_some()
+    );
+    socket.send(str.clone(), 10).await.expect("Should send");
+
+    socket.receive(10).await.expect("Should receive");
     position.move_direction(MinecraftCardinalDirection::North);
     position.move_direction(MinecraftCardinalDirection::West);
-    assert!(!test.command(TestCommand::TestForBlock(position.position, air)).await.success());
-    socket.send(str.clone()).await;
-    
-    let _ = socket.receive().await;
+    assert!(
+        test.command(TestCommand::GetBlockData(position.position, &wanted_data))
+            .await
+            .data()
+            .is_some()
+    );
+    socket.send(str.clone(), 10).await.expect("Should send");
+
+    socket.receive(10).await.expect("Should receive");
     position.move_direction(MinecraftCardinalDirection::East);
     position.move_direction(MinecraftCardinalDirection::East);
-    assert!(!test.command(TestCommand::TestForBlock(position.position, air)).await.success());
-    socket.send(str.clone()).await;
-    
-    let _ = socket.receive().await;
+    assert!(
+        test.command(TestCommand::GetBlockData(position.position, &wanted_data))
+            .await
+            .data()
+            .is_some()
+    );
+    socket.send(str.clone(), 10).await.expect("Should send");
+
+    socket.receive(10).await.expect("Should receive");
     position.move_direction(MinecraftCardinalDirection::West);
     position.move_direction(MinecraftCardinalDirection::Up);
-    assert!(!test.command(TestCommand::TestForBlock(position.position, air)).await.success());
-    socket.send(str.clone()).await;
-    
-    let _ = socket.receive().await;
+    assert!(
+        test.command(TestCommand::GetBlockData(position.position, &wanted_data))
+            .await
+            .data()
+            .is_some()
+    );
+    socket.send(str.clone(), 10).await.expect("Should send");
+
+    socket.receive(10).await.expect("Should receive");
     position.move_direction(MinecraftCardinalDirection::Down);
-    assert!(!test.command(TestCommand::TestForBlock(position.position, air)).await.success());
-    
+    assert!(
+        test.command(TestCommand::GetBlockData(position.position, &wanted_data))
+            .await
+            .data()
+            .is_some()
+    );
+
     // All matched.
     test.stop(true).await
 }
@@ -153,28 +191,24 @@ async fn basic_walkback_tests() {
     let mut test = MinecraftTestHandle::new(area, "Basic walkback tests").await;
     // create a computer
     let mut position = MinecraftPosition {
-        position: CoordinatePosition {
-            x: 3,
-            y: 1,
-            z: 3,
-        },
+        position: CoordinatePosition { x: 2, y: 1, z: 2 },
         facing: Some(MinecraftCardinalDirection::North),
     };
-    
+
     let test_script = r#"
     local walkback = require("walkback")
     local panic = require("panic")
-    local networking = require("networking")
+    require("networking")
     local function wait_step()
-        networking.debugSend("wait")
-        if networking.waitForPacket(5) then
+        NETWORKING.debugSend("wait")
+        if NETWORKING.waitForPacket(5) then
             return
         end
-        networking.debugSend("fail, no response from harness.")
-        while true do end -- inf loop to time out the turtle.
+        NETWORKING.debugSend("fail, no response from harness.")
+        os.setComputerLabel("step failure")
     end
 
-    walkback.setup(3,1,3,"n")
+    walkback.setup(2,1,2,"n")
     
     wait_step()
     panic.assert(walkback.forward())
@@ -186,9 +220,7 @@ async fn basic_walkback_tests() {
     panic.assert(walkback.forward())
     wait_step()
     panic.assert(walkback.rewind())
-
-    
-    os.shutdown()
+    wait_step()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -204,7 +236,9 @@ async fn basic_walkback_tests() {
 
     let setup = ComputerSetup::new(ComputerKind::Turtle(Some(50)), config);
     let computer = test.build_computer(&position, setup).await;
-    let mut socket = TestWebsocket::new(computer.id()).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to open websocket.");
 
     let air = MinecraftBlock::from_string("minecraft:air").unwrap();
 
@@ -212,41 +246,51 @@ async fn basic_walkback_tests() {
 
     // Initial handshake
     let str = String::from("go");
-    let _ = socket.receive().await;
-    socket.send(str.clone()).await;
-    
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
+
     // Wait for walkback to hit end destination
-    let _ = socket.receive().await;
-    
+    socket.receive(10).await.expect("Should receive");
+
     // Copy the moves locally.
     position.move_direction(MinecraftCardinalDirection::North);
     position.move_direction(MinecraftCardinalDirection::North);
     position.move_direction(MinecraftCardinalDirection::Up);
     position.move_direction(MinecraftCardinalDirection::Up);
     position.move_direction(MinecraftCardinalDirection::South);
-    
+
     // Turtle actually made it there?
-    assert!(!test.command(TestCommand::TestForBlock(position.position, air)).await.success());
-    
+    let _ = test
+        .command(TestCommand::GetBlockData(
+            position.position,
+            &"id".to_string(),
+        ))
+        .await
+        .data()
+        .expect("Should be a block there.");
+
     // Now let it walkback
-    socket.send(str.clone()).await;
-    
+    socket.send(str.clone(), 5).await.expect("Should send");
+
     // Wait for the rewind
-    let _ = socket.receive().await;
+    socket.receive(10).await.expect("Should receive");
 
     // Reset our position
-    position.position = CoordinatePosition {
-            x: 3,
-            y: 1,
-            z: 3,
-    };
+    position.position = CoordinatePosition { x: 2, y: 1, z: 2 };
 
     // Did the rollback work?
-    assert!(!test.command(TestCommand::TestForBlock(position.position, air)).await.success());
+    assert!(
+        test.command(TestCommand::GetBlockData(
+            position.position,
+            &"id".to_string()
+        ))
+        .await
+        .data()
+        .is_some()
+    );
 
     // All good
     test.stop(true).await;
-
 }
 
 #[tokio::test]
@@ -259,29 +303,25 @@ async fn basic_block_memorization() {
     let mut test = MinecraftTestHandle::new(area, "Basic seen memorization").await;
 
     let mut start_pos = MinecraftPosition {
-        position: CoordinatePosition {
-            x: 2,
-            y: 1,
-            z: 2,
-        },
+        position: CoordinatePosition { x: 2, y: 1, z: 2 },
         facing: Some(MinecraftCardinalDirection::North),
     };
-    
+
     // Relative to the turtle
-    let front_block_pos = CoordinatePosition { x: 1, y: 0, z: 0 };
+    let front_block_pos = CoordinatePosition { x: 0, y: 0, z: -1 };
     let up_block_pos = CoordinatePosition { x: 0, y: 1, z: 0 };
 
     let test_script = r#"
     local walkback = require("walkback")
     local panic = require("panic")
-    local networking = require("networking")
+    require("networking")
     local function wait_step()
-        networking.debugSend("wait")
-        if networking.waitForPacket(5) then
+        NETWORKING.debugSend("wait")
+        if NETWORKING.waitForPacket(5) then
             return
         end
-        networking.debugSend("fail, no response from harness.")
-        while true do end
+        NETWORKING.debugSend("fail, no response from harness.")
+        os.setComputerLabel("step failure")
     end
     walkback.setup(1,1,1,"n")
     -- handshake
@@ -299,10 +339,8 @@ async fn basic_block_memorization() {
     local mem_up = walkback.blockQuery({x=1, y=2, z=1})
 
     -- report back
-    networking.debugSend(mem_front)
-    networking.debugSend(mem_up)
-    
-    os.shutdown()
+    NETWORKING.debugSend(mem_front)
+    NETWORKING.debugSend(mem_up)
     "#;
 
     let libraries = MeshpitLibraries {
@@ -317,7 +355,9 @@ async fn basic_block_memorization() {
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
     let setup = ComputerSetup::new(ComputerKind::Turtle(Some(50)), config);
     let computer = test.build_computer(&start_pos, setup).await;
-    let mut socket = TestWebsocket::new(computer.id()).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to open a websocket.");
 
     computer.turn_on(&mut test).await;
 
@@ -325,32 +365,54 @@ async fn basic_block_memorization() {
     start_pos.facing = None;
 
     // Place the blocks
-    let stone = MinecraftBlock::from_string("stone").unwrap();
-    let dirt = MinecraftBlock::from_string("dirt").unwrap();
-    assert!(test.command(TestCommand::SetBlock(start_pos.with_offset(front_block_pos), stone)).await.success());
-    assert!(test.command(TestCommand::SetBlock(start_pos.with_offset(up_block_pos), dirt)).await.success());
+    let stone = MinecraftBlock::from_string("stone").expect("Should get a block message.");
+    let dirt = MinecraftBlock::from_string("dirt").expect("Should get a block message.");
+    assert!(
+        test.command(TestCommand::SetBlock(
+            start_pos.with_offset(front_block_pos),
+            &stone
+        ))
+        .await
+        .success()
+    );
+    assert!(
+        test.command(TestCommand::SetBlock(
+            start_pos.with_offset(up_block_pos),
+            &dirt
+        ))
+        .await
+        .success()
+    );
 
     // do the thing mr turtle pls
     let str = String::from("go");
-    let _ = socket.receive().await;
-    socket.send(str.clone()).await;
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
 
-    let front = socket.receive().await;
-    let up = socket.receive().await;
-    
+    let front = socket.receive(5).await.unwrap();
+    let up = socket.receive(5).await.unwrap();
+
     // make those blocks
     let front: RawTurtlePacket = serde_json::from_str(&front).unwrap();
     let front: DebuggingPacket = front.try_into().unwrap();
-    let front: MinecraftBlock = serde_json::from_str(&front.debug_message).unwrap();
+    let front: PositionedMinecraftBlock =
+        PositionedMinecraftBlock::deserialize(&front.inner_data).unwrap();
     let up: RawTurtlePacket = serde_json::from_str(&up).unwrap();
     let up: DebuggingPacket = up.try_into().unwrap();
-    let up: MinecraftBlock = serde_json::from_str(&up.debug_message).unwrap();
+    let up: PositionedMinecraftBlock =
+        PositionedMinecraftBlock::deserialize(&up.inner_data).unwrap();
 
     // Front is stone
-    assert_eq!(front.get_full_name(), "minecraft:stone");
+    assert_eq!(
+        front.get_full_name(),
+        std::borrow::Cow::Borrowed("minecraft:stone")
+    );
 
     // and dis mf got dirt on he head omegalul
-    assert_eq!(up.get_full_name(), "minecraft:dirt");
+    assert_eq!(
+        up.get_full_name(),
+        std::borrow::Cow::Borrowed("minecraft:dirt")
+    );
 
     // all good
     test.stop(true).await;
@@ -366,32 +428,27 @@ async fn walkback_serialization() {
     let mut test = MinecraftTestHandle::new(area, "Walkback serialization").await;
     // create a computer
     let position = MinecraftPosition {
-        position: CoordinatePosition {
-            x: 1,
-            y: 1,
-            z: 1,
-        },
+        position: CoordinatePosition { x: 1, y: 1, z: 1 },
         facing: Some(MinecraftCardinalDirection::North),
     };
-    
+
     let test_script = r#"
     local walkback = require("walkback")
     local panic = require("panic")
-    local networking = require("networking")
+    require("networking")
     local function wait_step()
-        networking.debugSend("wait")
-        if networking.waitForPacket(5) then
+        NETWORKING.debugSend("wait")
+        if NETWORKING.waitForPacket(5) then
             return
         end
-        networking.debugSend("fail, no response from harness.")
-        while true do end -- inf loop to time out the turtle.
+        NETWORKING.debugSend("fail, no response from harness.")
+        os.setComputerLabel("step failure")
     end
 
     walkback.setup(1,1,1,"n")
     
     wait_step()
-    networking.debugSend(walkback.dataJson())
-    os.shutdown()
+    NETWORKING.debugSend(walkback.dataJson())
     "#;
 
     let libraries = MeshpitLibraries {
@@ -407,17 +464,22 @@ async fn walkback_serialization() {
 
     let setup = ComputerSetup::new(ComputerKind::Turtle(Some(50)), config);
     let computer = test.build_computer(&position, setup).await;
-    let mut socket = TestWebsocket::new(computer.id()).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
 
     computer.turn_on(&mut test).await;
 
     // Initial handshake
     let str = String::from("go");
-    let _ = socket.receive().await;
-    socket.send(str.clone()).await;
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
 
     // Store the json
-    let json: String = socket.receive().await;
+    let json: String = socket
+        .receive(5)
+        .await
+        .expect("Should get walkback message");
 
     // Deserialize it!
     let raw_packet: RawTurtlePacket = serde_json::from_str(&json).unwrap();
@@ -426,7 +488,7 @@ async fn walkback_serialization() {
 
     // The position should have not changed.
     assert_eq!(walkback.cur_position, position);
-    
+
     test.stop(true).await;
 }
 
@@ -442,32 +504,27 @@ async fn empty_inventory_serialization() {
     let mut test = MinecraftTestHandle::new(area, "Empty inventory serialization").await;
     // create a computer
     let position = MinecraftPosition {
-        position: CoordinatePosition {
-            x: 1,
-            y: 1,
-            z: 1,
-        },
+        position: CoordinatePosition { x: 1, y: 1, z: 1 },
         facing: Some(MinecraftCardinalDirection::North),
     };
-    
+
     let test_script = r#"
+    require("networking")
     local walkback = require("walkback")
-    local panic = require("panic")
-    local networking = require("networking")
+    local panic = require("panic")  
     local function wait_step()
-        networking.debugSend("wait")
-        if networking.waitForPacket(5) then
+        NETWORKING.debugSend("wait")
+        if NETWORKING.waitForPacket(5) then
             return
         end
-        networking.debugSend("fail, no response from harness.")
-        while true do end -- inf loop to time out the turtle.
+        NETWORKING.debugSend("fail, no response from harness.")
+        os.setComputerLabel("step failure")
     end
 
     walkback.setup(1,1,1,"n")
     
     wait_step()
-    networking.debugSend(walkback.inventoryJSON())
-    os.shutdown()
+    NETWORKING.debugSend(walkback.inventoryJSON())
     "#;
 
     let libraries = MeshpitLibraries {
@@ -483,22 +540,28 @@ async fn empty_inventory_serialization() {
 
     let setup = ComputerSetup::new(ComputerKind::Turtle(Some(50)), config);
     let computer = test.build_computer(&position, setup).await;
-    let mut socket = TestWebsocket::new(computer.id()).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to open websocket");
 
     computer.turn_on(&mut test).await;
 
     // Initial handshake
     let str = String::from("go");
-    let _ = socket.receive().await;
-    socket.send(str.clone()).await;
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
 
     // Store the json
-    let json: String = socket.receive().await;
+    let json: String = socket
+        .receive(5)
+        .await
+        .expect("Should get a inventory message");
 
     // Deserialize it!
     let raw_packet: RawTurtlePacket = serde_json::from_str(&json).unwrap();
     let walkback_packet: DebuggingPacket = raw_packet.try_into().unwrap();
-    let inventory: GenericInventory = serde_json::from_str(&walkback_packet.debug_message).unwrap();
+    let inventory: GenericInventory =
+        GenericInventory::deserialize(&walkback_packet.inner_data).unwrap();
 
     // Should have 16 slots
     assert_eq!(inventory.size, 16);
@@ -508,10 +571,9 @@ async fn empty_inventory_serialization() {
     for slot in inventory.slots {
         assert!(slot.is_none())
     }
-    
+
     test.stop(true).await;
 }
-
 
 #[tokio::test]
 #[ignore]
@@ -526,19 +588,19 @@ async fn recognize_all_blocks() {
     let mut test = MinecraftTestHandle::new(area, "Recognize all blocks").await;
 
     // Encase the test in barrier blocks so items dont fly everywhere
-    let mut c1 = CoordinatePosition {
-        x: 0,
-        y: 1,
-        z: 0, 
-    };
+    let mut c1 = CoordinatePosition { x: 0, y: 1, z: 0 };
 
-    let mut c2 = CoordinatePosition {
-        x: 4,
-        y: 3,
-        z: 4, 
-    };
+    let mut c2 = CoordinatePosition { x: 4, y: 3, z: 4 };
 
-    assert!(test.command(TestCommand::Fill(c1, c2, MinecraftBlock::from_string("barrier").unwrap())).await.success());
+    assert!(
+        test.command(TestCommand::Fill(
+            c1,
+            c2,
+            &MinecraftBlock::from_string("barrier").unwrap()
+        ))
+        .await
+        .success()
+    );
 
     // Make it hollow, otherwise items would still fly.
     c1.x += 1;
@@ -547,15 +609,17 @@ async fn recognize_all_blocks() {
     c2.y -= 1;
     c2.z -= 1;
     assert!(
-        test.command(TestCommand::Fill(c1, c2, MinecraftBlock::from_string("air").unwrap())).await.success()
+        test.command(TestCommand::Fill(
+            c1,
+            c2,
+            &MinecraftBlock::from_string("air").unwrap()
+        ))
+        .await
+        .success()
     );
 
     let mut block_pos = MinecraftPosition {
-        position: CoordinatePosition {
-            x: 2,
-            y: 1,
-            z: 2, 
-        },
+        position: CoordinatePosition { x: 2, y: 1, z: 2 },
         facing: Some(MinecraftCardinalDirection::North),
     };
 
@@ -564,14 +628,14 @@ async fn recognize_all_blocks() {
     let test_script = r#"
     local walkback = require("walkback")
     local panic = require("panic")
-    local networking = require("networking")
+    require("networking")
     local function wait_step()
-        networking.debugSend("wait")
-        if networking.waitForPacket(10) then
+        NETWORKING.debugSend("wait")
+        if NETWORKING.waitForPacket(10) then
             return
         end
         -- Must be done.
-        os.shutdown()
+        keep_going = false
     end
     -- Store the position of the block
     local block_pos = {
@@ -581,14 +645,15 @@ async fn recognize_all_blocks() {
     }
     walkback.setup(2,1,2,"n")
     panic.assert(walkback.back())
+    local keep_going = true
     
     wait_step()
-    while true do
+    while keep_going do
         wait_step()
         local _ = walkback.inspect() -- Load the block
         -- Then actually get the full block info
         local block = walkback.blockQuery(block_pos, true)
-        networking.debugSend(block)
+        NETWORKING.debugSend(block)
     end
     "#;
 
@@ -605,7 +670,9 @@ async fn recognize_all_blocks() {
 
     let setup = ComputerSetup::new(ComputerKind::Turtle(Some(50)), config);
     let computer = test.build_computer(&block_pos, setup).await;
-    let mut socket = TestWebsocket::new(computer.id()).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to open a websocket");
 
     // Remove the facing direction from the block placement so it doesn't explode
     block_pos.facing = None;
@@ -617,32 +684,53 @@ async fn recognize_all_blocks() {
 
     // Initial handshake
     let str = String::from("go");
-    let _ = socket.receive().await;
-    socket.send(str.clone()).await;
-    
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
+
     let data = get_mc_data();
-    
+
     assert!(data.blocks_by_name.keys().len() != 0);
     let mut failed: bool = false;
     let mut failed_block: String = "".to_string();
     for block in data.blocks_by_name.keys() {
         info!("Placing {block}");
-        assert!(test.command(TestCommand::SetBlock(block_pos, MinecraftBlock::from_string(block).unwrap())).await.success());
+        assert!(
+            test.command(TestCommand::SetBlock(
+                block_pos,
+                &MinecraftBlock::from_string(&block).unwrap()
+            ))
+            .await
+            .success()
+        );
         info!("Placed.");
         // Get the block from the turtle
-        socket.send(str.clone()).await;
-        let _ = socket.receive().await; // discard the wait message
-        socket.send(str.clone()).await;
-        let turtle_saw = socket.receive().await;
-        let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_saw).expect("Turtle should return a packet.");
-        let debug_packet: DebuggingPacket = raw_packet.try_into().expect("This should be a debugging packet.");
-        
+        socket
+            .send(str.clone(), 1)
+            .await
+            .expect("Should be able to send message");
+        socket.receive(1).await.expect("Should receive"); // discard the wait message
+        socket
+            .send(str.clone(), 1)
+            .await
+            .expect("Should be able to send message");
+        let turtle_saw = socket
+            .receive(1)
+            .await
+            .expect("Turtle should send a block.");
+        let raw_packet: RawTurtlePacket =
+            serde_json::from_str(&turtle_saw).expect("Turtle should return a packet.");
+        let debug_packet: DebuggingPacket = raw_packet
+            .try_into()
+            .expect("This should be a debugging packet.");
+
         // Now the inside of that packet is just a MinecraftBlock that needs to be deserialized.
-        let returned_block: MinecraftBlock = serde_json::from_str(&debug_packet.debug_message).expect("This should be a block.");
+        let returned_block: PositionedMinecraftBlock =
+            PositionedMinecraftBlock::deserialize(&debug_packet.inner_data)
+                .expect("This should be a block");
         info!("Turtle saw: {}", returned_block.get_full_name());
-        
+
         // Check that the block names are the same
-        if returned_block.get_full_name() != *block {
+        if returned_block.get_full_name() != block.into() {
             // Bad!
             failed = true;
             failed_block = block.to_string();
@@ -697,11 +785,7 @@ async fn query_previous_positions() {
     let mut test = MinecraftTestHandle::new(area, "Query previous positions").await;
 
     let position = MinecraftPosition {
-        position: CoordinatePosition {
-            x: 1,
-            y: 1,
-            z: 1,
-        },
+        position: CoordinatePosition { x: 1, y: 1, z: 1 },
         facing: Some(MinecraftCardinalDirection::North),
     };
 
@@ -709,6 +793,7 @@ async fn query_previous_positions() {
     local walkback = require("walkback")
     local panic = require("panic")
     local helpers = require("helpers")
+    require("networking")
     
     walkback.setup(1,1,1,"n")
     
@@ -717,7 +802,7 @@ async fn query_previous_positions() {
     local pos2 = {x=1, y=2, z=1}
     local pos3 = {x=1, y=3, z=1}
     local pos4 = {x=1, y=4, z=1}
-    local nowhere = {x=1, y=4, z=1}
+    local nowhere = {x=0, y=0, z=0}
 
     -- their keys
     local key1 = helpers.keyFromTable(pos1)
@@ -767,9 +852,7 @@ async fn query_previous_positions() {
     panic.assert(not walkback.posQuery(key4, true))
 
     -- yell that everything worked
-    networking.debugSend("all good mate")
-
-    os.shutdown()
+    NETWORKING.debugSend("all good mate")
     "#;
 
     let libraries = MeshpitLibraries {
@@ -784,17 +867,18 @@ async fn query_previous_positions() {
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
     let setup = ComputerSetup::new(ComputerKind::Turtle(Some(50)), config);
     let computer = test.build_computer(&position, setup).await;
-    let mut socket = TestWebsocket::new(computer.id()).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
 
     computer.turn_on(&mut test).await;
 
-    // Initial handshake
-    let str = String::from("go");
-    let _ = socket.receive().await;
-    socket.send(str.clone()).await;
-    
     // wait for turtle to finish or error.
-    let worked = socket.receive().await.contains("all good mate");
+    let worked = socket
+        .receive(30)
+        .await
+        .expect("Turtle should message us.")
+        .contains("all good mate");
     test.stop(worked).await;
     assert!(worked)
 }

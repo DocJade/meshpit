@@ -145,7 +145,7 @@ impl TestComputer {
     pub async fn turn_on(&self, handle: &mut MinecraftTestHandle) {
         // /computercraft turn-on 49
         #[allow(deprecated)] // we use the raw command here. yes that sucks.
-        let command = TestCommand::RawCommand(format!("computercraft turn-on {}", self.id));
+        let command = TestCommand::RawCommand(&format!("computercraft turn-on {}", self.id));
         let result = handle
             .command(command)
             .await
@@ -169,7 +169,7 @@ impl TestComputer {
     pub async fn turn_off(&self, handle: &mut MinecraftTestHandle) {
         // /computercraft shutdown 49
         #[allow(deprecated)] // we use the raw command here. yes that sucks.
-        let command = TestCommand::RawCommand(format!("computercraft shutdown {}", self.id));
+        let command = TestCommand::RawCommand(&format!("computercraft shutdown {}", self.id));
         let result = handle
             .command(command)
             .await

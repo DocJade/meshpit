@@ -130,18 +130,20 @@ end
 
 --- States that a minecraft block can have.
 --- 
---- We only care about some of these. We do not discard data that is outside of this set,
---- this alias is just to make autocomplete work for the states we _do_ care about.
+--- We only care about some of these. However, we keep all of them anyways to make
+--- deserialization easier. See notes below on ones you may care about on the lua
+--- side.
 --- 
 --- Annoyingly, all of these inner types are strings, but we do document what
 --- the underlying _intended_ type is.
----@alias MinecraftBlockState
----| "age" number (depends on plant) -- Used to track plant growth (not saplings)
----| "eye" boolean -- If an end portal frame has an eye of ender.
----| "honey_level" number (0-5) -- How much honey is in a beehive
----| "level" number (depends on block) -- how full a block is of fluid, composter fullness, or light emit from a block.
----| "lit" boolean -- Wether the block is turned on or off, useful for furnaces.
----| "stage" number (0-1) -- Wether a sapling is ready to grow. Can only be 1 if growth is obstructed (?)
+---@alias MinecraftBlockState{string: string|boolean|number}
+
+--- "age"			 number (depends on plant) -- Used to track plant growth (not saplings)
+--- "eye"			 boolean -- If an end portal frame has an eye of ender.
+--- "honey_level"	 number (0-5) -- How much honey is in a beehive
+--- "level"			 number (depends on block) -- how full a block is of fluid, composter fullness, or light emit from a block.
+--- "lit"			 boolean -- Wether the block is turned on or off, useful for furnaces.
+--- "stage"			 number (0-1) -- Wether a sapling is ready to grow. Can only be 1 if growth is obstructed (?)
 
 
 --- Our internal block type, used to do stuff with, well, blocks! Now including
@@ -194,9 +196,11 @@ function block_helpers.detailsToBlock(incoming, block_position)
 	---@type ImportantTags[]
 	local tags = {}
 	-- Keep only the tags we care about.
-	for name, value in pairs(incoming.state) do
+	-- if the incoming tags are completely empty, we need to ignore them, hence the
+	-- empty table here
+	for name, value in pairs(incoming.tag or {}) do
 		if block_helpers.tagIsImportant(name) then
-			tags[name] = value
+			tags[#tags + 1] = value
 		end
 	end
 
@@ -206,8 +210,9 @@ function block_helpers.detailsToBlock(incoming, block_position)
 		---@type string
 		name = incoming.name,
 		-- We keep all states.
-		---@type MinecraftBlockState
+		---@type MinecraftBlockState[]
 		state = incoming.state,
+		---@type MinecraftBlockState[]
 		tag = tags,
 	}
 end
