@@ -8,15 +8,15 @@ local panic = {}
 CURRENTLY_PANICKING = false
 
 --- The panic method. Takes in a panic message.
---- 
+---
 --- Tthe computer is assumed to be in an un-recoverable state,
 --- and thus will completely rebooting as soon as it is able
 --- to relay all of its panic data.
---- 
+---
 --- This will automatically grab table data as well, but there are cases where you
 --- don't need, don't want, or can't have that, so you may disable this behavior,
 --- and only return the message with a stack trace.
---- 
+---
 --- Takes in a panic message.
 --- @param message string
 --- @param message_only boolean?
@@ -44,7 +44,7 @@ function panic.panic(message, message_only)
         the_up_values = panicUpValues()
     end
 
-    ---@alias PanicData {stack_trace: string, locals: table, up_values: table} 
+    ---@alias PanicData {stack_trace: string, locals: table, up_values: table}
     ---@type PanicData
     panic_data = {
         -- A stack trace of where the panic was called.
@@ -126,7 +126,7 @@ end
 -- right now.
 
 --- Reboot the computer due to a failure.
---- 
+---
 --- Use this when you know the networking is completely unreachable and you cannot recover.
 --- @param message string
 function panic.force_reboot(message)

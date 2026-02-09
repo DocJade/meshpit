@@ -33,23 +33,23 @@ function helpers.deepCopy(input, seen)
     if meta then
         setmetatable(copy, helpers.deepCopy(meta, seen))
     end
-    
+
     return copy
 end
 
 --- Create a string from a table, used for indexing into hashmaps and such.
---- 
+---
 --- The input table must obey the following rules:
 --- - The keys and values must be types that can be cast to strings safely
 --- - - string, number, boolean (you should really not use these in keys)
 --- - There must not be any duplicate keys in the table
 --- - - This also applies to having a key at `1` and `"1"`, as these would both
 --- - - map to the same string key.
---- 
+---
 --- Tables that do not obey these rules will return nil.
---- 
+---
 --- Does not modify the incoming table.
---- 
+---
 --- No method to cast back from this format is provided. This is by design,
 --- its supposed to act as our hash function for generic tables.
 ---@generic K : string|number|boolean
@@ -82,7 +82,7 @@ function helpers.keyFromTable(input_table)
 
     -- Sort the keys
     table.sort(keys)
-    
+
     -- Now add the values.
     local ordered_pairs = {}
     for i = 1, #keys do
@@ -108,14 +108,14 @@ end
 --- Check if two values are exactly the same by value. Also checks if they are
 --- the same type. This will be very slow on large tables or tables that use
 --- other tables as keys.
---- 
+---
 --- Panics on threads, functions, or userdata.
---- 
+---
 --- This aims to cover most edge cases, but theoretically if create a table with
 --- several deeply equal table keys that live at different addresses, this
 --- could falsely return true even if the tables are not COMPLETELY identical.
 --- This is close enough. You really shouldn't use tables as keys anyways.
---- 
+---
 --- Does not check metatables.
 ---@generic T
 ---@param a T
@@ -176,7 +176,7 @@ function helpers.deepEquals(a, b, seen)
     -- which makes this slow for hashmaps, but this is a deep check after all.
     for ka, va in pairs(a) do
         local vb = b[ka]
-        
+
         -- if vb is nil, it could be due to indexing with tables, thus having
         -- different key references while the insides of the keys are actually
         -- still the same. We must recurse into the keys if so.
@@ -235,9 +235,9 @@ function helpers.deepEquals(a, b, seen)
 end
 
 --- Get a sub-slice of a array. This slice is inclusive on both ends.
---- 
+---
 --- Do note that this will NOT work on tables that have keyed values.
---- 
+---
 --- If the slice contains tables, they are by reference, and NOT copied, so
 --- be aware of that.
 ---@generic T
@@ -285,12 +285,12 @@ end
 --- Clean up a type for JSON export. Will panic if the type or any sub-tables
 --- contain mixed table types (ie a table that is both an array and kv pairs) and
 --- will also panic if any of the keys used are not strings.
---- 
+---
 --- Since mixed table types panic, you make opt-in to completely discarding these
 --- tables instead of panicking, but this WILL lose data.
---- 
+---
 --- The second returned value is a table of tables. Ignore it if you do not need it.
---- 
+---
 --- Is meant to be called recursively,
 ---@param value any
 ---@param seen Seen? an empty table please
@@ -315,24 +315,24 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
 
     -- Skip values that don't need extra work.
     local t = type(value)
-    
+
     -- We can directly pass back primitive types.
     if t == "number" or t == "string" or t == "boolean" then
         return value, seen_cleaned
     end
-    
+
     -- If this is a nil, we need to use the special nil type.
     if t == "nil" or t == nil then
         return json_null, seen_cleaned
     end
-    
+
     -- If it's a function, unfortunately we cannot get the name
     -- of it, but at least we can get the function ID... We can also tack on
     -- the definition line in case that helps.
     if t == "function" then
         return tostring(value) .. " defined on line " .. tostring(debug.getinfo(value, "S").linedefined), seen_cleaned
     end
-    
+
     -- We don't care at all about threads or userdata, discard them entirely.
     -- Note on userdata: Its just a type that lets you store C/C++ values in
     -- ...somewhere? But AFAIK we do not use them.
@@ -391,7 +391,7 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
         seen_cleaned[value] = json_null
         return json_null, seen_cleaned
     end
-    
+
     -- There is content, make sure that the table is not mixed.
     if (array_item_count < combined_item_count) and array_item_count ~= 0 then
         -- Table is mixed. Can't work with that.
@@ -453,12 +453,12 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
             cleaned_table[k] = cleaned
         end
     end
-    
+
 
     -- Post-array handling
     if is_array then
         -- Check for holes.
-        panic.assert(array_item_count == total_items, "Array has holes! Not allowed!") 
+        panic.assert(array_item_count == total_items, "Array has holes! Not allowed!")
         -- Theoretically we can get back an empty array, so we will fix that as well
         if #cleaned_table == 0 then
             -- Return an empty array json thing instead
@@ -467,19 +467,19 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
         end
     end
 
-    
+
     seen_cleaned[value] = value
     return cleaned_table, seen_cleaned
 end
 
 
 --- The built-in json serializer is not good enough.
---- 
+---
 --- The textutils.serialiseJSON() method does not work with:
 --- - Mixed tables
 --- - Non-integer keys into tables
 --- - Recursion within tables
---- 
+---
 --- Thus we have our own that pre-cleans the data.
 ---@param input any
 ---@return string json the outgoing json string.
@@ -502,10 +502,10 @@ function helpers.serializeJSON(input)
 end
 
 --- Deserialize our custom json format back into tables.
---- 
+---
 --- This assumes the incoming type is proper json! If it is not, the deserialization will throw an error.
 --- It is the Rust-side's job to ensure we never send malformed json.
---- 
+---
 --- Returns a true, any pair when successful.
 --- Returns a false, string with an error message from unserializeJSON on failure.
 ---@param json string

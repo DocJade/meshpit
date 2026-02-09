@@ -123,7 +123,7 @@ None of these have been altered from the normal `turtle` call.
 
 ### New methods
 - `walkback.compareAt(pos)`
-- - Same as the other compare methods, but checking a position instead of a side. 
+- - Same as the other compare methods, but checking a position instead of a side.
 - - Returns `nil` if we have not seen that block.
 
 ## Block inspection
@@ -134,7 +134,7 @@ None of these have been altered from the normal `turtle` call.
 
 ### New methods
 - `walkback.inspectAt(pos1)`
-- - Same as the other inspect methods, but checking a position instead of a side. 
+- - Same as the other inspect methods, but checking a position instead of a side.
 - - The first returned boolean will be `nil` if we have not seen that position.
 
 ## Mining
@@ -233,7 +233,7 @@ Note: there is currently no limit on how big this buffer can get, which yes, thi
 all_seen_positions = {}
 ```
 
-When all tasks have 
+When all tasks have
 
 # Walkback documented blocks storage implementation
 To prevent needing to write a custom block deserializer in Lua (I would rather die) we will simply store the entire output for each block we've seen in a hashmap, where the key is the position of the block, and the value is whatever `turtle.inspect()` returned.

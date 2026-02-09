@@ -5,17 +5,17 @@ local block_helpers = {}
 
 --- Tags that a Minecraft block can have.
 --- This is NOT an exhaustive list. As almost every tag is useless to us.
---- 
+---
 --- It appears that tags that hold other tags are automatically determined correctly
 --- when a turtle inspects, such tag collection tags(?) as #all_signs. This means
 --- that we do not need to store sub-tags if we only care about a collection tag.
 --- Tags returned from inspect do not include the prefix hashtag, but do contain
 --- the namespace of the tag.
---- 
+---
 --- Annoyingly, there is no tag for falling blocks.
---- 
+---
 --- Data sourced from https://minecraft.wiki/w/Block_tag_%28Java_Edition%29
---- 
+---
 --- We do not need to transmit this data back to the control computer, as we can
 --- get it again from our local minecraft data copy if needed.
 ---@alias MinecraftBlockTag
@@ -84,11 +84,11 @@ function block_helpers.tagIsImportant(tag)
 end
 
 --- Some blocks fall. There is no tag for that. Here's all of them.
---- 
+---
 --- Due note that this list does not include concrete powder due to its many
 --- color variations. Plus, in what situation would we be dealing with
 --- concrete powder??
---- 
+---
 --- Snow can only fall in bugrock.
 ---@alias BlocksThatCanFall
 ---| "minecraft:sand"
@@ -129,11 +129,11 @@ function block_helpers.blockCanFall(block)
 end
 
 --- States that a minecraft block can have.
---- 
+---
 --- We only care about some of these. However, we keep all of them anyways to make
 --- deserialization easier. See notes below on ones you may care about on the lua
 --- side.
---- 
+---
 --- Annoyingly, all of these inner types are strings, but we do document what
 --- the underlying _intended_ type is.
 ---@alias MinecraftBlockState{string: string|boolean|number}
@@ -148,7 +148,7 @@ end
 
 --- Our internal block type, used to do stuff with, well, blocks! Now including
 --- position!
---- 
+---
 --- Field notes: (Ha!)
 --- - Inspecting air ALWAYS returns `nil, "no block to inspect"`, thus
 --- this is automatically converted.
@@ -161,7 +161,7 @@ end
 --- - - This is not stored. Server can reconstruct the value if needed.
 --- - Tags are stored as state{[string]: boolean}.
 --- - - However, we do not store most of the tags. See BlockTag.
---- 
+---
 --- Definition based off of:
 --- https://tweaked.cc/reference/block_details.html
 ---@class Block
@@ -172,12 +172,12 @@ end
 local this_is_purely_for_the_linter = {}
 
 --- Cast a table to a Block. Requires the position of the block.
---- 
+---
 --- Does not clone the incoming block, do not modify it,
---- 
+---
 --- Clones the position, so it is safe to modify the value you provided
 --- afterwards.
---- 
+---
 --- Takes either a table or string, since the string is the only way we
 --- can detect air.
 ---@param incoming table|string

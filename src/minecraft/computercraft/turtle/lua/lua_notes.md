@@ -96,7 +96,7 @@ print(yps)
 -- Things that do not yield:
 -- os.cancelAlarm()
 -- os.cancelTimer()
--- os.getComputerID() 
+-- os.getComputerID()
 -- os.getComputerLabel()
 -- os.setComputerLabel() -- even with a string.
 -- os.sleep() -- Would eat events. Do not use.

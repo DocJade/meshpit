@@ -22,7 +22,7 @@ NETWORKING.HEADERS = {
 --- To prevent issues when multiple messages are sent in the same second, each packet
 --- gets a UUID to differentiate it. Do note that re-transmitting a packet on failure
 --- should continue to use the same UUID, just in case the control computer got it.
---- 
+---
 --- For simplicity, these are not real 128 bit compliant UUIDs. This may change in the
 --- future if I feel like writing that for some reason.
 ---@return string UUID a UUID.
@@ -39,7 +39,7 @@ end
 
 --- Connect to the websocket. If this fails, we give up completely, since
 --- we cannot report the error at all.
---- 
+---
 --- This should be called once on startup.
 local function connect()
     -- skip if the websocket is already open, skip.
@@ -85,7 +85,7 @@ print("Done!")
 
 
 --- Constructs a packet in a the set format.
---- 
+---
 --- Requires a UUID.
 ---@param data string|table
 ---@param type PacketType The type of this packet. If not set, will set to unknown.
@@ -113,11 +113,11 @@ local function formatPacket(data, type, UUID)
 end
 
 --- Send a message out the websocket. Does not wait for a reply.
---- 
+---
 --- Takes in a table or a string. Will put the input into a packet before sending.
 --- Deeply copies tables instead of passing them by reference.
 --- Requires a UUID and packet type.
---- 
+---
 --- Returns `false` if sending fails for any reason.
 ---@param message table|string
 ---@param type PacketType The type of this packet. If not set, will set to unknown.
@@ -175,7 +175,7 @@ local function receive(timeout)
         panic_message = panic_message .. tostring(binary_or_fail)
         panic.panic(panic_message) -- Might still be able to send this out somehow.
     end
-    
+
     -- unpack the returned packet
     local ok, result_or_failure = helpers.deserializeJSON(message_or_pcall_error)
     if not ok then
@@ -192,7 +192,7 @@ end
 
 --- One way message to the control server, does not expect a response. Should
 --- only be used for debugging.
---- 
+---
 --- The incoming type will be converted to a json string, unless the incoming type
 --- is already a string, in which case we assume it is already in the format that you
 --- wish to send.
@@ -217,7 +217,7 @@ function NETWORKING.debugSend(message)
 end
 
 --- Block and wait for any incoming message.
---- 
+---
 --- Takes in a timeout. Returns a boolean on wether we got anything before the timeout ended.
 ---@param timeout number
 ---@return boolean, any

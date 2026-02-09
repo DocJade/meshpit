@@ -209,7 +209,7 @@ async fn basic_walkback_tests() {
     end
 
     walkback.setup(2,1,2,"n")
-    
+
     wait_step()
     panic.assert(walkback.forward())
     panic.assert(walkback.forward())
@@ -446,7 +446,7 @@ async fn walkback_serialization() {
     end
 
     walkback.setup(1,1,1,"n")
-    
+
     wait_step()
     NETWORKING.debugSend(walkback.dataJson())
     "#;
@@ -511,7 +511,7 @@ async fn empty_inventory_serialization() {
     let test_script = r#"
     require("networking")
     local walkback = require("walkback")
-    local panic = require("panic")  
+    local panic = require("panic")
     local function wait_step()
         NETWORKING.debugSend("wait")
         if NETWORKING.waitForPacket(5) then
@@ -522,7 +522,7 @@ async fn empty_inventory_serialization() {
     end
 
     walkback.setup(1,1,1,"n")
-    
+
     wait_step()
     NETWORKING.debugSend(walkback.inventoryJSON())
     "#;
@@ -646,7 +646,7 @@ async fn recognize_all_blocks() {
     walkback.setup(2,1,2,"n")
     panic.assert(walkback.back())
     local keep_going = true
-    
+
     wait_step()
     while keep_going do
         wait_step()
@@ -794,9 +794,9 @@ async fn query_previous_positions() {
     local panic = require("panic")
     local helpers = require("helpers")
     require("networking")
-    
+
     walkback.setup(1,1,1,"n")
-    
+
     -- The positions to look at
     local pos1 = {x=1, y=1, z=1}
     local pos2 = {x=1, y=2, z=1}

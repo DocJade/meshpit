@@ -3,7 +3,7 @@ local item_helper = {}
 
 
 --- Our internal item type.
---- 
+---
 --- The following information is discarded:
 --- - NBT: This is just a hash of the NBT data, and is not useful to us.
 --- - displayName: We don't display anything in the turtle, and the server already knows this.
@@ -17,7 +17,7 @@ local item_helper = {}
 --- - Tags: This one sounds absolutely crazy, but the item tag list really
 --- doesn't contain anything useful to us. There isn't any generic `fuel` or
 --- `placeable` tag, so really theres nothing for us there.
---- 
+---
 --- Definition based off of:
 --- https://tweaked.cc/reference/item_details.html
 ---@class Item
