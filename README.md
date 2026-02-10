@@ -37,6 +37,7 @@ Meshpit is a turtle swarm controller for CC:Tweaked Turtles with the goal of com
   * Some other stuff i forgot
 * RUST: A Rust-based test Minecraft test-harness
   * Currently just tests the underlying lua implementations. In the future this will be expanded to a wider variety of real-ish world tests.
+  * This test harness will automatically install a NeoForge Minecraft server, download mods, configure, and run the Minecraft server for tests automagically!
 * A Client/Server model between lua and Rust, allowing me to avoid writing Lua for anything complicated. Lua sucks.
 
 and probably more stuff I can't be bothered to write down at 1am.
