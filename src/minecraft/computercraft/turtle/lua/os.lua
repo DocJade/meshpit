@@ -1,1 +1,0 @@
--- The underlying operating system that the turtles will utilize.
