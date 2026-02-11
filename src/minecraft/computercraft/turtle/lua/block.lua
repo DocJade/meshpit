@@ -212,7 +212,7 @@ function block_helpers.detailsToBlock(incoming, block_position)
 		-- We keep all states.
 		---@type MinecraftBlockState[]
 		state = incoming.state,
-		---@type MinecraftBlockState[]
+		---@type MinecraftBlockTag[]
 		tag = tags,
 	}
 end

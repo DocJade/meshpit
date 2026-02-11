@@ -1374,7 +1374,7 @@ function walkback.getSelectedSlot()
 	return turtle.getSelectedSlot()
 end
 
---- Get information about the item sin the given slot. Slot defaults to the
+--- Get information about the items in the given slot. Slot defaults to the
 --- currently selected slot.
 ---
 --- Detailed returns more data, but see the note below.

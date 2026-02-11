@@ -3,15 +3,23 @@ local helpers = {}
 local panic = require("panic")
 print("Setting up helpers...")
 
+--- Yield, does not yield from a coroutine.
+function helpers.quick_yield()
+    ---@diagnostic disable-next-line: undefined-field
+    os.queueEvent("yield")
+    ---@diagnostic disable-next-line: undefined-field
+    os.pullEvent("yield")
+end
+
 --- Deep-copy a table (or anything), a lot of the time we do NOT want to take tables
 --- by reference. So we need to copy it.
 ---@param input any
 ---@param seen nil
 ---@return table any a deep copy of the input
 function helpers.deepCopy(input, seen)
-    -- YIELD TEST TODO:
-    os.queueEvent("yield")
-    os.pullEvent("yield")
+    -- Each iteration of the loop yields, as this is an intensive function.
+    helpers.quick_yield()
+
     -- No need to deep copy if this is not a table.
     if type(input) ~= "table" then
         return input
@@ -123,6 +131,9 @@ end
 ---@param seen table|nil? Internal for recursion, not required.
 ---@return boolean
 function helpers.deepEquals(a, b, seen)
+    -- This is an expensive function.
+    helpers.quick_yield()
+
     -- types are the same
     local t_a = type(a)
     if t_a ~= type(b) then
@@ -232,6 +243,54 @@ function helpers.deepEquals(a, b, seen)
     end
 
     return count_a == count_b
+end
+
+--- Check if an array contains a matching item.
+--- @generic T
+--- @param array T[]
+--- @param to_find T
+--- @return boolean
+function helpers.arrayContains(array, to_find)
+    local to_find_type = type(to_find)
+    for _, v in ipairs(array) do
+        -- skip incorrect types
+        if to_find_type == type(v) then
+            if v == to_find then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+--- Find a string within a substring.
+--- @param string string
+--- @param pattern string
+--- @return boolean
+function helpers.findString(string, pattern)
+    local p_len = #pattern
+    local s_len = #string
+
+    -- Pattern has to be shorter than the string.
+    if p_len > s_len then return false end
+
+    -- Pattern cannot be empty
+    if p_len == 0 then return false end
+
+    -- If the lengths are the same, we can directly compare
+    if  p_len == s_len then
+        return string == pattern
+    end
+
+    -- Loop over the sub-strings.
+    for i = 1, (s_len - p_len) + 1 do
+        helpers.quick_yield()
+        for j = 1, p_len do
+            if string[i + j] ~= pattern[j] then break end
+            if j == p_len then return true end
+        end
+    end
+    return false
 end
 
 --- Get a sub-slice of a array. This slice is inclusive on both ends.

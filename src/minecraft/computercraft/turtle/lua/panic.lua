@@ -34,7 +34,7 @@ function panic.panic(message, message_only)
     -- mark the panic as started
     CURRENTLY_PANICKING = true
     -- Traceback automatically adds the message to the top.
-    local trace = debug.traceback(message)
+    local trace = debug.traceback(message, 2)
     -- Print that for debugging too
     print(trace)
     -- Only grab the variables if needed.

@@ -26,6 +26,7 @@ local item_helper = {}
 ---@field maxCount number|nil
 ---@field damage number|nil -- How many durability points have been used on this item
 ---@field maxDamage number|nil -- How many total durability points this item has when new.
+---@field tags string[]|nil -- The tags on this item
 local linter_oh_linter_lint_for_thee = {}
 
 --- Convert the result from getItemDetail to an Item type.
@@ -36,6 +37,12 @@ function item_helper.detailsToItem(incoming)
         -- empty
         return nil
     end
+
+    local tag_array = {}
+    for tag, _ in pairs(incoming.tags) do
+        tag_array[#tag_array+1] = tag
+    end
+
     ---@type Item
     return {
         name = incoming.name,
@@ -43,9 +50,9 @@ function item_helper.detailsToItem(incoming)
         maxCount = incoming.maxCount, -- if not present, its nil.
         damage = incoming.damage,
         maxDamage = incoming.maxDamage,
+        tags = tag_array
     }
 end
-
 
 
 

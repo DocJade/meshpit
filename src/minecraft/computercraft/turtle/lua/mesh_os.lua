@@ -270,12 +270,17 @@ function main()
         end
 
         -- Run the current task.
+        ---@type boolean, TaskCompletion|TaskFailure
         local bool, result = resume(task.task_thread)
 
         -- Is the task over?
         if not bool then
             -- The task has ended. This either indicates that it actually
             -- finished, or that the the task threw an error.
+
+            -- Did the task throw an error?
+
+
             -- We have no need to check what kind of task end it was.
             -- Done running that task, so we remove it from the queue and loop!
             task_queue[#task_queue] = nil
