@@ -1548,11 +1548,23 @@ end
 function walkback.countEmptySlots()
 	local total = 0
 	for i = 1, 16 do
-		if walkback.getItemCount(i) > 0 then
+		if walkback.getItemCount(i) == 0 then
 			total = total + 1
 		end
 	end
 	return total
+end
+
+--- Find an empty slot in the inventory, if one exists.
+--- @return number|nil
+function walkback.FindEmptySlot()
+	for i = 1, 16 do
+		if walkback.getItemCount(i) == 0 then
+			return i
+		end
+	end
+	-- No empty slot
+	return nil
 end
 
 --- Checks if there are any empty slots in the inventory.
@@ -1560,7 +1572,7 @@ end
 --- This is an alias of pre-existing methods, but provided as a convenience.
 --- @return boolean
 function walkback.haveEmptySlot()
-	return walkback.countEmptySlots() > 0
+	return walkback.FindEmptySlot() ~= nil
 end
 
 --- Count how many items in the inventory match a pattern.
@@ -1656,6 +1668,53 @@ function walkback.inventoryFindTag(item_tag, search_downwards)
 	end
 	-- No match.
 	return nil
+end
+
+--- Swaps the contents of two inventory slots.
+---
+--- If both slots are full, this will require a third, empty slot to do the swap.
+---
+--- Returns false if a third empty slot was needed, but couldn't be found.
+---@param slot_1 number
+---@param slot_2 number
+---@return boolean
+function walkback.swapSlots(slot_1, slot_2)
+	-- Assert that both incoming slots actually have some items
+	local one_count = walkback.getItemCount(slot_1)
+	local two_count = walkback.getItemCount(slot_2)
+
+	-- nothing to do if both are empty
+	if one_count == 0 and two_count == 0 then
+		return true
+	end
+
+	-- As a good gesture, if one of the two slots is empty, we'll still do the
+	-- swap.
+	if one_count == 0 or two_count == 0 then
+		-- The empty one is the destination slot.
+		if two_count > one_count then
+			slot_1, slot_2 = slot_2, slot_1
+		end
+		-- This cannot fail as one is empty.
+		walkback.transferFromSlotTo(slot_1, slot_2)
+		return true
+	end
+
+	-- Both slots have items.
+
+	-- Make sure there is room.
+	local temp_slot = walkback.FindEmptySlot()
+	if not temp_slot then
+		-- No third slot
+		return false
+	end
+
+	-- Do the swap
+	-- These should not fail, as we asserted the third slot is empty.
+	walkback.transferFromSlotTo(slot_1, temp_slot)
+	walkback.transferFromSlotTo(slot_2, slot_1)
+	walkback.transferFromSlotTo(temp_slot, slot_1)
+	return true
 end
 
 

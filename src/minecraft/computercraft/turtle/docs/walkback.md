@@ -126,6 +126,15 @@ None of these have been altered from the normal `turtle` call. This is simply a 
 - - finds a slot that contains an item who's name matches a pattern, if any.
 - `walkback.inventoryFindTag(string, boolean)`
 - - finds a slot that contains an item with a matching tag, if any.
+- `walkback.swapSlots(number, number)`
+- - Swaps the contents of two slots within the inventory, as long as there is a third, empty slot.
+- `walkback.FindEmptySlot()`
+- - Finds an empty slot in the inventory, if one exists.
+- `walkback.haveEmptySlot()`
+- - Returns true if there is at least one empty slot.
+- `walkback.countEmptySlots()`
+- - Returns how many empty slots there are, or nil.
+
 
 ## Environment detection
 These methods are slightly altered to also return `false` on fluids, as detect should be used for movement checks. Secretly calls inspect() under the hood to update our block list.
