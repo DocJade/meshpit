@@ -122,6 +122,8 @@ None of these have been altered from the normal `turtle` call. This is simply a 
 - - Runs the comparison check against 2 arbitrary slots.
 - `walkback.inventoryCountPattern(string)`
 - - Counts how many items in the inventory match a string pattern.
+- `walkback.inventoryCountTag(string)`
+- - Counts how many items in the inventory have a certain tag.
 - `walkback.inventoryFindPattern(string, boolean)`
 - - finds a slot that contains an item who's name matches a pattern, if any.
 - `walkback.inventoryFindTag(string, boolean)`

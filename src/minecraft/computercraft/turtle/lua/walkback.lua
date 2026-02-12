@@ -1586,7 +1586,7 @@ function walkback.haveEmptySlot()
 	return walkback.FindEmptySlot() ~= nil
 end
 
---- Count how many items in the inventory match a pattern.
+--- Count how many item's names in the inventory match a pattern.
 ---
 --- IE, `log` would match `minecraft:oak_log` as well as `minecraft:spruce_log`
 --- @param pattern string
@@ -1603,6 +1603,30 @@ function walkback.inventoryCountPattern(pattern)
 
 		-- Match! Add to tally.
 		matches = matches + item.count
+		::continue::
+	end
+	return matches
+end
+
+--- Count how many items in the inventory have a specified tag.
+--- @param item_tag string
+--- @return number
+function walkback.inventoryCountTag(item_tag)
+	local matches = 0
+	for i = 1, 16 do
+		-- Get item, if any
+		local item = walkback.getItemDetail(i)
+		if not item then goto continue end
+
+		-- Check if the tag is in there
+		for _, tag in ipairs(item.tags) do
+			-- return if it matches
+			if tag == item_tag then
+				matches = matches + item.count
+				break
+			end
+		end
+
 		::continue::
 	end
 	return matches
@@ -1669,7 +1693,7 @@ function walkback.inventoryFindTag(item_tag, search_downwards)
 		local item = walkback.getItemDetail(i)
 		if not item then goto continue end
 
-		-- Check if pattern matches
+		-- Check if the tag is in there
 		for _, tag in ipairs(item.tags) do
 			-- return if it matches
 			if tag == item_tag then return i end
