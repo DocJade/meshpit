@@ -206,10 +206,10 @@ function task_helpers.try_finish_task(turtle_task)
     ::walkback_done::
 
     -- Rotate to the correct facing position if needed.
-    if task_config.definition.return_to_facing then
+    if turtle_task.definition.return_to_facing then
         -- Rotate that way
         -- This cannot fail.
-        task_config.walkback.turnToFace(task_config.start_facing)
+        turtle_task.walkback.turnToFace(turtle_task.start_facing)
     end
 
     -- All good.
