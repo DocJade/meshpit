@@ -1,5 +1,10 @@
 -- The underlying operating system that the turtles will utilize.
 
+-- The OS does not start automatically. You must call the `startup()` function.
+-- If testing the turtle, you can add tasks to the queue before calling `main`
+
+local mesh_os = {}
+
 -- =========
 -- Notes
 -- =========
@@ -10,8 +15,6 @@
 
 -- When tasks yield, they do not return anything in the `coroutine.yield()`,
 -- all messages from tasks must be put into the event queue with a custom event.
---
-
 
 -- =========
 -- Imports
@@ -24,6 +27,10 @@ local panic = require("panic")
 -- This defines its own global.
 require("networking")
 
+-- import all the task functions
+local tree_chop_function = require("tree_chop")
+local recursive_miner_function = require("recursive_miner")
+
 -- =========
 -- Locals
 -- =========
@@ -32,6 +39,11 @@ require("networking")
 --- First in first out, IE newest tasks are at the end of the list.
 ---@type TurtleTask[]
 local task_queue = {}
+
+-- The stack of popped walkbacks. This will always be 1 shorter than the
+-- task_queue
+---@type PoppedWalkback[]
+local walkback_queue = {}
 
 --- Keep track if we are currently sleeping for a task. This is non-nill if
 --- we are sleeping, and is set to the timestamp of when the task should be
@@ -195,6 +207,67 @@ local currently_sleeping = nil
 --- @return TurtleTask
 local function request_new_tasks()
     -- Currently does nothing.
+    -- TODO: Default tasks!
+    ---@diagnostic disable-next-line: undefined-field, missing-return
+    os.shutdown()
+end
+
+--- !!! THIS IS ONLY FOR TEST CASES! !!!
+--- TODO:
+--- TODO:
+--- TODO:
+function mesh_os.testAddTask()
+
+end
+
+--- Sets up an incoming task. TODO: We assume that this is valid right now,
+--- maybe some day this will be safer lmao
+--- @param task_definition TaskDefinition
+--- @param is_sub_task boolean
+local function setupNewTask(task_definition, is_sub_task)
+
+    -- Pop our current walkback into the queue.
+    -- It's fine to do nothing if there is no current walkback.
+    ---@type PoppedWalkback|nil
+    local popped = walkback.pop()
+    if popped ~= nil then
+        walkback_queue[#walkback_queue+1] = popped
+    end
+
+    -- Create the task and make the thread. Do not start it yet.
+    local new_thread = coroutine.create(getTaskFunction(task_definition.task_data))
+
+    -- The rest of the owl.
+    ---@type TurtleTask
+    local new_task = {
+        definition = task_definition,
+        start_facing = walkback.cur_position.facing,
+        start_position = walkback.clonePosition(walkback.cur_position.position),
+        ---@diagnostic disable-next-line: undefined-field
+        start_time = os.epoch("utc"),
+        task_thread = new_thread,
+        walkback = walkback
+    }
+
+    -- Add task to the end of the task queue.
+    task_queue[#task_queue+1] = new_task
+end
+
+--- Get the function associated with a task data
+--- @param data TaskDataType
+--- @return function
+function getTaskFunction(data)
+    local name = data.name
+    if name == "tree_chop" then
+        return tree_chop_function
+    elseif name =="recursive_miner" then
+        return recursive_miner_function
+    end
+    --????? None of those matched?
+    panic.panic("Unknown task!")
+    -- This is unreachable.
+    ---@diagnostic disable-next-line: return-type-mismatch
+    return nil
 end
 
 --- Set a timer for one second and sleep for it.
@@ -247,6 +320,12 @@ local function handle_events()
             currently_sleeping = event[2]
             -- we still finish checking the rest of the events, the
             -- sleeping happens on the next iteration of the main loop.
+        elseif event_name == "spawn_task" then
+            -- Add a new task to the queue!
+            ---@cast event CustomEventSpawnTask
+            local task_definition = event[2]
+            local is_sub_task = event[3]
+            setupNewTask(task_definition, is_sub_task)
         elseif event_name == "alarm" then
             -- TODO: Do something with this event
         elseif event_name == "modem_message" then
@@ -275,7 +354,7 @@ end
 --- Things that need to be done before entering the main loop for the first time.
 ---
 --- Does not call the main loop after startup finishes.
-function startup()
+function mesh_os.startup()
     -- Set up networking
     -- TODO: move connect() in networking to a public thing.
 end
@@ -289,7 +368,7 @@ end
 ---
 --- This loop needs to be hyper-optimized to minimize the time it takes to
 --- continue running a task.
-function main()
+function mesh_os.main()
     -- Bring in locals to make yielding slightly faster.
 
     -- Queue event function
@@ -355,11 +434,17 @@ function main()
             -- The task has ended. This either indicates that it actually
             -- finished, or that the the task threw an error.
 
-            -- Did the task throw an error?
-            -- TODO: Handle task throws.
+            if result.kind == "success" then
+                -- Nothing else to do! :D
+                goto task_cleanup_done
+            end
+
+            -- Task threw an error. Currently there is no recovery system for this.
+            -- TODO: actually recover lmao
+            panic.panic("task died")
 
 
-            -- TODO: We have no need to check what kind of task end it was.
+            ::task_cleanup_done::
             -- Done running that task, so we remove it from the queue and loop!
             task_queue[#task_queue] = nil
             break
