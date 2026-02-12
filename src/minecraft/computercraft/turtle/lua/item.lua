@@ -14,9 +14,6 @@ local item_helper = {}
 --- - enchantments: This might sound weird, but we don't care, as we can't enchant anything anyways.
 --- - Potion effects: We have no use for potions.
 --- - mapColor: ...what? why is this even here?
---- - Tags: This one sounds absolutely crazy, but the item tag list really
---- doesn't contain anything useful to us. There isn't any generic `fuel` or
---- `placeable` tag, so really theres nothing for us there.
 ---
 --- Definition based off of:
 --- https://tweaked.cc/reference/item_details.html

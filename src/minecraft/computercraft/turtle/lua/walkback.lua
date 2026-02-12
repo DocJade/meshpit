@@ -1585,6 +1585,78 @@ function walkback.inventoryCountPattern(pattern)
 	return matches
 end
 
+--- Find the first slot in the turtle's inventory that matches a pattern, if any.
+---
+--- Search direction can be picked. Defaults to searching from the first to last
+--- slot.
+---
+--- Returns the slot number, or `nil` if no slot with a matching item is found.
+--- @param pattern string
+--- @param search_downwards boolean?
+--- @return number|nil
+function walkback.inventoryFindPattern(pattern, search_downwards)
+	local swap = search_downwards or false
+	local loop_start = 1
+	local loop_end = 16
+	local loop_change = 1
+	-- swap search direction if needed.
+	if swap then
+		loop_start, loop_end = loop_end, loop_start
+		loop_change = -1
+	end
+	for i = loop_start, loop_end, loop_change do
+		-- Get item, if any
+		local item = walkback.getItemDetail(i)
+		if not item then goto continue end
+
+		-- Check if pattern matches
+		if helpers.findString(item.name, pattern) then
+			-- Match! return that!
+			return i
+		end
+
+		::continue::
+	end
+	-- No match.
+	return nil
+end
+
+--- Find the first slot in the turtle's inventory where the item has a given
+--- tag, if any.
+---
+--- Search direction can be picked. Defaults to searching from the first to last
+--- slot.
+---
+--- Returns the slot number, or `nil` if no slot with a matching item is found.
+--- @param item_tag string
+--- @param search_downwards boolean?
+--- @return number|nil
+function walkback.inventoryFindTag(item_tag, search_downwards)
+	local swap = search_downwards or false
+	local loop_start = 1
+	local loop_end = 16
+	local loop_change = 1
+	-- swap search direction if needed.
+	if swap then
+		loop_start, loop_end = loop_end, loop_start
+		loop_change = -1
+	end
+	for i = loop_start, loop_end, loop_change do
+		-- Get item, if any
+		local item = walkback.getItemDetail(i)
+		if not item then goto continue end
+
+		-- Check if pattern matches
+		for _, tag in ipairs(item.tags) do
+			-- return if it matches
+			if tag == item_tag then return i end
+		end
+
+		::continue::
+	end
+	-- No match.
+	return nil
+end
 
 
 -- ============

@@ -122,6 +122,10 @@ None of these have been altered from the normal `turtle` call. This is simply a 
 - - Runs the comparison check against 2 arbitrary slots.
 - `walkback.inventoryCountPattern(string)`
 - - Counts how many items in the inventory match a string pattern.
+- `walkback.inventoryFindPattern(string, boolean)`
+- - finds a slot that contains an item who's name matches a pattern, if any.
+- `walkback.inventoryFindTag(string, boolean)`
+- - finds a slot that contains an item with a matching tag, if any.
 
 ## Environment detection
 These methods are slightly altered to also return `false` on fluids, as detect should be used for movement checks. Secretly calls inspect() under the hood to update our block list.
