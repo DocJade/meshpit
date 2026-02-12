@@ -917,6 +917,7 @@ end
 function walkback.inventoryJSON()
 	--- array of optionals, dont know how to lint that
 	local slots = {}
+	---@diagnostic disable-next-line: undefined-global
 	local json_null = textutils.json_null
 	for i= 1, 16 do
 		local found = walkback.getItemDetail(i, true)
@@ -1989,12 +1990,17 @@ panic.assert(mostSignificantDirection(0,0) == "n", "Should default north!")
 
 -- Facing rotation actions
 local a = findFacingRotation("n", "n")
+---@diagnostic disable-next-line: need-check-nil
 assert(not a[1] , "Finding rotation wrong! Got: " .. tostring(a[1]))
 local a = findFacingRotation("n", "e")
+---@diagnostic disable-next-line: need-check-nil
 assert(a[1]  == "r", "Finding rotation wrong! Got: " .. tostring(a[1]))
+---@diagnostic disable-next-line: need-check-nil
 local a = findFacingRotation("n", "s")
+---@diagnostic disable-next-line: need-check-nil
 assert(a[1]  == "r", "Finding rotation wrong! Got: " .. tostring(a[1]))
 local a = findFacingRotation("n", "w")
+---@diagnostic disable-next-line: need-check-nil
 assert(a[1]  == "l", "Finding rotation wrong! Got: " .. tostring(a[1]))
 
 -- ========================

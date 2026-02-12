@@ -366,9 +366,8 @@ end
 ---@return any, SeenCleaned
 function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     local skip_invalid_tables = skip_invalid_tables or false
-    -- TODO: some kind of yield in case this takes too long.
-    os.queueEvent("yield")
-    os.pullEvent("yield")
+    -- This can take a long time, so we yield a lot.
+    helpers.quick_yield()
 
     ---@diagnostic disable-next-line: undefined-global
     local json_null = textutils.json_null
@@ -443,6 +442,7 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     -- cant count the hashmap alone, this will also count the array side.
     local combined_item_count = 0
 
+    helpers.quick_yield()
     for _, _ in ipairs(value) do
         array_item_count = array_item_count + 1
     end
@@ -450,6 +450,7 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     for _, _ in pairs(value) do
         combined_item_count = combined_item_count + 1
     end
+    helpers.quick_yield()
 
     -- Check if table is completely empty, we can skip if so!
     if (array_item_count == 0) and (combined_item_count == 0) then
@@ -490,6 +491,7 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     local total_items = 0
 
     for k, v in pairs(value) do
+        helpers.quick_yield()
         total_items = total_items + 1
         if is_array then
             -- Array handling
