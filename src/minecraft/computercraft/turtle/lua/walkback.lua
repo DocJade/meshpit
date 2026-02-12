@@ -1511,7 +1511,13 @@ end
 ---@param source_slot number
 ---@param destination_slot number
 ---@param count number|nil
+---@return boolean
 function walkback.transferFromSlotTo(source_slot, destination_slot, count)
+	-- Nothing to do if both slots are the same slot.
+	if source_slot == destination_slot then
+		return true
+	end
+
 	-- Remember the old slot
 	local old = walkback.getSelectedSlot()
 
@@ -1530,6 +1536,11 @@ end
 ---@param slot_b number
 ---@return boolean
 function walkback.compareTwoSlots(slot_a, slot_b)
+	-- Nothing to do if both slots are the same slot.
+	if slot_a == slot_b then
+		return true
+	end
+
 	-- Slot assertions happen in sub-calls
 	-- Save the active slot
 	local old = walkback.getSelectedSlot()
