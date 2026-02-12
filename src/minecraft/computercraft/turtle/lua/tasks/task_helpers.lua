@@ -14,6 +14,8 @@ local helpers = require("helpers")
 --- on the line above the throw why you are asserting.
 --- @param assertion boolean
 function task_helpers.assert(assertion)
+    -- Might as well yield in here too.
+    task_helpers.taskYield()
     if assertion then return end
     -- Assertion failed.
     ---@type TaskFailure
@@ -38,6 +40,37 @@ function task_helpers.throw(reason)
         stacktrace = debug.traceback(nil, 2)
     }
     error(task_failure, 0)
+end
+
+--- Completely yield this task for a number of seconds.
+---
+--- Calling this will yield the task automatically, and the task will not resume
+--- until at least the specified amount of seconds has passed.
+---
+--- Please take care to not sleep for too long, IE do not use this to block your
+--- task forever, and be very sure to not pass in values that you've calculated
+--- from other values without ensuring its not too long.
+--- @param seconds number
+function task_helpers.taskSleep(seconds)
+    -- Calculate the walkup time.
+    ---@diagnostic disable-next-line: undefined-field
+    local wakeup_time = os.epoch("utc") + (seconds * 1000)
+
+    -- Queue the event, and yield.
+    ---@diagnostic disable-next-line: undefined-field
+    os.queueEvent("sleep", wakeup_time)
+end
+
+
+--- Yield the task to the OS.
+---
+--- The task will be resumed as soon as the OS finishes doing its maintenance tasks.
+---
+--- Theoretically the task could never be resumed again / deleted, however you
+--- do not need to worry about that, as the OS will clean up in that case.
+function task_helpers.taskYield()
+    -- This seems like a pointless wrapper, but maybe we will do more here later.
+    coroutine.yield()
 end
 
 --- Move all of the items in the inventory towards the end, freeing up slots in
@@ -76,6 +109,9 @@ function task_helpers.pushInventoryBack(walkback, ignored_slots)
         if walkback.getItemDetail(i) ~= nil then goto continue end
         -- Slot is empty, try moving stuff up.
         for j = i - 1, 1, -1  do
+            -- Might as well yield the task in here
+            task_helpers.taskYield()
+
             -- Skip ignored slots, and check for items in this slot
             if not ignore_map[j] and walkback.getItemDetail(j) ~= nil then
                 -- No need to check the result since we know this slot is empty.

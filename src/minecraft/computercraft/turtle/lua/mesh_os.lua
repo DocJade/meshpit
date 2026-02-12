@@ -33,6 +33,12 @@ require("networking")
 ---@type TurtleTask[]
 local task_queue = {}
 
+--- Keep track if we are currently sleeping for a task. This is non-nill if
+--- we are sleeping, and is set to the timestamp of when the task should be
+--- resumed.
+---@type number|nil
+local currently_sleeping = nil
+
 -- =========
 -- Types
 -- =========
@@ -147,6 +153,7 @@ local task_queue = {}
 -- Custom events
 --- @alias CustomEvent
 --- | CustomEventYield
+--- | CustomEventSleep
 
 --- A yield to OS event. Can be safely discarded immediately.
 ---
@@ -154,6 +161,15 @@ local task_queue = {}
 --- yet didn't immediately re-consume that yield.
 --- @class CustomEventYield
 --- @field [1] "yield"
+
+--- This is a task telling the OS that it needs to sleep for some amount of time.
+---
+--- Setting a timer with an end date in the past has no effect. Thus don't do it.
+---
+--- The provided timestamp is in `utc`, and is unconverted (ie its in milliseconds)
+--- @class CustomEventSleep
+--- @field [1] "sleep"
+--- @field [2] number -- Time to wake up. This should be a time offset from utc epoch.
 
 
 
@@ -168,6 +184,35 @@ local task_queue = {}
 --- @return TurtleTask
 local function request_new_tasks()
     -- Currently does nothing.
+end
+
+--- Set a timer for one second and sleep for it.
+---
+--- We only sleep for one second at a time, as we still want to wake up and handle
+--- other events regardless if the current task is running. This delay may be
+--- increased in the future if needed.
+function second_sleep()
+    -- unlike the usual os.sleep, we are not discarding events.
+    -- The normal os.sleep() really strangely just sits in a tight loop, throwing
+    -- away timer events until it hits the timer it's looking for??? Very strange.
+    -- https://github.com/cc-tweaked/CC-Tweaked/blob/mc-1.20.x/projects/core/src/main/resources/data/computercraft/lua/bios.lua#L49-L56
+
+    ---@diagnostic disable-next-line: undefined-field
+    local timer_id = os.startTimer(1)
+
+    -- However, this does mean that if we get a timer that is NOT the one we are
+    -- looking for, we have to put it back into the pile.
+    -- Since this timer only runs for one second and this constantly yields due
+    -- to waiting for events, thats fine...
+    local timer_string = "timer"
+    while true do
+        ---@diagnostic disable-next-line: undefined-field
+        local event = os.pullEvent(timer_string)
+        if event.number == timer_id then break end
+        -- This is not the right timer.
+        ---@diagnostic disable-next-line: undefined-field
+        os.queueEvent(timer_string, event.number)
+    end
 end
 
 -- =========
@@ -185,6 +230,12 @@ local function handle_events()
         if event_name == "yield" then
             -- We should never see this
             panic.panic("Dangling yield!")
+        elseif event_name == "sleep" then
+            -- The task wants to sleep. Set up the sleeping mode.
+            ---@cast event CustomEventSleep
+            currently_sleeping = event[2]
+            -- we still finish checking the rest of the events, the
+            -- sleeping happens on the next iteration of the main loop.
         elseif event_name == "alarm" then
             -- TODO: Do something with this event
         elseif event_name == "modem_message" then
@@ -258,6 +309,21 @@ function main()
         -- to prevent consuming other kinds of events.
         yield(yield_string)
 
+        -- Are we sleeping?
+        if currently_sleeping then
+            -- Are we done sleeping?
+            ---@diagnostic disable-next-line: undefined-field
+            if os.epoch("utc") >= currently_sleeping then
+                -- All done!
+                currently_sleeping = nil
+            else
+                -- We are still sleeping. Sleep for a second, then skip
+                -- straight to handling events.
+                second_sleep()
+                goto skip_task
+            end
+        end
+
         -- Grab a task from the queue, unless it is empty.
         --- @type TurtleTask?
         local task = task_queue[#task_queue]
@@ -279,13 +345,18 @@ function main()
             -- finished, or that the the task threw an error.
 
             -- Did the task throw an error?
+            -- TODO: Handle task throws.
 
 
-            -- We have no need to check what kind of task end it was.
+            -- TODO: We have no need to check what kind of task end it was.
             -- Done running that task, so we remove it from the queue and loop!
             task_queue[#task_queue] = nil
             break
         end
+
+        -- This label is used when we are sleeping, as to not wake up the task
+        -- while it is eeping ever so peacefully.
+        ::skip_task::
 
         -- Handle events
         handle_events()
