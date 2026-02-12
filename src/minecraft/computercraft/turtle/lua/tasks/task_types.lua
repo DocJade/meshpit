@@ -1,4 +1,4 @@
---- TaskConfig is the type used to store basic / common task information. Tasks
+--- TurtleTask is the type used to store basic / common task information. Tasks
 --- take in this type with an inner `config` field used for more fine-grained
 --- data about how the task should be performed.
 ---
@@ -11,13 +11,21 @@
 --- where the task started.
 ---
 --- start_time: This is set when the task is created, and is a epoch("utc")
---- @class TaskConfig
+--- @class TurtleTask
 --- @field start_time number -- Starting timestamp.
 --- @field walkback WalkbackSelf -- A reference to the global walkback.
---- @field return_to_start boolean -- Wether or not the task needs to end where it started.
---- @field return_to_facing boolean -- Wether or not the task needs to face in the same direction it started in.
 --- @field start_position CoordPosition -- A copy (NOT REFERENCE) to where this task was started.
 --- @field start_facing FacingDirection -- What direction was being faced when the task started.
+--- @field definition TaskDefinition -- The inner definition for the task.
+
+--- Partial task configs only hold enough information for the definition of the
+--- task, but do not contain the inner information that must be set up by
+--- MeshOS before the task starts.
+---
+--- A final TaskConfig is wrapped around this later.
+--- @class TaskDefinition
+--- @field return_to_start boolean -- Wether or not the task needs to end where it started.
+--- @field return_to_facing boolean -- Wether or not the task needs to face in the same direction it started in.
 --- @field fuel_buffer number -- Target amount of fuel to keep in the turtle. Task fails if task does not self-refuel and fuel falls below this number.
 --- @field task_data TaskDataType -- The inner configuration for the specific task.
 

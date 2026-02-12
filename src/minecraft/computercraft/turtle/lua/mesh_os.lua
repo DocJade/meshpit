@@ -154,6 +154,7 @@ local currently_sleeping = nil
 --- @alias CustomEvent
 --- | CustomEventYield
 --- | CustomEventSleep
+--- | CustomEventSpawnTask
 
 --- A yield to OS event. Can be safely discarded immediately.
 ---
@@ -171,6 +172,16 @@ local currently_sleeping = nil
 --- @field [1] "sleep"
 --- @field [2] number -- Time to wake up. This should be a time offset from utc epoch.
 
+--- Add a new task to the queue.
+---
+--- Tasks are allowed to spawn sub-tasks if needed. Thus there is a boolean to
+--- mark it as such
+---
+--- Spawned sub-tasks will be initialized in the same way as normal tasks.
+--- @class CustomEventSpawnTask
+--- @field [1] "spawn_task"
+--- @field [2] TaskDefinition
+--- @field [3] boolean -- Wether this was spawned as a sub-task to the currently running task.
 
 
 -- =========
@@ -191,7 +202,7 @@ end
 --- We only sleep for one second at a time, as we still want to wake up and handle
 --- other events regardless if the current task is running. This delay may be
 --- increased in the future if needed.
-function second_sleep()
+local function second_sleep()
     -- unlike the usual os.sleep, we are not discarding events.
     -- The normal os.sleep() really strangely just sits in a tight loop, throwing
     -- away timer events until it hits the timer it's looking for??? Very strange.

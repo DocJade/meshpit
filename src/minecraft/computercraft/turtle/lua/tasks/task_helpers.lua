@@ -4,7 +4,47 @@ local task_helpers = {}
 --- We also use the other helpers to help our helper. Yeah.
 local helpers = require("helpers")
 
+--- Attempt to spawn a sub-task from the current task.
+---
+--- This will yield the current task until the sub-task completes.
+---
+--- Returns `false` if the subtask was unable to be spawned for any reason.
+--- @param current_task TurtleTask -- The currently running task.
+--- @param subtask TaskDefinition
+function task_helpers.spawnSubTask(current_task, subtask)
+    -- Sub-tasks are easy to spawn, but we do need to meet the requirements the
+    -- definition sets, otherwise adding the task would immediately fail.
 
+    -- Is the fuel buffer for the sub-task
+    if subtask.fuel_buffer > current_task.walkback.getFuelLevel() then
+        -- Impossible.
+        return false
+    end
+
+    -- Spawn the task.
+    -- `true` Marks this as a sub-task.
+    ---@type CustomEventSpawnTask
+    local sub_task = {"spawn_task", subtask, true}
+
+    taskQueueEvent(sub_task)
+
+    -- Yield to the OS.
+    task_helpers.taskYield()
+
+    -- If we're back here, the sub task is done!
+    return true
+end
+
+--- Queue a event. This is a wrapper around the inner computercraft call, as
+--- it doesn't have the type hinting that we want. You can only queue the
+--- custom events that the OS adds.
+---
+--- This is meant to be a private method, tasks are not to queue events themselves.
+---@param event CustomEvent
+function taskQueueEvent(event)
+    ---@diagnostic disable-next-line: undefined-field
+    os.queueEvent(table.unpack(event))
+end
 
 --- Assert something as true.
 ---
@@ -134,11 +174,11 @@ end
 --- Returns a boolean TaskCompletion pair. If the task cannot be completed due
 --- to some un-met constraint, then this will return false.
 ---
----@param task_config TaskConfig
+---@param task_config TurtleTask
 ---@return TaskCompletion
 function task_helpers.try_finish_task(task_config)
     -- Run walkback if needed.
-    if task_config.return_to_start then
+    if task_config.definition.return_to_start then
         -- Is there any walkback to do?
         local cost = task_config.walkback.cost()
 
@@ -146,7 +186,7 @@ function task_helpers.try_finish_task(task_config)
         if cost == 0 then goto walkback_done end
 
         -- Check if we can make it back
-        if cost > task_config.walkback.getFuelLevel() - task_config.fuel_buffer then
+        if cost > task_config.walkback.getFuelLevel() - task_config.definition.fuel_buffer then
             -- Don't have enough fuel to do the walkback.
             task_helpers.throw("out of fuel")
         end
@@ -166,7 +206,7 @@ function task_helpers.try_finish_task(task_config)
     ::walkback_done::
 
     -- Rotate to the correct facing position if needed.
-    if task_config.return_to_facing then
+    if task_config.definition.return_to_facing then
         -- Rotate that way
         -- This cannot fail.
         task_config.walkback.turnToFace(task_config.start_facing)
