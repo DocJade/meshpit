@@ -24,6 +24,7 @@ local mesh_os = {}
 --- task expects to still be there.
 local walkback = require("walkback")
 local panic = require("panic")
+local helpers = require("helpers")
 -- This defines its own global.
 require("networking")
 
@@ -229,7 +230,7 @@ local function setupNewTask(task_definition, is_sub_task)
     -- Pop our current walkback into the queue.
     -- It's fine to do nothing if there is no current walkback.
     ---@type PoppedWalkback|nil
-    local popped = walkback.pop()
+    local popped = walkback:pop()
     if popped ~= nil then
         walkback_queue[#walkback_queue+1] = popped
     end
@@ -242,7 +243,7 @@ local function setupNewTask(task_definition, is_sub_task)
     local new_task = {
         definition = task_definition,
         start_facing = walkback.cur_position.facing,
-        start_position = walkback.clonePosition(walkback.cur_position.position),
+        start_position = helpers.clonePosition(walkback.cur_position.position),
         ---@diagnostic disable-next-line: undefined-field
         start_time = os.epoch("utc"),
         task_thread = new_thread,

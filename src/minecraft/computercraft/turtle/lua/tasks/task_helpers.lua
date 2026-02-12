@@ -16,7 +16,7 @@ function task_helpers.spawnSubTask(current_task, subtask)
     -- definition sets, otherwise adding the task would immediately fail.
 
     -- Is the fuel buffer for the sub-task
-    if subtask.fuel_buffer > current_task.walkback.getFuelLevel() then
+    if subtask.fuel_buffer > current_task.walkback:getFuelLevel() then
         -- Impossible.
         return false
     end
@@ -146,16 +146,16 @@ function task_helpers.pushInventoryBack(walkback, ignored_slots)
 
     -- I really wish lua had continues.
     for i = 16, 1, -1 do
-        if walkback.getItemDetail(i) ~= nil then goto continue end
+        if walkback:getItemDetail(i) ~= nil then goto continue end
         -- Slot is empty, try moving stuff up.
         for j = i - 1, 1, -1  do
             -- Might as well yield the task in here
             task_helpers.taskYield()
 
             -- Skip ignored slots, and check for items in this slot
-            if not ignore_map[j] and walkback.getItemDetail(j) ~= nil then
+            if not ignore_map[j] and walkback:getItemDetail(j) ~= nil then
                 -- No need to check the result since we know this slot is empty.
-                walkback.transferFromSlotTo(j, i)
+                walkback:transferFromSlotTo(j, i)
                 break
             end
         end
@@ -180,20 +180,20 @@ function task_helpers.try_finish_task(turtle_task)
     -- Run walkback if needed.
     if turtle_task.definition.return_to_start then
         -- Is there any walkback to do?
-        local cost = turtle_task.walkback.cost()
+        local cost = turtle_task.walkback:cost()
 
         -- Skip if zero
         if cost == 0 then goto walkback_done end
 
         -- Check if we can make it back
-        if cost > turtle_task.walkback.getFuelLevel() - turtle_task.definition.fuel_buffer then
-            -- Don't have enough fuel to do the walkback.
+        if cost > turtle_task.walkback:getFuelLevel() - turtle_task.definition.fuel_buffer then
+            -- Don't have enough fuel to do the walkback:
             task_helpers.throw("out of fuel")
         end
 
         -- Do the walkback
         -- TODO: Retry the walkback after some delay.
-        local walkback_result, fail_message = turtle_task.walkback.rewind()
+        local walkback_result, fail_message = turtle_task.walkback:rewind()
         if not walkback_result then
             task_helpers.throw("walkback rewind failure")
         end
@@ -209,7 +209,7 @@ function task_helpers.try_finish_task(turtle_task)
     if turtle_task.definition.return_to_facing then
         -- Rotate that way
         -- This cannot fail.
-        turtle_task.walkback.turnToFace(turtle_task.start_facing)
+        turtle_task.walkback:turnToFace(turtle_task.start_facing)
     end
 
     -- All good.

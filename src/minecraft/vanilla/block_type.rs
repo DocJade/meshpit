@@ -1,9 +1,7 @@
 // See block_type for more detailed notes.
 use std::borrow::Cow;
 
-use log::info;
 use mcdata_rs::{Block, BlockStateDefinition};
-use serde::de::Error;
 use serde::{Deserialize, de::IgnoredAny}; // Import the trait!
 
 use crate::minecraft::types::CoordinatePosition;
@@ -133,7 +131,7 @@ impl HasMinecraftBlock for MinecraftBlock {
 pub struct LuaBlock {
     name: String,
     pos: CoordinatePosition,
-    state: Option<Vec<LuaMinecraftBlockState>>,
+    state: Option<LuaMinecraftBlockState>,
     // We can completely ignore tags, as they are static and aren't dynamically
     // added to blocks
     #[serde(skip)]
@@ -143,77 +141,87 @@ pub struct LuaBlock {
 
 /// We need to be able to convert back and forth between the basic lua block
 /// states that we store on the lua side, and the cool rust one.
+/// These are the only states we really care about anyways.
 #[derive(Debug, Deserialize)]
-enum LuaMinecraftBlockState {
-    #[serde(rename = "age")]
-    Age(u32),
-    #[serde(rename = "eye")]
-    Eye(bool),
-    #[serde(rename = "honey_level")]
-    HoneyLevel(u32),
-    #[serde(rename = "level")]
-    Level(u32),
-    #[serde(rename = "lit")]
-    Lit(bool),
-    #[serde(rename = "stage")]
-    Stage(u32),
+struct LuaMinecraftBlockState {
+    pub age: Option<u32>,
+    pub eye: Option<bool>,
+    pub honey_level: Option<u32>,
+    pub level: Option<u32>,
+    pub lit: Option<bool>,
+    pub stage: Option<u32>,
 }
 
 /// Convert the block states
-impl From<LuaMinecraftBlockState> for BlockStateDefinition {
-    fn from(value: LuaMinecraftBlockState) -> BlockStateDefinition {
-        // No idea what it wants here, really just completely guessing how
-        // all of this is used. TODO: how can we test this
-        let name: String;
-        let state_type: String;
-        let num_values: Option<u32>;
-        let values: Vec<String>;
-        match value {
-            LuaMinecraftBlockState::Age(number) => {
-                name = "age".into();
-                state_type = "int".into();
-                num_values = Some(number);
-                values = Vec::new();
-            }
-            LuaMinecraftBlockState::Eye(boolean) => {
-                let num = if boolean { 1 } else { 0 };
-                name = "eye".into();
-                state_type = "bool".into();
-                num_values = Some(num);
-                values = Vec::new();
-            }
-            LuaMinecraftBlockState::HoneyLevel(number) => {
-                name = "honey_level".into();
-                state_type = "int".into();
-                num_values = Some(number);
-                values = Vec::new();
-            }
-            LuaMinecraftBlockState::Level(number) => {
-                name = "level".into();
-                state_type = "int".into();
-                num_values = Some(number);
-                values = Vec::new();
-            }
-            LuaMinecraftBlockState::Lit(boolean) => {
-                let num = if boolean { 1 } else { 0 };
-                name = "lit".into();
-                state_type = "bool".into();
-                num_values = Some(num);
-                values = Vec::new();
-            }
-            LuaMinecraftBlockState::Stage(number) => {
-                name = "stage".into();
-                state_type = "int".into();
-                num_values = Some(number);
-                values = Vec::new();
-            }
+impl From<LuaMinecraftBlockState> for Vec<BlockStateDefinition> {
+    fn from(value: LuaMinecraftBlockState) -> Vec<BlockStateDefinition> {
+        let mut definitions: Vec<BlockStateDefinition> = Vec::new();
+        // This is gross.
+
+        // Age
+        if let Some(inner) = value.age {
+            definitions.push(BlockStateDefinition{
+                name: "age".into(),
+                state_type: "int".into(),
+                num_values: Some(inner),
+                values: Vec::new()
+            });
         };
-        BlockStateDefinition {
-            name,
-            state_type,
-            num_values,
-            values,
-        }
+
+        // Eye
+        if let Some(inner) = value.eye {
+            definitions.push(BlockStateDefinition{
+                name: "eye".into(),
+                state_type: "bool".into(),
+                num_values: Some(if inner { 1 } else { 0 }),
+                values: Vec::new()
+            });
+        };
+
+        // Honey level
+        if let Some(inner) = value.honey_level {
+            definitions.push(BlockStateDefinition{
+                name: "honey_level".into(),
+                state_type: "int".into(),
+                num_values: Some(inner),
+                values: Vec::new()
+            });
+        };
+
+        // Level
+        if let Some(inner) = value.level {
+            definitions.push(BlockStateDefinition{
+                name: "level".into(),
+                state_type: "int".into(),
+                num_values: Some(inner),
+                values: Vec::new()
+            });
+        };
+
+        // Lit
+        if let Some(inner) = value.lit {
+            definitions.push(BlockStateDefinition{
+                name: "lit".into(),
+                state_type: "bool".into(),
+                num_values: Some(if inner { 1 } else { 0 }),
+                values: Vec::new()
+            });
+        };
+
+        // Stage
+        if let Some(inner) = value.stage {
+            definitions.push(BlockStateDefinition{
+                name: "stage".into(),
+                state_type: "int".into(),
+                num_values: Some(inner),
+                values: Vec::new()
+            });
+        };
+
+
+
+
+        definitions
     }
 }
 
@@ -225,7 +233,7 @@ impl TryFrom<LuaBlock> for PositionedMinecraftBlock {
         let mut unconfigured = MinecraftBlock::from_string(&value.name).ok_or("Unknown block")?;
         // TODO: I have no idea if this is gonna work lmao.
         let new_states: Vec<BlockStateDefinition> = if let Some(lua_states) = value.state {
-            lua_states.into_iter().map(|i| i.into()).collect()
+            lua_states.into()
         } else {
             Vec::new()
         };

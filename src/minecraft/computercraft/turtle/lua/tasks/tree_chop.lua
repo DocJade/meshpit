@@ -58,12 +58,12 @@ local function tree_chop(config)
     ---@cast task_data TreeChopTaskData
 
     -- Task must start with more fuel than the buffer amount.
-    if config.definition.fuel_buffer > wb.getFuelLevel() then
+    if config.definition.fuel_buffer > wb:getFuelLevel() then
         task_helpers.throw("out of fuel")
     end
 
     -- There should be no previous steps in the walkback
-    if wb.previousPosition() ~= nil then
+    if wb:previousPosition() ~= nil then
         -- Walkback already had data in it.
         task_helpers.throw("bad config")
     end
@@ -76,7 +76,7 @@ local function tree_chop(config)
     -- we will return there.
 
     -- Facing log or sapling
-    local check_block = wb.inspect()
+    local check_block = wb:inspect()
     if not check_block then
         -- Can't possibly be a log or sapling.
         goto sapling_check
@@ -92,8 +92,8 @@ local function tree_chop(config)
     task_helpers.pushInventoryBack(wb)
 
     -- search in reverse since we just pushed everything backwards.
-    local sapling_slot = wb.inventoryFindTag(sapling_tag, true)
-    local empty_slots = wb.countEmptySlots()
+    local sapling_slot = wb:inventoryFindTag(sapling_tag, true)
+    local empty_slots = wb:countEmptySlots()
 
     -- If there are no empty slots for both the logs and saplings ( if
     -- we dont have some already ) we cannot continue, as our inventory would be full.
@@ -104,7 +104,7 @@ local function tree_chop(config)
     -- Pull the saplings into slot 1 if it exists
     if sapling_slot ~= nil then
         -- Slot should be empty.
-        task_helpers.assert(wb.transferFromSlotTo(sapling_slot, 1))
+        task_helpers.assert(wb:transferFromSlotTo(sapling_slot, 1))
         sapling_slot = 1
 
         -- Fix the gap that made, even though this does not matter at all lmao
@@ -114,7 +114,7 @@ local function tree_chop(config)
         task_helpers.pushInventoryBack(wb, reserved_slot)
 
         -- Select the sapling
-        wb.select(1)
+        wb:select(1)
     end
 
     -- If there is already a sapling or log we can skip placement
@@ -138,13 +138,13 @@ local function tree_chop(config)
     -- Check the block where we would be placing the sapling. It must be some kind of dirt.
     -- ^^^ This check will no longer work in Minecraft 26.1
     -- We already checked that the block in front of us is air
-    task_helpers.assert(wb.forward())
-    local down_block = wb.inspectDown()
+    task_helpers.assert(wb:forward())
+    local down_block = wb:inspectDown()
     if sapling_slot ~= nil and down_block ~= nil then
         if helpers.arrayContains(down_block.tag, "minecraft:dirt") then
-            task_helpers.assert(wb.stepBack())
+            task_helpers.assert(wb:stepBack())
             -- Place the sapling
-            task_helpers.assert(wb.place())
+            task_helpers.assert(wb:place())
             goto assumptions_met
         end
     end
@@ -196,7 +196,7 @@ local function tree_chop(config)
         task_helpers.taskYield()
 
         -- Have we met our goal?
-        if wb.inventoryCountPattern("log") >= target_logs then
+        if wb:inventoryCountPattern("log") >= target_logs then
             -- Goal met!
             break
         end
@@ -209,7 +209,7 @@ local function tree_chop(config)
         end
 
         -- Is there a log in front of us?
-        local block = wb.inspect()
+        local block = wb:inspect()
 
         -- If there is nothing there at all, that's wrong, since we should have
         -- placed a sapling, or exited if we ran out of saplings.
@@ -233,7 +233,7 @@ local function tree_chop(config)
 
         -- The sapling slot may have moved if we placed our last sapling last time.
         -- Searches upwards, since this will almost always be slot 1.
-        local where_sapling = wb.inventoryFindTag(sapling_tag)
+        local where_sapling = wb:inventoryFindTag(sapling_tag)
 
         if where_sapling == nil then
             -- Ran out of saplings!
@@ -248,11 +248,11 @@ local function tree_chop(config)
             -- If we're full enough to not be able to do this swap, chances are
             -- that the saplings would already in slot 1 anyways. So this
             -- Assertion failing is unlikely.
-            task_helpers.assert(wb.swapSlots(where_sapling, 1))
+            task_helpers.assert(wb:swapSlots(where_sapling, 1))
         end
 
         -- We may now have extra saplings. Burn them.
-        local sapling_count = wb.inventoryCountTag(sapling_tag)
+        local sapling_count = wb:inventoryCountTag(sapling_tag)
         local sapling_excess = sapling_count - target_saplings
 
         if sapling_excess > 0 then
@@ -266,17 +266,17 @@ local function tree_chop(config)
             -- have a TON of fuel for some reason, but in that case, its fine to
             -- just ignore the extra saplings, they'll eventually just entirely
             -- clog the inventory and end the task, which is okay.
-            wb.refuel(sapling_excess)
+            wb:refuel(sapling_excess)
 
             -- If slot 1 is now empty, we need to swap saplings into it again.
-            if wb.getItemCount(1) == 0 then
-                where_sapling = wb.inventoryFindTag(sapling_tag)
+            if wb:getItemCount(1) == 0 then
+                where_sapling = wb:inventoryFindTag(sapling_tag)
                 -- There had to've been more than one stack
                 ---@cast where_sapling number
 
                 -- This should almost always work, unless we are both completely
                 -- full of items, AND full of fuel.
-                task_helpers.assert(wb.swapSlots(where_sapling, 1))
+                task_helpers.assert(wb:swapSlots(where_sapling, 1))
             end
         end
 
@@ -287,7 +287,7 @@ local function tree_chop(config)
         -- Place the next sapling!
         -- We for sure have a sapling at this point, this could only fail if there
         -- is somehow a block in front of us after cutting down the tree.
-        task_helpers.assert(wb.place())
+        task_helpers.assert(wb:place())
 
         -- Time to wait for the next tree to grow!
         ::wait_for_tree::

@@ -11,7 +11,7 @@ use crate::{
             walkback_type::Walkback,
         },
         peripherals::inventory::GenericInventory,
-        vanilla::block_type::{HasMinecraftBlock, LuaBlock, PositionedMinecraftBlock},
+        vanilla::block_type::{HasMinecraftBlock, PositionedMinecraftBlock},
     },
     tests::prelude::*,
 };
@@ -52,26 +52,26 @@ async fn basic_movement_test() {
         os.setComputerLabel("step failure")
     end
 
-    walkback.setup(2,1,2,"n")
+    walkback:setup(2,1,2,"n")
     wait_step()
-    panic.assert(walkback.forward())
+    panic.assert(walkback:forward())
     wait_step()
-    panic.assert(walkback.back())
-    panic.assert(walkback.back())
+    panic.assert(walkback:back())
+    panic.assert(walkback:back())
     wait_step()
-    panic.assert(walkback.forward())
-    panic.assert(walkback.turnLeft())
-    panic.assert(walkback.forward())
+    panic.assert(walkback:forward())
+    panic.assert(walkback:turnLeft())
+    panic.assert(walkback:forward())
     wait_step()
-    panic.assert(walkback.turnRight())
-    panic.assert(walkback.turnRight())
-    panic.assert(walkback.forward())
-    panic.assert(walkback.forward())
+    panic.assert(walkback:turnRight())
+    panic.assert(walkback:turnRight())
+    panic.assert(walkback:forward())
+    panic.assert(walkback:forward())
     wait_step()
-    panic.assert(walkback.back())
-    panic.assert(walkback.up())
+    panic.assert(walkback:back())
+    panic.assert(walkback:up())
     wait_step()
-    panic.assert(walkback.down())
+    panic.assert(walkback:down())
     wait_step()
     "#;
 
@@ -208,18 +208,18 @@ async fn basic_walkback_tests() {
         os.setComputerLabel("step failure")
     end
 
-    walkback.setup(2,1,2,"n")
+    walkback:setup(2,1,2,"n")
 
     wait_step()
-    panic.assert(walkback.forward())
-    panic.assert(walkback.forward())
-    panic.assert(walkback.up())
-    panic.assert(walkback.up())
-    panic.assert(walkback.turnRight())
-    panic.assert(walkback.turnRight())
-    panic.assert(walkback.forward())
+    panic.assert(walkback:forward())
+    panic.assert(walkback:forward())
+    panic.assert(walkback:up())
+    panic.assert(walkback:up())
+    panic.assert(walkback:turnRight())
+    panic.assert(walkback:turnRight())
+    panic.assert(walkback:forward())
     wait_step()
-    panic.assert(walkback.rewind())
+    panic.assert(walkback:rewind())
     wait_step()
     "#;
 
@@ -239,8 +239,6 @@ async fn basic_walkback_tests() {
     let mut socket = TestWebsocket::new(computer.id())
         .await
         .expect("Should be able to open websocket.");
-
-    let air = MinecraftBlock::from_string("minecraft:air").unwrap();
 
     computer.turn_on(&mut test).await;
 
@@ -323,20 +321,20 @@ async fn basic_block_memorization() {
         NETWORKING.debugSend("fail, no response from harness.")
         os.setComputerLabel("step failure")
     end
-    walkback.setup(1,1,1,"n")
+    walkback:setup(1,1,1,"n")
     -- handshake
     wait_step()
 
     -- inspect
-    local _ = walkback.inspect()
-    local _ = walkback.inspectUp()
+    local _ = walkback:inspect()
+    local _ = walkback:inspectUp()
 
     -- move away to ensure we aren't just re-reading it.
-    panic.assert(walkback.back())
+    panic.assert(walkback:back())
 
     -- check em
-    local mem_front = walkback.blockQuery({x=1, y=1, z=0})
-    local mem_up = walkback.blockQuery({x=1, y=2, z=1})
+    local mem_front = walkback:blockQuery({x=1, y=1, z=0})
+    local mem_up = walkback:blockQuery({x=1, y=2, z=1})
 
     -- report back
     NETWORKING.debugSend(mem_front)
@@ -445,10 +443,10 @@ async fn walkback_serialization() {
         os.setComputerLabel("step failure")
     end
 
-    walkback.setup(1,1,1,"n")
+    walkback:setup(1,1,1,"n")
 
     wait_step()
-    NETWORKING.debugSend(walkback.dataJson())
+    NETWORKING.debugSend(walkback:dataJson())
     "#;
 
     let libraries = MeshpitLibraries {
@@ -521,10 +519,10 @@ async fn empty_inventory_serialization() {
         os.setComputerLabel("step failure")
     end
 
-    walkback.setup(1,1,1,"n")
+    walkback:setup(1,1,1,"n")
 
     wait_step()
-    NETWORKING.debugSend(walkback.inventoryJSON())
+    NETWORKING.debugSend(walkback:inventoryJSON())
     "#;
 
     let libraries = MeshpitLibraries {
@@ -643,16 +641,16 @@ async fn recognize_all_blocks() {
         y = 1,
         z = 2,
     }
-    walkback.setup(2,1,2,"n")
-    panic.assert(walkback.back())
+    walkback:setup(2,1,2,"n")
+    panic.assert(walkback:back())
     local keep_going = true
 
     wait_step()
     while keep_going do
         wait_step()
-        local _ = walkback.inspect() -- Load the block
+        local _ = walkback:inspect() -- Load the block
         -- Then actually get the full block info
-        local block = walkback.blockQuery(block_pos, true)
+        local block = walkback:blockQuery(block_pos, true)
         NETWORKING.debugSend(block)
     end
     "#;
@@ -693,6 +691,27 @@ async fn recognize_all_blocks() {
     let mut failed: bool = false;
     let mut failed_block: String = "".to_string();
     for block in data.blocks_by_name.keys() {
+
+        // Some blocks when placed have a different name than their setblock name,
+        // or straight-up just do not want to exist. (or cannot be placed on
+        // concrete.)
+        // We skip those.
+        if block.ends_with("_plant")
+        || block == "fire"
+        || block == "soul_fire"
+        || block.contains("flower")
+        || block.contains("vines")
+        || block.contains("sugar_cane")
+        || block.contains("cactus")
+        || block.contains("dripleaf")
+        || block.contains("bamboo")
+        || block.contains("_bed") // half bed doesn't place
+        || block.contains("concrete") // water flowing solidified powder lol
+        || block.ends_with("air") { // void air, etc
+            info!("Skipped {block}");
+            continue;
+        }
+
         info!("Placing {block}");
         assert!(
             test.command(TestCommand::SetBlock(
@@ -728,9 +747,10 @@ async fn recognize_all_blocks() {
             PositionedMinecraftBlock::deserialize(&debug_packet.inner_data)
                 .expect("This should be a block");
         info!("Turtle saw: {}", returned_block.get_full_name());
+        info!("Should see: {block}");
 
         // Check that the block names are the same
-        if returned_block.get_full_name() != block.into() {
+        if returned_block.get_name() != block {
             // Bad!
             failed = true;
             failed_block = block.to_string();
@@ -795,7 +815,7 @@ async fn query_previous_positions() {
     local helpers = require("helpers")
     require("networking")
 
-    walkback.setup(1,1,1,"n")
+    walkback:setup(1,1,1,"n")
 
     -- The positions to look at
     local pos1 = {x=1, y=1, z=1}
@@ -812,44 +832,44 @@ async fn query_previous_positions() {
     local zeros = helpers.keyFromTable(nowhere)
 
     -- Up 3 times, thus 4 visited positions
-    panic.assert(walkback.up())
-    panic.assert(walkback.up())
-    panic.assert(walkback.up())
+    panic.assert(walkback:up())
+    panic.assert(walkback:up())
+    panic.assert(walkback:up())
 
     -- Current chain should have all of the positions
-    panic.assert(walkback.posQuery(key1, false))
-    panic.assert(walkback.posQuery(key2, false))
-    panic.assert(walkback.posQuery(key3, false))
-    panic.assert(walkback.posQuery(key4, false))
+    panic.assert(walkback:posQuery(key1, false))
+    panic.assert(walkback:posQuery(key2, false))
+    panic.assert(walkback:posQuery(key3, false))
+    panic.assert(walkback:posQuery(key4, false))
 
     -- Go back down, which should trim old positions, and the only good one
     -- should be our current spot.
-    panic.assert(walkback.down())
-    panic.assert(walkback.down())
-    panic.assert(walkback.down())
+    panic.assert(walkback:down())
+    panic.assert(walkback:down())
+    panic.assert(walkback:down())
 
     -- current pos is good
-    panic.assert(walkback.posQuery(key1, false))
+    panic.assert(walkback:posQuery(key1, false))
     -- these shouldn't be there
-    panic.assert(not walkback.posQuery(key2, false))
-    panic.assert(not walkback.posQuery(key3, false))
-    panic.assert(not walkback.posQuery(key4, false))
+    panic.assert(not walkback:posQuery(key2, false))
+    panic.assert(not walkback:posQuery(key3, false))
+    panic.assert(not walkback:posQuery(key4, false))
 
     -- with the full flag on, we should still be able to see those positions.
-    panic.assert(walkback.posQuery(key1, true))
-    panic.assert(walkback.posQuery(key2, true))
-    panic.assert(walkback.posQuery(key3, true))
-    panic.assert(walkback.posQuery(key4, true))
+    panic.assert(walkback:posQuery(key1, true))
+    panic.assert(walkback:posQuery(key2, true))
+    panic.assert(walkback:posQuery(key3, true))
+    panic.assert(walkback:posQuery(key4, true))
 
     -- we've never seen 0,0,0
-    panic.assert(not walkback.posQuery(zeros, false))
-    panic.assert(not walkback.posQuery(zeros, true))
+    panic.assert(not walkback:posQuery(zeros, false))
+    panic.assert(not walkback:posQuery(zeros, true))
 
     -- hard reset the walkback, now we shouldn't be able to see the old positions anymore.
-    walkback.hardReset()
-    panic.assert(not walkback.posQuery(key2, true))
-    panic.assert(not walkback.posQuery(key3, true))
-    panic.assert(not walkback.posQuery(key4, true))
+    walkback:hardReset()
+    panic.assert(not walkback:posQuery(key2, true))
+    panic.assert(not walkback:posQuery(key3, true))
+    panic.assert(not walkback:posQuery(key4, true))
 
     -- yell that everything worked
     NETWORKING.debugSend("all good mate")

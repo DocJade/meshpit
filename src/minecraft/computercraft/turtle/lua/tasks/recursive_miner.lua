@@ -71,12 +71,12 @@ function get_neighbor_blocks(wb)
     -- This should be fairly fast, since it's all just math, no actual
     -- game-state.
     local neighbors = {}
-    neighbors[#neighbors + 1] = wb.getAdjacentBlock("f")
-    neighbors[#neighbors + 1] = wb.getAdjacentBlock("b")
-    neighbors[#neighbors + 1] = wb.getAdjacentBlock("u")
-    neighbors[#neighbors + 1] = wb.getAdjacentBlock("d")
-    neighbors[#neighbors + 1] = wb.getAdjacentBlock("l")
-    neighbors[#neighbors + 1] = wb.getAdjacentBlock("r")
+    neighbors[#neighbors + 1] = wb:getAdjacentBlock("f")
+    neighbors[#neighbors + 1] = wb:getAdjacentBlock("b")
+    neighbors[#neighbors + 1] = wb:getAdjacentBlock("u")
+    neighbors[#neighbors + 1] = wb:getAdjacentBlock("d")
+    neighbors[#neighbors + 1] = wb:getAdjacentBlock("l")
+    neighbors[#neighbors + 1] = wb:getAdjacentBlock("r")
     return neighbors
 end
 
@@ -102,7 +102,7 @@ local function recursive_miner(config)
     ---@cast task_data RecursiveMinerData
 
     -- There should be no previous steps in the walkback
-    if wb.previousPosition() ~= nil then
+    if wb:previousPosition() ~= nil then
         -- Walkback already had data in it.
         task_helpers.throw("bad config")
     end
@@ -114,7 +114,7 @@ local function recursive_miner(config)
     end
 
     -- Task must start with more fuel than the buffer amount.
-    if config.definition.fuel_buffer > wb.getFuelLevel() then
+    if config.definition.fuel_buffer > wb:getFuelLevel() then
         task_helpers.throw("out of fuel")
     end
 
@@ -150,11 +150,11 @@ local function recursive_miner(config)
     end
 
     -- Need to preserve what slot is selected.
-    local original_slot = wb.getSelectedSlot()
+    local original_slot = wb:getSelectedSlot()
 
 
     -- The list of the blocks we have checked. If a block is ever looked at, it
-    -- goes in here. This is separate from the wb.all_seen_blocks since we need
+    -- goes in here. This is separate from the wb:all_seen_blocks since we need
     -- to differentiate blocks we've _checked_ and blocks we've seen, as we
     -- use blockQuery to check what kind of blocks exist at neighbors for
     -- simplicity instead of having to keep track of facing position and such.
@@ -180,7 +180,7 @@ local function recursive_miner(config)
     while true do
         -- Calculate our current movement budget. We cannot update this
         -- manually, as we do not get informed when walkback trims occur.
-        local movement_budget = wb.getFuelLevel() - fuel_buffer - wb.cost()
+        local movement_budget = wb:getFuelLevel() - fuel_buffer - wb:cost()
         -- Are we out of fuel?
         if movement_budget == 0 then
             -- Done mining!
@@ -194,7 +194,7 @@ local function recursive_miner(config)
         end
 
         -- Make sure we have an empty slot
-        if not wb.haveEmptySlot() then
+        if not wb:haveEmptySlot() then
             -- Out of free slots!
             task_helpers.throw("inventory full")
         end
@@ -202,7 +202,7 @@ local function recursive_miner(config)
         -- Checks pass, keep going.
 
         -- Scan all neighboring blocks
-        wb.spinScan()
+        wb:spinScan()
 
         -- Loop over the neighbors
         local neighbors = get_neighbor_blocks(wb)
@@ -224,9 +224,9 @@ local function recursive_miner(config)
             -- We do not need to check for air, and since we are always checking
             -- neighboring positions, we know we have looked at this block due
             -- to the spin that happened before this loop.
-            if block_wanted(wb.blockQuery(neighbor), mineable_names, mineable_tags) then
+            if block_wanted(wb:blockQuery(neighbor), mineable_names, mineable_tags) then
                 -- We will mine this block later. Push to queue.
-                to_mine[#to_mine+1] = wb.clonePosition(neighbor)
+                to_mine[#to_mine+1] = helpers.clonePosition(neighbor)
             end
 
             ::skip::
@@ -241,7 +241,7 @@ local function recursive_miner(config)
         local pos_to_mine = to_mine[#to_mine]
 
         -- Peek at the top block, are we next to it?
-        if not wb.isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
+        if not wb:isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
             -- Walk back until we are next to it.
             while true do
                 -- We should have enough fuel to do this if we did our math correct
@@ -249,9 +249,9 @@ local function recursive_miner(config)
                 -- into a spot we already occupied would require moving into an
                 -- air block, but we always mine a block before moving into it
                 -- unless we are rewinding. Thus walkback never trims.
-                local r, _ = wb.rewind()
+                local r, _ = wb:rewind()
                 task_helpers.assert(r)
-                if wb.isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
+                if wb:isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
                     break
                 end
             end
@@ -260,7 +260,7 @@ local function recursive_miner(config)
 
         -- We are now next to the block we need to mine. Mine it!
         -- Doesn't select a tool, since it does not matter.
-        local mine_result, mine_reason = wb.digAdjacent(pos_to_mine)
+        local mine_result, mine_reason = wb:digAdjacent(pos_to_mine)
 
         -- Now, if the block magically disappeared, that's fine. Think about leaves
         -- decaying or perhaps sand falling.
@@ -273,7 +273,7 @@ local function recursive_miner(config)
 
         -- Move into the position we just mined. This should work as we just
         -- mined it out.
-        local move_result, move_reason = wb.moveAdjacent(pos_to_mine)
+        local move_result, move_reason = wb:moveAdjacent(pos_to_mine)
         task_helpers.assert(move_result)
 
         -- Remove the old block from the list
@@ -292,7 +292,7 @@ local function recursive_miner(config)
         local did_refuel = false
 
         for i = 1, 16 do
-            local item = wb.getItemDetail(i)
+            local item = wb:getItemDetail(i)
             -- Skip if there is no item
             if not item then goto continue end
 
@@ -303,9 +303,9 @@ local function recursive_miner(config)
                 if not helpers.findString(item.name, pattern) then goto bad_pattern end
 
                 -- Valid item, try using it.
-                wb.select(i)
-                did_refuel = wb.refuel(1)
-                wb.select(original_slot)
+                wb:select(i)
+                did_refuel = wb:refuel(1)
+                wb:select(original_slot)
 
                 -- Break out if that worked.
                 if did_refuel then break end

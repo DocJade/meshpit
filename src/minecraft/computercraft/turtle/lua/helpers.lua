@@ -541,6 +541,20 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     return cleaned_table, seen_cleaned
 end
 
+--- Clone a CoordPosition.
+---
+--- Does not modify the incoming table, or copy meta.
+---@param position CoordPosition
+---@return CoordPosition
+function helpers.clonePosition(position)
+    local new = {
+        x = position.x,
+        y = position.y,
+        z = position.z,
+    }
+    return new
+end
+
 
 --- The built-in json serializer is not good enough.
 ---
