@@ -322,11 +322,12 @@ function invertPosition(position)
     position.z = position.z * -1
 end
 
---- Clone a position
+--- Clone a CoordPosition.
+---
 --- Does not modify the incoming table, or copy meta.
 ---@param position CoordPosition
 ---@return CoordPosition
-function clonePosition(position)
+function walkback.clonePosition(position)
     local new = {
         x = position.x,
         y = position.y,
@@ -367,7 +368,7 @@ function transformPosition(direction, facing, start_position)
     local delta = movement_vectors[facing]
     -- Invert if we're moving backwards
     if direction == "b" then
-        delta = clonePosition(delta)
+        delta = walkback.clonePosition(delta)
         invertPosition(delta)
     end
     -- Offset
@@ -395,7 +396,7 @@ end
 ---@param pos1 CoordPosition
 ---@param pos2 CoordPosition
 ---@return boolean
-function isPositionAdjacent(pos1, pos2)
+function walkback.isPositionAdjacent(pos1, pos2)
 	-- Same position?
 	-- Too far away?
 	-- And adjacent, all in one check!
@@ -419,7 +420,7 @@ end
 function deduceAdjacentMove(destination)
 	-- Make sure the position is adjacent to our current position, else
 	-- this would cause us to move forwards for no reason.
-	if not isPositionAdjacent(walkback.cur_position.position, destination) then
+	if not walkback.isPositionAdjacent(walkback.cur_position.position, destination) then
 		return nil
 	end
 
@@ -612,7 +613,8 @@ end
 ---
 --- Does not modify global state.
 ---@param direction MovementDirection re-defines left and right.
-function getAdjacentBlock(direction)
+---@returns CoordPosition
+function walkback.getAdjacentBlock(direction)
 	local pos = walkback.cur_position.position
 	local facing = walkback.cur_position.facing
 	local delta
@@ -1075,6 +1077,78 @@ end
 -- New methods
 -- ======
 
+--- Turn to face an adjacent block. Does nothing if already facing the block, or
+--- if the block is adjacent vertically or horizontally.
+---
+--- Returns false if the requested block was not next to the turtle.
+--- @param adjacent CoordPosition
+--- @return boolean
+function walkback.faceAdjacentBlock(adjacent)
+	-- Check that the position is indeed, adjacent.
+	if not walkback.isPositionAdjacent(walkback.cur_position.position, adjacent) then
+		return false
+	end
+
+	-- Skip if the block is above or below
+	if walkback.cur_position.position.y ~= adjacent.y then
+		-- Vertical move
+		return false
+	end
+
+	-- Since we know the block is one block away from us, and is in line with
+	-- us, the most significant direction is whatever cardinal position we need
+	-- to face to be looking at the block.
+
+	-- We need a delta to calculate that.
+	---@type CoordPosition
+	local delta = {
+		x = adjacent.x - walkback.cur_position.position.x,
+		y = adjacent.y - walkback.cur_position.position.y, -- yes this is never read.
+		z = adjacent.z - walkback.cur_position.position.z,
+	}
+
+	-- Cast that to a direction
+	local direction = mostSignificantDirection(delta.x, delta.z)
+
+	-- Now rotate to face that position!
+	walkback.turnToFace(direction)
+
+	-- All done!
+	return true
+end
+
+--- Move into an adjacent block.
+---
+--- May rotate turtle.
+---
+--- Has the same return format as `walkback.forward()
+---
+--- Returns false, nil if the requested block was not next to the turtle.
+--- @param adjacent CoordPosition
+---@return boolean, MovementError|nil
+function walkback.moveAdjacent(adjacent)
+	-- Check that the position is indeed, adjacent.
+	if not walkback.isPositionAdjacent(walkback.cur_position.position, adjacent) then
+		return false
+	end
+
+	-- Use our inner adjacent move call
+	local moves = deduceAdjacentMove(adjacent)
+
+	-- This is not nil, since we know its not our current position.
+	---@cast moves MovementDirection[]
+
+	for _, move in ipairs(moves) do
+		local ok, result = doMovement(move)
+		if not ok then
+			-- Same kind of return structure as normal movement.
+			return ok, result
+		end
+	end
+
+	return true, nil
+end
+
 -- These scan post-movement.
 
 --- Move the turtle forwards.
@@ -1467,6 +1541,28 @@ function walkback.compareTwoSlots(slot_a, slot_b)
 	return result
 end
 
+--- Count how many slots in the turtle's inventory are empty.
+---
+--- This is an alias of pre-existing methods, but provided as a convenience.
+--- @return number
+function walkback.countEmptySlots()
+	local total = 0
+	for i = 1, 16 do
+		if walkback.getItemCount(i) > 0 then
+			total = total + 1
+		end
+	end
+	return total
+end
+
+--- Checks if there are any empty slots in the inventory.
+---
+--- This is an alias of pre-existing methods, but provided as a convenience.
+--- @return boolean
+function walkback.haveEmptySlot()
+	return walkback.countEmptySlots() > 0
+end
+
 -- ============
 -- Environment detection
 -- ============
@@ -1601,7 +1697,7 @@ end
 --- Returns `nil` if the block in front of the turtle is air.
 ---@return Block|nil
 function walkback.inspect()
-	local pos = getAdjacentBlock("f")
+	local pos = walkback.getAdjacentBlock("f")
 	---@type table|string
 	local b
 	---@diagnostic disable-next-line: undefined-global
@@ -1618,7 +1714,7 @@ end
 --- Returns `nil` if the block in front of the turtle is air.
 ---@return Block|nil
 function walkback.inspectUp()
-	local pos = getAdjacentBlock("u")
+	local pos = walkback.getAdjacentBlock("u")
 	---@type table|string
 	local b
 	---@diagnostic disable-next-line: undefined-global
@@ -1635,7 +1731,7 @@ end
 --- Returns `nil` if the block in front of the turtle is air.
 ---@return Block|nil
 function walkback.inspectDown()
-	local pos = getAdjacentBlock("d")
+	local pos = walkback.getAdjacentBlock("d")
 	---@type table|string
 	local b
 	---@diagnostic disable-next-line: undefined-global
@@ -1731,6 +1827,45 @@ function walkback.digDown(side)
 	return a, b
 end
 
+-- ======
+-- New methods
+-- ======
+
+--- Mine an adjacent block. This is a combination of already public methods, but
+--- is a nice alias.
+---
+--- This may rotate the turtle.
+---
+--- Has the same return signature of `walkback.dig()`. If the position is not
+--- adjacent, this will return `false, nil`
+---@param adjacent CoordPosition
+---@param side TurtleSide? -- Which tool to use.
+---@return boolean, MiningError|nil
+function walkback.digAdjacent(adjacent, side)
+	-- Confirm this is really adjacent
+	if not walkback.isPositionAdjacent(walkback.cur_position.position, adjacent) then
+		return false, nil
+	end
+
+	local y_delta = adjacent.y - walkback.cur_position.position.y
+	-- If the block is above or below, no need to turn.
+	if y_delta ~= 0 then
+		-- mine it!
+		if y_delta > 0 then
+			return walkback.digUp(side)
+		else
+			return walkback.digDown(side)
+		end
+	end
+
+	-- Turn to face the block.
+	-- No need to check, already confirmed we are adjacent
+	walkback.faceAdjacentBlock(adjacent)
+
+	-- Mine it.
+	return walkback.dig(side)
+end
+
 -- ============
 -- Placing
 -- ============
@@ -1776,6 +1911,44 @@ function walkback.placeDown()
 		walkback.inspectDown()
 	end
 	return a, b
+end
+
+-- ======
+-- New methods
+-- ======
+
+--- Place a block at an adjacent position.
+--- This is a combination of already public methods, but is a nice alias.
+---
+--- This may rotate the turtle.
+---
+--- Has the same return signature of `walkback.place()`. If the position is not
+--- adjacent, this will return `false, nil`
+---@param adjacent CoordPosition
+---@return boolean, PlacementError|nil
+function walkback.placeAdjacent(adjacent)
+	-- Confirm this is really adjacent
+	if not walkback.isPositionAdjacent(walkback.cur_position.position, adjacent) then
+		return false, nil
+	end
+
+	local y_delta = adjacent.y - walkback.cur_position.position.y
+	-- If the block is above or below, no need to turn.
+	if y_delta ~= 0 then
+		-- mine it!
+		if y_delta > 0 then
+			return walkback.placeUp()
+		else
+			return walkback.placeDown()
+		end
+	end
+
+	-- Turn to face the block.
+	-- No need to check, already confirmed we are adjacent
+	walkback.faceAdjacentBlock(adjacent)
+
+	-- Place it.
+	return walkback.place()
 end
 
 -- ============

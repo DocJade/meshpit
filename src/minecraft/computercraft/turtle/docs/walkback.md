@@ -60,6 +60,14 @@ As walkback is our primary method of movement, it also keeps track of all of our
 - - If the requested target block is directly next to the turtle, regardless if we have stored it or not, the turtle will rotate to face the block if needed, document the block, then rotate back to its original position. Such that we can return the most up-to-date information on that block.
 - - Returns `nil` if block is not documented, or a `Block` if a block has been logged at that position, unless the block is air, in which case this will still return `nil`, UNLESS and_air is true.
 
+### Position related
+- `walkback.getAdjacentBlock(direction)`
+- - Takes in a coordinate and returns the position adjacent to a turtle in the given direction.
+- `walkback.clonePosition(CoordPosition)`
+- - Makes a copy of a position, cheaply.
+- `walkback.isPositionAdjacent(CoordPosition, CoordPosition)`
+- - Check if two positions are adjacent. Adjacent positions share a block face.
+
 ## Movement functions
 All of the base movement functions internally call the `turtle` equivilant function, thus the return types are the same as they are listed on the cc:tweaked wiki.
 As the turtle travels, it will automatically scan the block forwards, up, and down to document them. However, there are additional scanning movement options for if you want to scan left and right as well.
@@ -84,6 +92,12 @@ A generic scan that does a full 360. Returns nothing and does not move the turtl
 
 Turn to face a specific cardinal direction.
 - `walkback.turnToFace()`
+
+Turns the turtle to face towards an adjacent block.
+- `walkback.faceAdjacentBlock(CoordPosition)`
+
+Moves the turtle into an adjacent position
+- `walkback.moveAdjacent(CoordPosition)`
 
 ## Inventory functions
 None of these have been altered from the normal `turtle` call. This is simply a layer of indirection.
@@ -146,11 +160,19 @@ None of these have been altered from the normal `turtle` call.
 - `walkback.digUp([side])`
 - `walkback.digDown([side])`
 
+### New methods
+- `walkback.digAdjacent([side])`
+- - Digs an adjacent block.
+
 ## Placing
 None of these have been altered from the normal `turtle` call.
 - `walkback.place([text])`
 - `walkback.placeUp([text])`
 - `walkback.placeDown([text])`
+
+### New methods
+- `walkback.placeAdjacent([side])`
+- - Place a block at an adjacent position.
 
 ## Equipment
 None of these have been altered from the normal `turtle` call.

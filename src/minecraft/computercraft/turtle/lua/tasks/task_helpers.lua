@@ -174,34 +174,34 @@ end
 --- Returns a boolean TaskCompletion pair. If the task cannot be completed due
 --- to some un-met constraint, then this will return false.
 ---
----@param task_config TurtleTask
+---@param turtle_task TurtleTask
 ---@return TaskCompletion
-function task_helpers.try_finish_task(task_config)
+function task_helpers.try_finish_task(turtle_task)
     -- Run walkback if needed.
-    if task_config.definition.return_to_start then
+    if turtle_task.definition.return_to_start then
         -- Is there any walkback to do?
-        local cost = task_config.walkback.cost()
+        local cost = turtle_task.walkback.cost()
 
         -- Skip if zero
         if cost == 0 then goto walkback_done end
 
         -- Check if we can make it back
-        if cost > task_config.walkback.getFuelLevel() - task_config.definition.fuel_buffer then
+        if cost > turtle_task.walkback.getFuelLevel() - turtle_task.definition.fuel_buffer then
             -- Don't have enough fuel to do the walkback.
             task_helpers.throw("out of fuel")
         end
 
         -- Do the walkback
         -- TODO: Retry the walkback after some delay.
-        local walkback_result, fail_message = task_config.walkback.rewind()
+        local walkback_result, fail_message = turtle_task.walkback.rewind()
         if not walkback_result then
             task_helpers.throw("walkback rewind failure")
         end
 
         -- Double check that we ended where we started. This should be the case
         -- unless the task popped off a walkback and didn't put it back.
-        local current_position = task_config.walkback.cur_position.position
-        task_helpers.assert(helpers.coordinatesAreEqual(current_position, task_config.start_position))
+        local current_position = turtle_task.walkback.cur_position.position
+        task_helpers.assert(helpers.coordinatesAreEqual(current_position, turtle_task.start_position))
     end
     ::walkback_done::
 

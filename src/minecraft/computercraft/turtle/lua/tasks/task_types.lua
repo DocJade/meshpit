@@ -33,6 +33,7 @@
 --- Just a nicer alias for all the different task data.
 --- @alias TaskDataType
 --- | TreeChopTaskData
+--- | RecursiveMinerData
 
 
 
