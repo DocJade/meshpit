@@ -79,8 +79,11 @@ Up and down scans do a full rotation of the turtle to get every side.
 - `walkback.upScan()`
 - `walkback.downScan()`
 
-And a generic scan that does a full 360. Returns nothing and does not move the turtle, and maintains facing angle.
+A generic scan that does a full 360. Returns nothing and does not move the turtle, and maintains facing angle.
 - `walkback.spinScan()`
+
+Turn to face a specific cardinal direction.
+- `walkback.turnToFace()`
 
 ## Inventory functions
 None of these have been altered from the normal `turtle` call. This is simply a layer of indirection.

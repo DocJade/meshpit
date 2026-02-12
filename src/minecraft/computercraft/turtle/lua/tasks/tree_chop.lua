@@ -66,6 +66,12 @@ local function tree_chop(config)
         task_helpers.throw("bad config")
     end
 
+    -- There should be no previous steps in the walkback
+    if wb.previousPosition ~= nil then
+        -- Walkback already had data in it.
+        task_helpers.throw("bad config")
+    end
+
 
 
     -- Check assumptions
@@ -83,12 +89,15 @@ local function tree_chop(config)
     local facing_sapling = helpers.arrayContains(check_block.tag, sapling_tag)
     local facing_log = helpers.arrayContains(check_block.tag, log_tag)
 
-    -- Find if we have saplings, and if not, what the lowest empty slot is.
+    -- Find if we have saplings, and what the highest empty slot is.
     ::sapling_check::
+
+    -- Pre-sort the inventory to make room at the front.
+    task_helpers.pushInventoryBack(wb)
 
     local have_sapling = false
     local sapling_slot = 1000
-    local lowest_empty = 1000
+    local highest_empty = 0
     local empty_slots = 0
     for i = 1, 16 do
         local slot = wb.getItemDetail(i, true)
@@ -99,7 +108,7 @@ local function tree_chop(config)
                 break
             end
         else
-            lowest_empty = math.min(i, lowest_empty)
+            highest_empty = math.max(i, highest_empty)
             empty_slots = empty_slots + 1
         end
     end
@@ -110,9 +119,31 @@ local function tree_chop(config)
         task_helpers.throw("assumptions not met")
     end
 
+    -- Pull the saplings into slot 1 if it exists
+    if sapling_slot ~= 1000 then
+        -- Slot should be empty.
+        task_helpers.assert(wb.transferFromSlotTo(sapling_slot, 1))
+        sapling_slot = 1
+
+        -- Fix the gap that made
+        ---@type boolean[]
+        local reserved_slot = {}
+        reserved_slot[1] = true
+        task_helpers.pushInventoryBack(wb, reserved_slot)
+
+        -- Select the sapling
+        wb.select(1)
+    end
+
     -- If there is already a sapling or log we can skip placement
     if (facing_log or false) or (facing_sapling or false) then
         goto assumptions_met
+    end
+
+    -- There wasn't a sapling or log, was it empty?
+    if not check_block then
+        -- Invalid position, non-tree block in front of turtle.
+        task_helpers.throw("assumptions not met")
     end
 
     -- We need to place a sapling. If we don't have any, we cannot continue.
@@ -120,34 +151,42 @@ local function tree_chop(config)
         task_helpers.throw("assumptions not met")
     end
 
-    -- Re-order our inventory to put the saplings in slot 1
-    -- TODO:
-
-    -- Check the block where we would be placing the sapling. It must be dirt
+    -- Check the block where we would be placing the sapling. It must be some kind of dirt.
     -- ^^^ This check will no longer work in Minecraft 26.1
     -- We already checked that the block in front of us is air
-    wb.forward()
+    task_helpers.assert(wb.forward())
     local down_block = wb.inspectDown()
     if have_sapling and down_block ~= nil then
         if helpers.arrayContains(down_block.tag, "minecraft:dirt") then
-            wb.stepBack()
+            task_helpers.assert(wb.stepBack())
             -- Place the sapling
-
+            task_helpers.assert(wb.place())
             goto assumptions_met
         end
     end
 
 
     -- If we made it here, we missed the assumptions we needed.
-    -- IE, we have no log, no placed sapling, or no sapling item with a valid placing location.
+    -- IE, we have:
+    -- - No log
+    -- - No placed sapling
+    -- - No sapling item with a valid placing location
+    -- - No bitches
     task_helpers.throw("assumptions not met")
 
     ::assumptions_met::
 
     -- Start the loop!
+    while true do
+        -- Do we still have time?
+        local current_time = os.epoch("utc")
+        if current_time - config.start_time > config.task_data.timeout * 1000 then
+            -- Out of time!
+            return task_helpers.try_finish_task(config)
+        end
+    end
 
-
-
+    -- TODO: actual task
     return
 
 end

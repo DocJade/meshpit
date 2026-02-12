@@ -293,6 +293,14 @@ function helpers.findString(string, pattern)
     return false
 end
 
+--- Check if two coordinate positions are the same position.
+---@param pos1 CoordPosition
+---@param pos2 CoordPosition
+---@return boolean
+function helpers.coordinatesAreEqual(pos1, pos2)
+    return pos1.x == pos2.x and pos1.y == pos2.y and pos1.z == pos2.z
+end
+
 --- Get a sub-slice of a array. This slice is inclusive on both ends.
 ---
 --- Do note that this will NOT work on tables that have keyed values.

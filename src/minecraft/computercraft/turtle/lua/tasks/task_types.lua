@@ -17,7 +17,7 @@
 --- @field return_to_start boolean -- Wether or not the task needs to end where it started.
 --- @field return_to_facing boolean -- Wether or not the task needs to face in the same direction it started in.
 --- @field start_position CoordPosition -- A copy (NOT REFERENCE) to where this task was started.
---- @field start_facing CoordPosition -- What direction was being faced when the task started.
+--- @field start_facing FacingDirection -- What direction was being faced when the task started.
 --- @field fuel_buffer number -- Target amount of fuel to keep in the turtle. Task fails if task does not self-refuel and fuel falls below this number.
 --- @field task_data TaskDataType -- The inner configuration for the specific task.
 
@@ -48,3 +48,4 @@
 --- | "assertion failed"
 --- | "inventory full"
 --- | "out of fuel"
+--- | "walkback rewind failure"

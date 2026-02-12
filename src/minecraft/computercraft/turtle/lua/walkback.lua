@@ -1179,6 +1179,30 @@ function walkback.spinScan()
 	walkback.inspectDown()
 end
 
+--- Turns to face a cardinal direction.
+---
+--- Also scans while turning.
+---@param direction FacingDirection
+function walkback.turnToFace(direction)
+	-- Rotate if needed
+	local start_facing = walkback.cur_position.facing
+	local end_facing = direction
+
+	-- Skip if we don't need to do anything
+	if start_facing == end_facing then return end
+
+	local rotations = findFacingRotation(start_facing, end_facing) or {}
+	for _, move in ipairs(rotations) do
+		-- Rotations cannot fail.
+		doMovement(move)
+		-- Might as well inspect the blocks around us when we do this.
+		walkback.inspect()
+	end
+
+	walkback.inspectUp()
+	walkback.inspectDown()
+end
+
 -- ============
 -- Inventory functions
 -- ============
@@ -1252,20 +1276,23 @@ end
 
 --- Changes the currently selected slot.
 ---
+--- Doesn't return anything, since this always works assuming you are not out
+--- of range.
+---
 --- Accepted values are 1-16.
 ---@param slot number
----@return boolean
 function walkback.select(slot)
 	panic.assert(slot >= 17 or slot <= 0, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
 	---@diagnostic disable-next-line: undefined-global
 	turtle.select(slot)
-	return true
 end
 
 --- Get the number of items in a slot. Defaults to the currently selected slot.
 ---
---- Should have no difference in CPU time cost than getItemDetail() with
---- detailed set to false. So if you are going to manipulate this item further,
+--- This is extremely cheap, this can be called millions of times per second.
+---
+--- The difference in CPU time between this and getItemDetail() without detailed
+--- info is insignificant. So if you are going to manipulate this item further,
 --- consider loading the slot's item directly.
 ---@param slot number
 ---@return number
@@ -1279,6 +1306,8 @@ end
 --- to the currently selected slot.
 ---
 --- IE if a slot has 13 dirt in it, this will return 51.
+---
+--- This is extremely cheap, this can be called millions of times per second.
 ---
 --- Returns 64 for empty slots.
 ---@param slot number
@@ -1376,6 +1405,9 @@ end
 
 --- Get information about the items in the given slot. Slot defaults to the
 --- currently selected slot.
+---
+--- Getting non-detailed information is extremely cheap, basic benchmarks show
+--- this can be called over a million times per second.
 ---
 --- Detailed returns more data, but see the note below.
 ---

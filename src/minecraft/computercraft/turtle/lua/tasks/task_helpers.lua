@@ -1,5 +1,8 @@
 --- Helpers for tasks.
-local test_helpers = {}
+local task_helpers = {}
+
+--- We also use the other helpers to help our helper. Yeah.
+local helpers = require("helpers")
 
 
 
@@ -10,7 +13,7 @@ local test_helpers = {}
 --- Does not allow passing a message in the traceback. Instead, you should comment
 --- on the line above the throw why you are asserting.
 --- @param assertion boolean
-function test_helpers.assert(assertion)
+function task_helpers.assert(assertion)
     if assertion then return end
     -- Assertion failed.
     ---@type TaskFailure
@@ -27,7 +30,7 @@ end
 --- Does not allow passing a message in the traceback. Instead, you should comment
 --- on the line above the throw why you are throwing.
 --- @param reason TaskFailureReason
-function test_helpers.throw(reason)
+function task_helpers.throw(reason)
     ---@type TaskFailure
     local task_failure = {
         kind = "fail",
@@ -40,12 +43,102 @@ end
 --- Move all of the items in the inventory towards the end, freeing up slots in
 --- the front.
 ---
+--- Preserves ordering of items, assuming nothing is marked as ignored. If items
+--- are ignored, they will be "Jumped" over. IE:
+---  1, [2], _, 3
+---  _, [2], 1, 3
+---
+--- Requires a reference to walkback to do inventory movement.
+---
 --- Takes in a list of slots to ignore moving from. However items can still be
 --- moved _into_ these slots if they are empty.
+---
+--- Will free up as many slots as possible starting at position 1 going upwards.
+--- Does not combine stacks of the same item, as we only check if a slot is full
+--- or empty.
+--- @param walkback WalkbackSelf
 --- @param ignored_slots number[]?
-function test_helpers.pushInventoryBack(ignored_slots)
-    -- Map out what slots are used
+function task_helpers.pushInventoryBack(walkback, ignored_slots)
+    -- Keep track of which slots to skip
+    ---@type boolean[]
+    local ignore_map = {}
+    -- Ignored slots are true.
+    for _, slot in ipairs(ignored_slots or {}) do
+        ignore_map[slot] = true
+    end
 
+    -- Start from the back, pulling items upwards. Preserves order of items too!
+    -- Yes this checks slots a lot but non-detailed information is fast.
+    -- Like, REALLY fast, over a million times per second fast. lol.
+
+    -- I really wish lua had continues.
+    for i = 16, 1, -1 do
+        if walkback.getItemDetail(i) ~= nil then goto continue end
+        -- Slot is empty, try moving stuff up.
+        for j = i - 1, 1, -1  do
+            -- Skip ignored slots, and check for items in this slot
+            if not ignore_map[j] and walkback.getItemDetail(j) ~= nil then
+                -- No need to check the result since we know this slot is empty.
+                walkback.transferFromSlotTo(j, i)
+                break
+            end
+        end
+        ::continue::
+    end
 end
 
-return test_helpers
+--- Finish a task. Assumes you have not popped any walkback state, or have already
+--- properly put it back on.
+---
+--- Things you should check before calling this:
+--- - You have enough fuel to do the current walkback if needed.
+---
+--- !! This will throw if the finish requirements cannot be met. !!
+---
+--- Returns a boolean TaskCompletion pair. If the task cannot be completed due
+--- to some un-met constraint, then this will return false.
+---
+---@param task_config TaskConfig
+---@return TaskCompletion
+function task_helpers.try_finish_task(task_config)
+    -- Run walkback if needed.
+    if task_config.return_to_start then
+        -- Is there any walkback to do?
+        local cost = task_config.walkback.cost()
+
+        -- Skip if zero
+        if cost == 0 then goto walkback_done end
+
+        -- Check if we can make it back
+        if cost > task_config.walkback.getFuelLevel() - task_config.fuel_buffer then
+            -- Don't have enough fuel to do the walkback.
+            task_helpers.throw("out of fuel")
+        end
+
+        -- Do the walkback
+        -- TODO: Retry the walkback after some delay.
+        local walkback_result, fail_message = task_config.walkback.rewind()
+        if not walkback_result then
+            task_helpers.throw("walkback rewind failure")
+        end
+
+        -- Double check that we ended where we started. This should be the case
+        -- unless the task popped off a walkback and didn't put it back.
+        local current_position = task_config.walkback.cur_position.position
+        task_helpers.assert(helpers.coordinatesAreEqual(current_position, task_config.start_position))
+    end
+    ::walkback_done::
+
+    -- Rotate to the correct facing position if needed.
+    if task_config.return_to_facing then
+        -- Rotate that way
+        -- This cannot fail.
+        task_config.walkback.turnToFace(task_config.start_facing)
+    end
+
+    -- All good.
+    ---@type TaskCompletion
+    return {kind = "success"}
+end
+
+return task_helpers
