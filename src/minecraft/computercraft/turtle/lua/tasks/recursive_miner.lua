@@ -28,7 +28,7 @@
 --- @field timeout number? -- Maximum number of seconds to spend in this task. May be nil to continue mining until fuel runs out.
 --- @field mineable_names string[]? -- A list of block names that can be mined. Works in tandem with mineable_tags.
 --- @field mineable_tags MinecraftBlockTag[]? -- A list of block tags that can be mined. Works in tandem with mineable_names.
---- @field fuel_names string[]? -- A list of item names that are allowed to be burnt as fuel while this task is running.
+--- @field fuel_patterns string[]? -- A list of string patterns that are allowed as fuel. For example, `coal` matches `minecraft:coal` or `minecraft:coal_block`
 
 local helpers = require "helpers"
 local task_helpers = require "task_helpers"
@@ -81,6 +81,8 @@ function get_neighbor_blocks(wb)
 end
 
 --- Task that recursively* mines blocks based on name or tag.
+---
+--- Never re-orders inventory, or changes what slot is selected.
 ---
 --- *depth first search
 ---
@@ -138,7 +140,7 @@ local function recursive_miner(config)
 
     -- Just shorten the name of these
     local fuel_buffer = config.definition.fuel_buffer
-    local fuel_names = task_data.fuel_names or {}
+    local fuel_patterns = task_data.fuel_patterns or {}
     local mineable_names = task_data.mineable_names or nil
     local mineable_tags = task_data.mineable_tags or nil
     local stop_time = 9999999999999999999999; -- roughly the year 317 million
@@ -146,6 +148,9 @@ local function recursive_miner(config)
         ---@diagnostic disable-next-line: undefined-field
         stop_time = os.epoch("utc") + (task_data.timeout * 1000)
     end
+
+    -- Need to preserve what slot is selected.
+    local original_slot = wb.getSelectedSlot()
 
 
     -- The list of the blocks we have checked. If a block is ever looked at, it
@@ -274,9 +279,47 @@ local function recursive_miner(config)
         -- Remove the old block from the list
         to_mine[#to_mine] = nil
 
+        -- If we are running out of fuel, refuel if we are allowed to.
+        -- We always burn only one item to keep our usage minimal and not overshoot.
+        -- Additionally, if we're mining items that we're allowed to smelt, those items
+        -- would tend to be towards the top of the inventory, thus we iterate
+        -- front to back.
+
+        if #fuel_patterns ~= 0 or movement_budget - 1 ~= 0 then
+            goto skip_refuel
+        end
+
+        local did_refuel = false
+
+        for i = 1, 16 do
+            local item = wb.getItemDetail(i)
+            -- Skip if there is no item
+            if not item then goto continue end
+
+            -- Does the name match?
+            for _, pattern in fuel_patterns do
+                ---@cast pattern string
+                -- Check if item matches
+                if not helpers.findString(item.name, pattern) then goto bad_pattern end
+
+                -- Valid item, try using it.
+                wb.select(i)
+                did_refuel = wb.refuel(1)
+                wb.select(original_slot)
+
+                -- Break out if that worked.
+                if did_refuel then break end
+
+                ::bad_pattern::
+                -- That didn't work, keep going.
+            end
+            if did_refuel then break end
+            ::continue::
+        end
+        ::skip_refuel::
+
         -- Loop! The next iteration will scan for more blocks and continue the
         -- recursion. Although it't not _really_ recursion, but shush.
-
     end
 
     -- Loop broken, its time to perform the walkback.
