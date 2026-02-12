@@ -116,10 +116,12 @@ None of these have been altered from the normal `turtle` call. This is simply a 
 - `walkback.getItemDetail([slot [, detailed]])`
 
 ### New methods
-- `walkback.transferFromSlotTo(slot, slot, [count])
+- `walkback.transferFromSlotTo(slot, slot, [count])`
 - - Transfers items between two arbitrary slots.
-- `walkback.compareTwoSlots(slot, slot, [count])
+- `walkback.compareTwoSlots(slot, slot, [count])`
 - - Runs the comparison check against 2 arbitrary slots.
+- `walkback.inventoryCountPattern(string)`
+- - Counts how many items in the inventory match a string pattern.
 
 ## Environment detection
 These methods are slightly altered to also return `false` on fluids, as detect should be used for movement checks. Secretly calls inspect() under the hood to update our block list.

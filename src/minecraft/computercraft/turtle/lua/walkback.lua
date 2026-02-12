@@ -1563,6 +1563,30 @@ function walkback.haveEmptySlot()
 	return walkback.countEmptySlots() > 0
 end
 
+--- Count how many items in the inventory match a pattern.
+---
+--- IE, `log` would match `minecraft:oak_log` as well as `minecraft:spruce_log`
+--- @param pattern string
+--- @return number
+function walkback.inventoryCountPattern(pattern)
+	local matches = 0
+	for i = 1, 16 do
+		-- Get item, if any
+		local item = walkback.getItemDetail(i)
+		if not item then goto continue end
+
+		-- Check if pattern matches
+		if not helpers.findString(item.name, pattern) then goto continue end
+
+		-- Match! Add to tally.
+		matches = matches + item.count
+		::continue::
+	end
+	return matches
+end
+
+
+
 -- ============
 -- Environment detection
 -- ============
