@@ -12,7 +12,7 @@ async fn tree_chop_test() {
         size_x: 15,
         size_z: 15,
     };
-    let mut test = MinecraftTestHandle::new(area, "Basic movement test").await;
+    let mut test = MinecraftTestHandle::new(area, "tree_chop task test").await;
     // create a computer
     let mut position = MinecraftPosition {
         position: CoordinatePosition { x: 7, y: 1, z: 7 },
