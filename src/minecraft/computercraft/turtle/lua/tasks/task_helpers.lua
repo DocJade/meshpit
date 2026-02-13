@@ -210,6 +210,7 @@ function task_helpers.try_finish_task(turtle_task)
         -- Rotate that way
         -- This cannot fail.
         turtle_task.walkback:turnToFace(turtle_task.start_facing)
+        task_helpers.assert(turtle_task.walkback.cur_position.facing == turtle_task.start_facing)
     end
 
     -- All good.

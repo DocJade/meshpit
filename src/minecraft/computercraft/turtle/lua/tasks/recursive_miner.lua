@@ -176,6 +176,17 @@ local function recursive_miner(config)
     ---@type CoordPosition[]
     local to_mine = {}
 
+    -- TODO: Speed improvements!
+    -- - Do not spin after every move, this is slow as hell. Only check the sides
+    --   that have not been seen yet.
+    -- TODO: Pattern improvements!
+    -- - While it shouldn't matter _too_ much, the pattern for mining trees looks
+    --   pretty damn stupid.
+    -- TODO: Block priorities!
+    -- - The incoming block list should be sorted by its priority, thus you can
+    --   pick what blocks are mined first in the recursion. This will allow going
+    --   for trunks early in trees, for example.
+
     -- Main loop
     while true do
         -- Calculate our current movement budget. We cannot update this
@@ -237,6 +248,7 @@ local function recursive_miner(config)
         -- Neighbors have been checked. Is there anything to do?
         if #to_mine == 0 then
             -- Nothing left to mine!
+            ---@diagnostic disable-next-line: undefined-field
             os.setComputerLabel("Out of things to mine!")
             break
         end
@@ -249,41 +261,73 @@ local function recursive_miner(config)
             -- Walk back until we are next to it.
             while true do
                 -- We should have enough fuel to do this if we did our math correct
-                -- earlier. Also, we should not hit the end of the chain, as moving
-                -- into a spot we already occupied would require moving into an
-                -- air block, but we always mine a block before moving into it
-                -- unless we are rewinding. Thus walkback never trims.
+                -- earlier.
                 local r, _ = wb:stepBack()
                 task_helpers.assert(r)
                 if wb:isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
                     break
                 end
             end
-
         end
 
-        -- We are now next to the block we need to mine. Mine it!
-        -- Doesn't select a tool, since it does not matter.
-        os.setComputerLabel("Breaking...")
-        local mine_result, mine_reason = wb:digAdjacent(pos_to_mine)
 
-        -- Now, if the block magically disappeared, that's fine. Think about leaves
-        -- decaying or perhaps sand falling.
-        -- However, any of the other errors are a failure mode.
-        if not mine_result then
-            -- No longer there? We dont care.
-            if mine_reason ~= "Nothing to dig here" then
-                -- Some other issue.
+        -- We are now next to the block we need to mine. Mine it AND Move into it.
+        -- We loop here because falling blocks (sand/gravel/decaying leaves) or
+        -- desyncs (?man idfk im just trying anything now) can cause the move to
+        -- fail even if the dig returned "nothing to dig".
+        local tries = 50
+        while true do
+            os.setComputerLabel("Breaking...")
+            -- Doesn't select a tool, since it does not matter.
+            local mine_result, mine_reason = wb:digAdjacent(pos_to_mine)
+
+            -- Check for actually failures, ignore "Nothing to dig here"
+            if not mine_result and mine_reason ~= "Nothing to dig here" then
                 os.setComputerLabel(mine_reason)
-                task_helpers.throw("assumptions not met")
+                task_helpers.throw("assumptions not met: " .. tostring(mine_reason))
+            end
+
+
+            -- Move into the position we just mined. This should work as we just
+            -- mined it out.
+            os.setComputerLabel("Moving in...")
+            local move_result, move_reason = wb:moveAdjacent(pos_to_mine)
+
+            if move_result then
+                -- Successfully moved!
+                break
+            elseif move_reason == "Out of fuel" then
+                -- This should never happen due to how we loop, but idk.
+                task_helpers.throw("out of fuel")
+            else
+                -- Movement obstructed. Something is amiss. We will try at most 50 times
+                -- before assuming something is actually very broken. It could be
+                -- that our facing direction got misaligned or that our position
+                -- has drifted. I have no idea, and it would be hard to determine
+                -- why here. Also this could be a falling block so... idk.
+                -- Fifty sounds like a lot, and probably is. IDK how tall piles of
+                -- sand or gravel could be. Better to overshoot than undershoot!
+
+                -- From testing with trees, most of the time it seems to only need
+                -- one retry.
+
+                -- TODO: Move this retry logic into walkback, since we really should
+                -- just be able to assume that if walkback returns that a block has
+                -- been mined, it SHOULD BE GONE lol. Same for if checking for a block
+                -- existing, might as well do it 5 times. Slower? Yes. Consistent?
+                -- Also yes, and wildly more important. This should also let us
+                -- turn the turtle action speed back up.
+
+                -- Try again. This is self-slowing due to calling movement methods
+                -- which are speed limited.
+                tries = tries - 1
+                if tries == 0 then
+                    -- Well shit.
+                    os.setComputerLabel("Movement obstructed after 50 tries.")
+                    task_helpers.throw("assumptions not met")
+                end
             end
         end
-
-        -- Move into the position we just mined. This should work as we just
-        -- mined it out.
-        os.setComputerLabel("Moving in...")
-        local move_result, move_reason = wb:moveAdjacent(pos_to_mine)
-        task_helpers.assert(move_result)
 
         -- Remove the old block from the list
         os.setComputerLabel("Removing old...")
@@ -308,7 +352,7 @@ local function recursive_miner(config)
             if not item then goto continue end
 
             -- Does the name match?
-            for _, pattern in fuel_patterns do
+            for _, pattern in pairs(fuel_patterns) do
                 ---@cast pattern string
                 -- Check if item matches
                 if not helpers.findString(item.name, pattern) then goto bad_pattern end

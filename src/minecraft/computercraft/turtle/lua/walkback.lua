@@ -998,6 +998,19 @@ end
 ---
 --- This enforces the speed limit on turtles.
 local function waitTillCanMove()
+
+	-- TODO:
+	-- TODO:
+	-- TODO:
+	-- TODO: This absolutely SPAMS events, this should call the MeshOS level
+	-- TODO: sleep if it exists, or do a timer-based sleep itself manually.
+	-- TODO:
+	-- TODO: Additionally, these same speed limits should be applied to mining
+	-- TODO: and placing blocks.
+	-- TODO:
+	-- TODO:
+	-- TODO:
+
 	local when_can_move = walkback.last_movement_time + walkback.speed_limit_milliseconds
 	local yield = helpers.quick_yield
 	---@diagnostic disable-next-line: undefined-field
