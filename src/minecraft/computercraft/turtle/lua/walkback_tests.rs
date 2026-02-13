@@ -82,6 +82,7 @@ async fn basic_movement_test() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -230,6 +231,7 @@ async fn basic_walkback_tests() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -348,6 +350,7 @@ async fn basic_block_memorization() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -456,6 +459,7 @@ async fn walkback_serialization() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -532,6 +536,7 @@ async fn empty_inventory_serialization() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -662,6 +667,7 @@ async fn recognize_all_blocks() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -882,6 +888,7 @@ async fn query_previous_positions() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);

@@ -134,7 +134,9 @@ function panic.force_reboot(message)
     -- Not much we can do here, but to prevent fast boot-looping, we will stall for 30 seconds.
     -- We will also shout out the message on as many outputs as we can.
     ---@diagnostic disable-next-line: undefined-global
-    printError(message)
+    print(message)
+    local trace = debug.traceback(message, 2)
+    print(trace)
     ---@diagnostic disable-next-line: undefined-field
     os.setComputerLabel(message)
 

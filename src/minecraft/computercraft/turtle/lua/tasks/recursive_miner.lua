@@ -202,6 +202,8 @@ local function recursive_miner(config)
         -- Checks pass, keep going.
 
         -- Scan all neighboring blocks
+        -- TODO: Don't just blindly spin scan, only scan positions we haven't seen.
+
         wb:spinScan()
 
         -- Loop over the neighbors
@@ -235,6 +237,7 @@ local function recursive_miner(config)
         -- Neighbors have been checked. Is there anything to do?
         if #to_mine == 0 then
             -- Nothing left to mine!
+            os.setComputerLabel("Out of things to mine!")
             break
         end
 
@@ -242,6 +245,7 @@ local function recursive_miner(config)
 
         -- Peek at the top block, are we next to it?
         if not wb:isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
+            os.setComputerLabel("Moving back...")
             -- Walk back until we are next to it.
             while true do
                 -- We should have enough fuel to do this if we did our math correct
@@ -249,7 +253,7 @@ local function recursive_miner(config)
                 -- into a spot we already occupied would require moving into an
                 -- air block, but we always mine a block before moving into it
                 -- unless we are rewinding. Thus walkback never trims.
-                local r, _ = wb:rewind()
+                local r, _ = wb:stepBack()
                 task_helpers.assert(r)
                 if wb:isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
                     break
@@ -260,23 +264,29 @@ local function recursive_miner(config)
 
         -- We are now next to the block we need to mine. Mine it!
         -- Doesn't select a tool, since it does not matter.
+        os.setComputerLabel("Breaking...")
         local mine_result, mine_reason = wb:digAdjacent(pos_to_mine)
 
         -- Now, if the block magically disappeared, that's fine. Think about leaves
         -- decaying or perhaps sand falling.
         -- However, any of the other errors are a failure mode.
-        if not mine_result and mine_reason ~= "Nothing to dig here"then
-            -- No good! Either we cant mine this, or have no/the wrong tool!
-            task_helpers.throw("assumptions not met")
+        if not mine_result then
+            -- No longer there? We dont care.
+            if mine_reason ~= "Nothing to dig here" then
+                -- Some other issue.
+                os.setComputerLabel(mine_reason)
+                task_helpers.throw("assumptions not met")
+            end
         end
-
 
         -- Move into the position we just mined. This should work as we just
         -- mined it out.
+        os.setComputerLabel("Moving in...")
         local move_result, move_reason = wb:moveAdjacent(pos_to_mine)
         task_helpers.assert(move_result)
 
         -- Remove the old block from the list
+        os.setComputerLabel("Removing old...")
         to_mine[#to_mine] = nil
 
         -- If we are running out of fuel, refuel if we are allowed to.
@@ -285,11 +295,12 @@ local function recursive_miner(config)
         -- would tend to be towards the top of the inventory, thus we iterate
         -- front to back.
 
+        local did_refuel
         if #fuel_patterns ~= 0 or movement_budget - 1 ~= 0 then
             goto skip_refuel
         end
 
-        local did_refuel = false
+        did_refuel = false
 
         for i = 1, 16 do
             local item = wb:getItemDetail(i)

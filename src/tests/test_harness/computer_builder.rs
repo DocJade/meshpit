@@ -40,6 +40,10 @@ pub struct MeshpitLibraries {
     pub block: Option<bool>,
     /// Item
     pub item: Option<bool>,
+    /// Mesh OS
+    ///
+    /// This also comes with all of the tasks.
+    pub mesh_os: Option<bool>,
 }
 
 impl MeshpitLibraries {
@@ -67,8 +71,21 @@ impl MeshpitLibraries {
         if self.item.unwrap_or(false) {
             paths.push(lua_folder.join("item.lua"));
         };
+        if self.mesh_os.unwrap_or(false) {
+            paths.push(lua_folder.join("mesh_os.lua"));
+            // Need to also grab all of the tasks.
+            // Yes this flattens the directory structure but thats fine, we don't
+            // rely on it anyways.
+            let task_folder = lua_folder.join("tasks");
+            for task in task_folder.as_path().read_dir().unwrap() {
+                let task = task.unwrap();
+                // Blindly copy
+                paths.push(task.path())
+            }
+        };
         paths
     }
+
     pub fn new() -> Self {
         Self {
             networking: None,
@@ -77,6 +94,7 @@ impl MeshpitLibraries {
             helpers: None,
             block: None,
             item: None,
+            mesh_os: None
         }
     }
 }

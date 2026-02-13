@@ -56,7 +56,7 @@ local block_helpers = {}
 --- Hashmap of tags that we care about
 ---@alias ImportantTags {MinecraftBlockTag: boolean}
 ---@type ImportantTags
-importantTags = {
+local importantTags = {
 	["minecraft:base_stone_overworld"] = true,
 	["minecraft:features_cannot_replace"] = true,
 	["minecraft:replaceable"] = true,
@@ -198,9 +198,9 @@ function block_helpers.detailsToBlock(incoming, block_position)
 	-- Keep only the tags we care about.
 	-- if the incoming tags are completely empty, we need to ignore them, hence the
 	-- empty table here
-	for name, value in pairs(incoming.tag or {}) do
+	for name, _ in pairs(incoming.tags or {}) do
 		if block_helpers.tagIsImportant(name) then
-			tags[#tags + 1] = value
+			tags[#tags + 1] = name
 		end
 	end
 

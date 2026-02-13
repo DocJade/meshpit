@@ -54,8 +54,6 @@ end
 --- on the line above the throw why you are asserting.
 --- @param assertion boolean
 function task_helpers.assert(assertion)
-    -- Might as well yield in here too.
-    task_helpers.taskYield()
     if assertion then return end
     -- Assertion failed.
     ---@type TaskFailure
@@ -73,6 +71,7 @@ end
 --- on the line above the throw why you are throwing.
 --- @param reason TaskFailureReason
 function task_helpers.throw(reason)
+    os.setComputerLabel("task threw! " .. reason)
     ---@type TaskFailure
     local task_failure = {
         kind = "fail",
@@ -110,7 +109,8 @@ end
 --- do not need to worry about that, as the OS will clean up in that case.
 function task_helpers.taskYield()
     -- This seems like a pointless wrapper, but maybe we will do more here later.
-    coroutine.yield()
+    os.queueEvent("yield")
+    coroutine.yield("yield")
 end
 
 --- Move all of the items in the inventory towards the end, freeing up slots in

@@ -25,6 +25,23 @@ local walkback = {
         facing = "?"
     };
 
+	--- The last time the turtle did some movement.
+	--- This is used to throttle the speed of the turtle, since it can cause
+	--- random issues if we're doing stuff too fast.
+	---
+	--- Tracked as milliseconds since utc epoch.
+	--- @type number
+	---@diagnostic disable-next-line: undefined-field
+	last_movement_time = os.epoch("utc"),
+
+	--- The speed limit of the turtle. IE, how many milliseconds have to pass
+	--- between movements. Turtles seem to be able to move 2 blocks per second,
+	--- but we set this a bit lower to allow some cooldown time.
+	---
+	--- Defined in milliseconds
+	--- @type number
+	speed_limit_milliseconds = 1000,
+
     --- The current walkback chain. An array of positions.
     --- Position 0 is the first step in the chain.
     ---
@@ -365,7 +382,7 @@ end
 ---@param pos1 CoordPosition
 ---@param pos2 CoordPosition
 ---@return number
-local function taxicabDistance(pos1, pos2)
+function walkback:taxicabDistance(pos1, pos2)
 	-- local x = math.abs(pos1.x - pos2.x)
 	-- local y = math.abs(pos1.y - pos2.y)
 	-- local z = math.abs(pos1.z - pos2.z)
@@ -385,7 +402,7 @@ function walkback:isPositionAdjacent(pos1, pos2)
 	-- Same position?
 	-- Too far away?
 	-- And adjacent, all in one check!
-	return taxicabDistance(pos1, pos2) == 1
+	return self:taxicabDistance(pos1, pos2) == 1
 end
 
 
@@ -576,6 +593,7 @@ end
 --- @return boolean, MovementError|nil
 --- @private
 function walkback:doMovement(movement)
+	-- We throttle movement speed to
 	-- No match statements yay.
 	-- Ordered on what i presume to be the most common movement cases.
 	local result
@@ -718,15 +736,19 @@ end
 ---
 --- Will return `"Not enough fuel"` if the rewind could never possibly work due
 --- to being too long.
----@return boolean, MovementError|"Not enough fuel"|nil
+---@return boolean, MovementError|"not enough fuel"|"nothing to walkback"|nil
 function walkback:rewind()
+	-- If there is nothing to rewind, return false.
+	if self:previousPosition() == nil then
+		return false,"nothing to walkback"
+	end
     -- Composed of other methods for implementation simplicity! :D
     -- Pre-check if we have enough fuel. If we don't, then we won't
     -- even start.
     local fuel_level = self:getFuelLevel()
 	local cost = self:cost()
 	if cost > fuel_level then
-		return false, "Not enough fuel"
+		return false, "not enough fuel"
 	end
 	-- Run walkback steps until we run out of steps.
 	while type(self:previousPosition()) ~= "nil" do
@@ -740,7 +762,7 @@ function walkback:rewind()
 	return true, nil
 end
 
---- Rewind the position of the turtle a single step.
+--- Go back to the previous position in the current rewind.
 ---
 --- Returns a bool, string|nil pair denoting success or a failure reason.
 ---
@@ -971,6 +993,22 @@ end
 -- Call these whenever you know exactly where you are going.
 -- But remember, the more we scan, the more we learn!
 
+
+--- Helper function to yield until we are allowed to move.
+---
+--- This enforces the speed limit on turtles.
+local function waitTillCanMove()
+	local when_can_move = walkback.last_movement_time + walkback.speed_limit_milliseconds
+	local yield = helpers.quick_yield
+	---@diagnostic disable-next-line: undefined-field
+	while when_can_move > os.epoch("utc") do
+		yield()
+	end
+	-- We moved!
+	---@diagnostic disable-next-line: undefined-field
+	walkback.last_movement_time = os.epoch("utc")
+end
+
 --- Move the turtle forwards.
 ---
 --- Returns a boolean on wether the move completed or not,
@@ -984,6 +1022,7 @@ function walkback:forward()
 	if a then
 		self:recordMove("f")
 	end
+	waitTillCanMove()
 	return a, b
 end
 
@@ -1000,6 +1039,7 @@ function walkback:back()
 	if a then
 		self:recordMove("b")
 	end
+	waitTillCanMove()
 	return a, b
 end
 
@@ -1016,6 +1056,7 @@ function walkback:up()
 	if a then
 		self:recordMove("u")
 	end
+	waitTillCanMove()
 	return a, b
 end
 
@@ -1032,6 +1073,7 @@ function walkback:down()
 	if a then
 		self:recordMove("d")
 	end
+	waitTillCanMove()
 	return a, b
 end
 
@@ -1049,6 +1091,7 @@ function walkback:turnLeft()
 	---@diagnostic disable-next-line: undefined-global
 	turtle.turnLeft()
 	self:recordMove("l")
+	waitTillCanMove()
 	return true, nil
 end
 
@@ -1061,6 +1104,7 @@ function walkback:turnRight()
 	---@diagnostic disable-next-line: undefined-global
 	turtle.turnRight()
 	self:recordMove("r")
+	waitTillCanMove()
 	return true, nil
 end
 
@@ -1348,7 +1392,7 @@ end
 --- Accepted values are 1-16.
 ---@param slot number
 function walkback:select(slot)
-	panic.assert(slot >= 17 or slot <= 0, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	panic.assert( slot > 0 and slot <= 16, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
 	---@diagnostic disable-next-line: undefined-global
 	turtle.select(slot)
 end
@@ -1363,7 +1407,7 @@ end
 ---@param slot number
 ---@return number
 function walkback:getItemCount(slot)
-	panic.assert(slot >= 17 or slot <= 0, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	panic.assert(slot > 0 and slot <= 16, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
 	---@diagnostic disable-next-line: undefined-global
 	return turtle.getItemCount(slot)
 end
@@ -1379,7 +1423,7 @@ end
 ---@param slot number
 ---@return number
 function walkback:getItemSpace(slot)
-	panic.assert(slot >= 17 or slot <= 0, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	panic.assert(slot > 0 and slot <= 16, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
 	---@diagnostic disable-next-line: undefined-global
 	return turtle.getItemSpace(slot)
 end

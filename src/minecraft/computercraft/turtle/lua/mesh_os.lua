@@ -5,6 +5,13 @@
 
 local mesh_os = {}
 
+local function hook(event, line)
+    local s = debug.getinfo(2).short_src
+    print(s .. ":" .. line)
+end
+
+
+
 -- =========
 -- Notes
 -- =========
@@ -51,6 +58,11 @@ local walkback_queue = {}
 --- resumed.
 ---@type number|nil
 local currently_sleeping = nil
+
+--- This is set when we are in test mode. Used for controlling some behavior
+--- to not trigger in tests.
+--- @type boolean
+local test_mode = false
 
 -- =========
 -- Types
@@ -207,18 +219,15 @@ local currently_sleeping = nil
 --- This will always return a task, it may be a wait task if there is nothing to do.
 --- @return TurtleTask
 local function request_new_tasks()
+    -- If we are in test mode, we will throw an error to completely exit the OS
+    -- giving us a path back to the startup script.
+    ---@diagnostic disable-next-line: undefined-field
+    if test_mode then error("request_new_tasks") end
+
     -- Currently does nothing.
     -- TODO: Default tasks!
     ---@diagnostic disable-next-line: undefined-field, missing-return
     os.shutdown()
-end
-
---- !!! THIS IS ONLY FOR TEST CASES! !!!
---- TODO:
---- TODO:
---- TODO:
-function mesh_os.testAddTask()
-
 end
 
 --- Sets up an incoming task. TODO: We assume that this is valid right now,
@@ -235,9 +244,6 @@ local function setupNewTask(task_definition, is_sub_task)
         walkback_queue[#walkback_queue+1] = popped
     end
 
-    -- Create the task and make the thread. Do not start it yet.
-    local new_thread = coroutine.create(getTaskFunction(task_definition.task_data))
-
     -- The rest of the owl.
     ---@type TurtleTask
     local new_task = {
@@ -246,12 +252,42 @@ local function setupNewTask(task_definition, is_sub_task)
         start_position = helpers.clonePosition(walkback.cur_position.position),
         ---@diagnostic disable-next-line: undefined-field
         start_time = os.epoch("utc"),
-        task_thread = new_thread,
+        -- TODO: See below todo lol
+        ---@diagnostic disable-next-line: assign-type-mismatch
+        task_thread = nil,
         walkback = walkback
     }
 
+    -- Create the task and make the thread. Do not start it yet.
+    -- Get the task function
+    local task_function = getTaskFunction(task_definition.task_data)
+    -- Wrap it in ANOTHER function which passes its arguments
+    local the_cooler_function = function ()
+        task_function(new_task)
+    end
+
+    local new_thread = coroutine.create(the_cooler_function)
+    -- debug.sethook(new_thread, hook, "l")
+
+    -- Then add the thread
+    -- TODO: move the thread out of TurtleTask
+    new_task.task_thread = new_thread
+
     -- Add task to the end of the task queue.
     task_queue[#task_queue+1] = new_task
+end
+
+--- !!! THIS IS ONLY FOR TEST CASES! !!!
+---
+--- Directly spawn a task. Setup must have been ran to have a proper walkback
+--- state, but the OS does not need to be running.
+--- @param task_definition TaskDefinition
+function mesh_os.testAddTask(task_definition)
+    -- We are officially testing
+    test_mode = true
+
+    -- Add the task.
+    setupNewTask(task_definition, false)
 end
 
 --- Get the function associated with a task data
@@ -304,48 +340,69 @@ end
 -- Event handling
 -- =========
 
---- Handle all events from the os queue. This assumes that the yield events have
---- already been dealt with.
+--- We only handle one event at a time, as looping would require to always wait
+--- for a timer to complete. The timer is only a backup to prevent being stuck
+--- if the queue is actually empty.
 local function handle_events()
-    while true do
-        ---@type CCEvent|CustomEvent
-        ---@diagnostic disable-next-line: undefined-field
-        local event = os.pullEvent()
-        local event_name = event[1]
-        if event_name == "yield" then
-            -- We should never see this
-            panic.panic("Dangling yield!")
-        elseif event_name == "sleep" then
-            -- The task wants to sleep. Set up the sleeping mode.
-            ---@cast event CustomEventSleep
-            currently_sleeping = event[2]
-            -- we still finish checking the rest of the events, the
-            -- sleeping happens on the next iteration of the main loop.
-        elseif event_name == "spawn_task" then
-            -- Add a new task to the queue!
-            ---@cast event CustomEventSpawnTask
-            local task_definition = event[2]
-            local is_sub_task = event[3]
-            setupNewTask(task_definition, is_sub_task)
-        elseif event_name == "alarm" then
-            -- TODO: Do something with this event
-        elseif event_name == "modem_message" then
-            -- TODO: Do something with this event
-        elseif event_name == "peripheral" then
-            -- TODO: Do something with this event
-        elseif event_name == "timer" then
-            -- TODO: Do something with this event
-        elseif event_name == "turtle_inventory" then
-            -- TODO: Do something with this event
-        elseif event_name == "websocket_closed" then
-            -- TODO: Do something with this event
-        elseif event_name == "websocket_message" then
-            -- TODO: Do something with this event
-        else
-            -- This is an event we do not care about
-            -- Thus we do nothing.
+    -- Create the watchdog timer, just in case.
+    local watchdog = os.startTimer(0.10)
+
+    ---@type CCEvent|CustomEvent
+    ---@diagnostic disable-next-line: undefined-field
+    local event = table.pack(os.pullEvent())
+    local event_name = event[1]
+    local handled_event = true
+    -- print(event_name)
+    if event_name == "turtle_response" then
+        -- This is an internal CC:Tweaked event that we are able to see for
+        -- some stupid reason, we need to put it back onto the queue now.
+        os.queueEvent(table.unpack(event))
+    elseif event_name == "yield" then
+        -- Hey! Put that back!
+        os.queueEvent("yield")
+    elseif event_name == "sleep" then
+        -- The task wants to sleep. Set up the sleeping mode.
+        ---@cast event CustomEventSleep
+        currently_sleeping = event[2]
+        -- we still finish checking the rest of the events, the
+        -- sleeping happens on the next iteration of the main loop.
+    elseif event_name == "spawn_task" then
+        -- Add a new task to the queue!
+        ---@cast event CustomEventSpawnTask
+        local task_definition = event[2]
+        local is_sub_task = event[3]
+        setupNewTask(task_definition, is_sub_task)
+    elseif event_name == "alarm" then
+        -- TODO: Do something with this event
+    elseif event_name == "modem_message" then
+        -- TODO: Do something with this event
+    elseif event_name == "peripheral" then
+        -- TODO: Do something with this event
+    elseif event_name == "timer" then
+        -- Is this the watchdog?
+        if event[2] == watchdog then
+            -- There were no events at all. :(
+            return
         end
+        -- Not our timer, not our problem.
+        -- TODO: keep track of timers that have gone stale (IE we have re-added)
+        -- them to the queue for more than 10? seconds
+        -- TODO: other timers?
+    elseif event_name == "turtle_inventory" then
+        -- TODO: Do something with this event
+    elseif event_name == "websocket_closed" then
+        -- TODO: Do something with this event
+    elseif event_name == "websocket_message" then
+        -- TODO: Do something with this event
+    else
+        -- This is an event we do not care (or know) about
+        -- Thus we do nothing.
+        print("Saw unknown event:")
+        print(event_name)
     end
+
+    -- Cancel the watchdog.
+    os.cancelTimer(watchdog)
 end
 
 -- =========
@@ -354,10 +411,13 @@ end
 
 --- Things that need to be done before entering the main loop for the first time.
 ---
+--- Requires a position to start the walkback at.
+---
 --- Does not call the main loop after startup finishes.
-function mesh_os.startup()
-    -- Set up networking
-    -- TODO: move connect() in networking to a public thing.
+--- @param pos MinecraftPosition
+function mesh_os.startup(pos)
+    -- Setup the walkback.
+    walkback:setup(pos.position.x, pos.position.y, pos.position.z, pos.facing)
 end
 
 -- =========
@@ -391,17 +451,26 @@ function mesh_os.main()
     -- the OS would not resume until some other event happens.
     local yield_string = "yield"
 
+    -- TODO: Move this into the task
+    local result
+
     while true do
+        -- TODO: Do we need these?
         -- Yield to the Lua engine, this means we yield twice per loop, but
         -- in-case the task request stuff breaks and there is nothing to
-        queue(yield_string)
+        -- queue(yield_string)
 
         -- Instead of blindly taking the next event, we always search for yield
         -- to prevent consuming other kinds of events.
-        yield(yield_string)
+        -- yield(yield_string)
+
+        -- Create locals early as to not piss off goto
+        local task
+        local bool
 
         -- Are we sleeping?
         if currently_sleeping then
+            print("eepy")
             -- Are we done sleeping?
             ---@diagnostic disable-next-line: undefined-field
             if os.epoch("utc") >= currently_sleeping then
@@ -417,7 +486,7 @@ function mesh_os.main()
 
         -- Grab a task from the queue, unless it is empty.
         --- @type TurtleTask?
-        local task = task_queue[#task_queue]
+        task = task_queue[#task_queue]
 
         -- If there is no task, get new tasks.
         if not task then
@@ -427,8 +496,15 @@ function mesh_os.main()
         end
 
         -- Run the current task.
-        ---@type boolean, TaskCompletion|TaskFailure
-        local bool, result = resume(task.task_thread)
+
+        -- Sometimes the resume calls actually are trying to pull for an event,
+        -- thus if we get a string we need to pass in the event its asking for.
+        if result ~= nil and type(result) == "string" then
+            bool, result = resume(task.task_thread, os.pullEvent(result))
+        else
+            ---@type boolean, TaskCompletion|TaskFailure|any
+            bool, result = resume(task.task_thread)
+        end
 
         -- Is the task over?
         if not bool then
@@ -440,9 +516,10 @@ function mesh_os.main()
                 goto task_cleanup_done
             end
 
-            -- Task threw an error. Currently there is no recovery system for this.
             -- TODO: actually recover lmao
-            panic.panic("task died")
+            -- Task threw an error. Currently there is no recovery system for this.
+            -- This should be a string.
+            panic.panic("task died lol" .. helpers.serializeJSON(result))
 
 
             ::task_cleanup_done::
@@ -461,3 +538,5 @@ function mesh_os.main()
         -- Keep going!
     end
 end
+
+return mesh_os
