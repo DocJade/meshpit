@@ -983,11 +983,11 @@ async fn rotation_breaking() {
 
     for i = 1, 20 do
         walkback:digAdjacent(n)
-        walkback:moveAdjacent(n)
-        walkback:moveAdjacent(home)
+        panic.assert(walkback:moveAdjacent(n))
+        panic.assert(walkback:moveAdjacent(home))
         walkback:digAdjacent(s)
-        walkback:moveAdjacent(s)
-        walkback:moveAdjacent(home)
+        panic.assert(walkback:moveAdjacent(s))
+        panic.assert(walkback:moveAdjacent(home))
     end
 
     -- Maybe a lot of spins
@@ -999,13 +999,13 @@ async fn rotation_breaking() {
         walkback:turnLeft()
         walkback:turnLeft()
         walkback:digAdjacent(n)
-        walkback:moveAdjacent(n)
+        panic.assert(walkback:moveAdjacent(n))
         walkback:turnLeft()
         walkback:turnLeft()
-        walkback:moveAdjacent(home)
+        panic.assert(walkback:moveAdjacent(home))
         walkback:digAdjacent(s)
-        walkback:moveAdjacent(s)
-        walkback:moveAdjacent(home)
+        panic.assert(walkback:moveAdjacent(s))
+        panic.assert(walkback:moveAdjacent(home))
     end
 
     wait_step()

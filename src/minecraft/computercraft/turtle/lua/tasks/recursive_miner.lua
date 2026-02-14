@@ -300,32 +300,32 @@ local function recursive_miner(config)
                 -- This should never happen due to how we loop, but idk.
                 task_helpers.throw("out of fuel")
             else
-                -- Movement obstructed. Something is amiss. We will try at most 50 times
-                -- before assuming something is actually very broken. It could be
-                -- that our facing direction got misaligned or that our position
-                -- has drifted. I have no idea, and it would be hard to determine
-                -- why here. Also this could be a falling block so... idk.
-                -- Fifty sounds like a lot, and probably is. IDK how tall piles of
-                -- sand or gravel could be. Better to overshoot than undershoot!
+                -- -- Movement obstructed. Something is amiss. We will try at most 50 times
+                -- -- before assuming something is actually very broken. It could be
+                -- -- that our facing direction got misaligned or that our position
+                -- -- has drifted. I have no idea, and it would be hard to determine
+                -- -- why here. Also this could be a falling block so... idk.
+                -- -- Fifty sounds like a lot, and probably is. IDK how tall piles of
+                -- -- sand or gravel could be. Better to overshoot than undershoot!
 
-                -- From testing with trees, most of the time it seems to only need
-                -- one retry.
+                -- -- From testing with trees, most of the time it seems to only need
+                -- -- one retry.
 
-                -- TODO: Move this retry logic into walkback, since we really should
-                -- just be able to assume that if walkback returns that a block has
-                -- been mined, it SHOULD BE GONE lol. Same for if checking for a block
-                -- existing, might as well do it 5 times. Slower? Yes. Consistent?
-                -- Also yes, and wildly more important. This should also let us
-                -- turn the turtle action speed back up.
+                -- -- TODO: Move this retry logic into walkback, since we really should
+                -- -- just be able to assume that if walkback returns that a block has
+                -- -- been mined, it SHOULD BE GONE lol. Same for if checking for a block
+                -- -- existing, might as well do it 5 times. Slower? Yes. Consistent?
+                -- -- Also yes, and wildly more important. This should also let us
+                -- -- turn the turtle action speed back up.
 
-                -- Try again. This is self-slowing due to calling movement methods
-                -- which are speed limited.
-                tries = tries - 1
-                if tries == 0 then
-                    -- Well shit.
-                    os.setComputerLabel("Movement obstructed after 50 tries.")
-                    task_helpers.throw("assumptions not met")
-                end
+                -- -- Try again. This is self-slowing due to calling movement methods
+                -- -- which are speed limited.
+                -- tries = tries - 1
+                -- if tries == 0 then
+                --     -- Well shit.
+                --     os.setComputerLabel("Movement obstructed after 50 tries.")
+                --     task_helpers.throw("assumptions not met")
+                -- end
             end
         end
 

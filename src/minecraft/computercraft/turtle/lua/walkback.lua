@@ -304,7 +304,7 @@ local function findFacingRotation(start_direction, end_direction)
 	local right_distance = (end_num - start_num + 4) % 4
 	-- Counter
 	local left_distance = (start_num - end_num + 4) % 4
-	local times = math.min(math.min(right_distance, left_distance), 1)
+	local times = math.min(right_distance, left_distance)
 
 	-- Prefer right turns
 	local turn_direction = "r"
