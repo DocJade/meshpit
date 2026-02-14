@@ -1012,10 +1012,10 @@ local function waitTillCanMove()
 	-- TODO:
 
 	local when_can_move = walkback.last_movement_time + walkback.speed_limit_milliseconds
-	local yield = helpers.quick_yield
+	local quick_yield = helpers.quick_yield
 	---@diagnostic disable-next-line: undefined-field
 	while when_can_move > os.epoch("utc") do
-		yield()
+		quick_yield()
 	end
 	-- We moved!
 	---@diagnostic disable-next-line: undefined-field

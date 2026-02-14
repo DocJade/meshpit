@@ -909,3 +909,170 @@ async fn query_previous_positions() {
     test.stop(worked).await;
     assert!(worked)
 }
+
+#[tokio::test]
+/// It seems that computercraft sometimes likes to yield mid-rotations even though
+/// it shouldn't, allowing you to break blocks while still rotating, thus a 180
+/// rotation, then a break, can break a block at 90 degrees instead of the final
+/// block at the end of the 180.
+async fn rotation_breaking() {
+    // If we place blocks on the left and right side of the turtle, when we can
+    // break, turn 180, and repeat endlessly. This should never break the blocks
+    // to the side of the turtle.
+
+    // TODO!!!!!!!!!!!!!
+
+    let area = TestArea {
+        size_x: 5,
+        size_z: 5,
+    };
+    let mut test = MinecraftTestHandle::new(area, "180 break sanity check").await;
+    // create a computer
+    let turtle_position = MinecraftPosition {
+        position: CoordinatePosition { x: 2, y: 1, z: 2 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    // Simple as hell this time, just turn back and forth over and over.
+
+    let test_script = r#"
+    local walkback = require("walkback")
+    local panic = require("panic")
+    require("networking")
+    local function wait_step()
+        NETWORKING.debugSend("wait")
+        if NETWORKING.waitForPacket(5) then
+            return
+        end
+        NETWORKING.debugSend("fail, no response from harness.")
+        os.setComputerLabel("step failure")
+    end
+
+    walkback:setup(0,0,0,"n")
+    wait_step()
+
+    -- Spins and forwards, walkbacks
+    turtle.equipRight()
+    for i = 1, 20 do
+        walkback:dig()
+        walkback:forward()
+        walkback:stepBack()
+        walkback:turnLeft()
+        walkback:turnLeft()
+    end
+
+    -- Mine adjacent
+    -- These are adjacent because the turtle thinks its at 0,0,0
+    n = {
+        x = 0,
+        y = 0,
+        z = -1
+    }
+
+    s = {
+        x = 0,
+        y = 0,
+        z = 1
+    }
+
+    home = {
+        x = 0,
+        y = 0,
+        z = 0
+    }
+
+    for i = 1, 20 do
+        walkback:digAdjacent(n)
+        walkback:moveAdjacent(n)
+        walkback:moveAdjacent(home)
+        walkback:digAdjacent(s)
+        walkback:moveAdjacent(s)
+        walkback:moveAdjacent(home)
+    end
+
+    -- Maybe a lot of spins
+    for i = 1, 20 do
+        walkback:turnLeft()
+        walkback:turnLeft()
+        walkback:turnRight()
+        walkback:turnLeft()
+        walkback:turnLeft()
+        walkback:turnLeft()
+        walkback:digAdjacent(n)
+        walkback:moveAdjacent(n)
+        walkback:turnLeft()
+        walkback:turnLeft()
+        walkback:moveAdjacent(home)
+        walkback:digAdjacent(s)
+        walkback:moveAdjacent(s)
+        walkback:moveAdjacent(home)
+    end
+
+    wait_step()
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        ..Default::default()
+    };
+
+    // Place blocks around where the turtle will go, placing the turtle will replace
+    // the center block.
+
+    let c1 = CoordinatePosition { x: 1, y: 1, z: 1 };
+
+    let c2 = CoordinatePosition { x: 3, y: 1, z: 3 };
+    let cobblestone = MinecraftBlock::from_string("cobblestone").unwrap();
+
+    assert!(test.command(TestCommand::Fill(c1, c2, &cobblestone)).await.success());
+
+    // The two blocks that should not be broken
+    let mut dont_touch_1 = turtle_position;
+    dont_touch_1.move_direction(MinecraftCardinalDirection::West);
+    let dont_touch_1 = dont_touch_1.position;
+    let mut dont_touch_2 = turtle_position;
+    dont_touch_2.move_direction(MinecraftCardinalDirection::East);
+    let dont_touch_2 = dont_touch_2.position;
+
+    // Build the computer
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+
+    let setup = ComputerSetup::new(ComputerKind::Turtle(Some(50)), config);
+    let computer = test.build_computer(&turtle_position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to open websocket.");
+
+    // vro needs a pickaxe
+    let gave_axe = test.command(TestCommand::InsertItem(turtle_position.position, &MinecraftItem::from_string("diamond_pickaxe").unwrap(), 1, 0)).await;
+    assert!(gave_axe.success());
+
+
+    computer.turn_on(&mut test).await;
+
+    // Let it do it's thing. This should take at most 5 minutes
+    let str = String::from("go");
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
+
+    // Wait for the turtle to finish spinning
+    socket.receive(5 * 60).await.expect("Should receive");
+
+    // Did either of the 2 blocks get removed?
+    let lived_1 = test.command(TestCommand::TestForBlock(dont_touch_1, &cobblestone)).await.success();
+    let lived_2 = test.command(TestCommand::TestForBlock(dont_touch_2, &cobblestone)).await.success();
+
+    let all_good =  lived_1 && lived_2;
+
+    // Be nice and stop the test before possibly panicking.
+    test.stop(all_good).await;
+
+    // Actually worked?
+    assert!(all_good)
+}
