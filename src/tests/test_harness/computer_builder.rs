@@ -175,7 +175,7 @@ impl TestComputer {
         );
 
         // This takes a moment, so we must wait.
-        std::thread::sleep(COMPUTER_STATE_CHANGE_TIME);
+        tokio::time::sleep(COMPUTER_STATE_CHANGE_TIME).await;
     }
 
     /// Get the ID of the computer. You should avoid doing this unless you need it to keep tests agnostic.
@@ -197,6 +197,6 @@ impl TestComputer {
             result.contains("Shutdown"),
             "Missing shutdown message! {result}"
         );
-        std::thread::sleep(COMPUTER_STATE_CHANGE_TIME);
+        tokio::time::sleep(COMPUTER_STATE_CHANGE_TIME).await;
     }
 }

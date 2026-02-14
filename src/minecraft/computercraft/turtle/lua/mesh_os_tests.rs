@@ -1,24 +1,15 @@
 // Turtle networking related tests.
 
+use log::info;
+
 use crate::tests::prelude::*;
 
-/// Tries to chop down a big oak tree.
-///
-/// Considered successful if the turtle returns to the start point.
-#[tokio::test]
-async fn tree_chop_test() {
-    // ts tree so chopped 💔
-    let area = TestArea {
-        size_x: 15,
-        size_z: 15,
-    };
-    let mut test = MinecraftTestHandle::new(area, "tree_chop task test").await;
-    // create a computer
-    let mut position = MinecraftPosition {
-        position: CoordinatePosition { x: 7, y: 1, z: 7 },
-        facing: Some(MinecraftCardinalDirection::North),
-    };
-
+/// Spawns a tree_chop task test. This is it's own function to allow you to start
+/// hella tree tests at once for fun!
+async fn run_tree_chop(
+    mut test: MinecraftTestHandle,
+    mut position: MinecraftPosition,
+) -> bool {
     let test_script = r#"
     local mesh_os = require("mesh_os")
     local panic = require("panic")
@@ -131,14 +122,78 @@ async fn tree_chop_test() {
     // Did it end up back at the start?
     position.move_direction(MinecraftCardinalDirection::South);
     position.move_direction(MinecraftCardinalDirection::South);
+    let turtle_back = test.command(TestCommand::TestForBlock(position.position, &MinecraftBlock::from_string("computercraft:turtle_normal").unwrap())).await.success();
 
-    assert!(test.command(TestCommand::TestForBlock(position.position, &MinecraftBlock::from_string("computercraft:turtle_normal").unwrap())).await.success());
 
     // There should also NOT be an oak log in front of the turtle.
     position.move_direction(MinecraftCardinalDirection::North);
-    assert!(!test.command(TestCommand::TestForBlock(position.position, &MinecraftBlock::from_string("minecraft:oak_log").unwrap())).await.success());
+    let no_log = !test.command(TestCommand::TestForBlock(position.position, &MinecraftBlock::from_string("minecraft:oak_log").unwrap())).await.success();
 
-    // All good!
-    test.stop(true).await;
+    let success = turtle_back && no_log;
+    test.stop(success).await;
 
+    success
+}
+
+/// Tries to chop down a big oak tree.
+///
+/// Considered successful if the turtle returns to the start point.
+#[tokio::test]
+async fn tree_chop_test() {
+    // ts tree so chopped 💔
+    let area = TestArea {
+        size_x: 15,
+        size_z: 15,
+    };
+    let test = MinecraftTestHandle::new(area, "tree_chop task test").await;
+    let position = MinecraftPosition {
+        position: CoordinatePosition { x: 7, y: 1, z: 7 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    let success = run_tree_chop(test, position).await;
+    assert!(success);
+}
+
+/// Chop 100 trees at once. Skipped for hopefully obvious reasons. Its a stress test.
+#[tokio::test]
+#[ignore]
+async fn tree_chop_galore() {
+    let mut handles = vec![];
+
+    for i in 0..100 {
+        let handle = tokio::spawn(async move {
+            let area = TestArea {
+                size_x: 15,
+                size_z: 15,
+            };
+            let test = MinecraftTestHandle::new(area, &format!("tree_chop task test {}", i)).await;
+            let position = MinecraftPosition {
+                position: CoordinatePosition { x: 7, y: 1, z: 7 },
+                facing: Some(MinecraftCardinalDirection::North),
+            };
+
+            run_tree_chop(test, position).await
+        });
+        handles.push(handle);
+    }
+
+    // Wait for all the chops to finish
+    let mut all_passed = true;
+    for handle in handles {
+        match handle.await {
+            Ok(result) => {
+                if !result {
+                    all_passed = false;
+                }
+            }
+            Err(e) => {
+                all_passed = false;
+                info!("Failed to rejoin tree chop task??");
+                info!("{e}");
+            }
+        }
+    }
+
+    assert!(all_passed, "One or more tree_chop tests failed");
 }

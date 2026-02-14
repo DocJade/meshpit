@@ -40,7 +40,7 @@ local walkback = {
 	---
 	--- Defined in milliseconds
 	--- @type number
-	speed_limit_milliseconds = 1000,
+	speed_limit_milliseconds = 0, -- TODO: Turn this back on as needed.
 
     --- The current walkback chain. An array of positions.
     --- Position 0 is the first step in the chain.
