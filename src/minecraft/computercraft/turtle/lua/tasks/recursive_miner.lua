@@ -67,17 +67,42 @@ end
 --- turtle.
 --- @param wb WalkbackSelf
 --- @return CoordPosition[]
-function get_neighbor_blocks(wb)
+local function get_true_neighbor_blocks(wb)
     -- This should be fairly fast, since it's all just math, no actual
     -- game-state.
+    -- Also, the ordering here gives us our priorities. First in last out.
+    -- We prefer to go straight up, then going back down last.
     local neighbors = {}
-    neighbors[#neighbors + 1] = wb:getAdjacentBlock("f")
-    neighbors[#neighbors + 1] = wb:getAdjacentBlock("b")
-    neighbors[#neighbors + 1] = wb:getAdjacentBlock("u")
     neighbors[#neighbors + 1] = wb:getAdjacentBlock("d")
     neighbors[#neighbors + 1] = wb:getAdjacentBlock("l")
+    neighbors[#neighbors + 1] = wb:getAdjacentBlock("b")
     neighbors[#neighbors + 1] = wb:getAdjacentBlock("r")
+    neighbors[#neighbors + 1] = wb:getAdjacentBlock("f")
+    neighbors[#neighbors + 1] = wb:getAdjacentBlock("u")
     return neighbors
+end
+
+--- Get all of the coordinate positions of neighboring blocks that we have
+--- not yet examined.
+--- @param wb WalkbackSelf
+--- @return CoordPosition[]
+--- @param seen_blocks {[string]: true}
+local function get_neighbor_blocks(wb, seen_blocks)
+    local all_neighbors = get_true_neighbor_blocks(wb)
+
+    ---@type CoordPosition[]
+    local kept_neighbors = {}
+    -- Discard the ones we've seen.
+    for _, n in ipairs(all_neighbors) do
+        local key = helpers.keyFromTable(n)
+        -- This cannot be nil... Not gonna check tho
+        ---@cast key string
+        if not seen_blocks[key] then
+            -- Haven't seen this one yet!
+            kept_neighbors[#kept_neighbors+1] = n
+        end
+    end
+    return kept_neighbors
 end
 
 --- Task that recursively* mines blocks based on name or tag.
@@ -176,9 +201,6 @@ local function recursive_miner(config)
     ---@type CoordPosition[]
     local to_mine = {}
 
-    -- TODO: Speed improvements!
-    -- - Do not spin after every move, this is slow as hell. Only check the sides
-    --   that have not been seen yet.
     -- TODO: Pattern improvements!
     -- - While it shouldn't matter _too_ much, the pattern for mining trees looks
     --   pretty damn stupid.
@@ -213,25 +235,38 @@ local function recursive_miner(config)
         -- Checks pass, keep going.
 
         -- Scan all neighboring blocks
-        -- TODO: Don't just blindly spin scan, only scan positions we haven't seen.
-
-        wb:spinScan()
-
-        -- Loop over the neighbors
-        local neighbors = get_neighbor_blocks(wb)
+        -- Loop over the neighbors. This only returns ones we have not seen yet.
+        local neighbors = get_neighbor_blocks(wb, seen_blocks)
         for _, neighbor in ipairs(neighbors) do
             local position_key = helpers.keyFromTable(neighbor)
             -- This should never be nil as CoordPosition meets the key rules. If
             -- this is not true, we have WAY more problems elsewhere.
             ---@cast position_key string
-            -- Skip if we've already seen this block
-            if seen_blocks[position_key] then
-                -- Already saw this position
-                goto skip
-            end
 
             -- We have now seen this position.
             seen_blocks[position_key] = true
+
+            -- Look at the neighbor.
+            -- Don't need to turn for above and below neighbors.
+            -- Skip if the block is above or below
+	        if wb.cur_position.position.y ~= neighbor.y then
+	        	-- Vertical move, its up or down.
+                local is_up = (neighbor.y - wb.cur_position.position.y) > 0
+                if is_up then
+                    wb:inspectUp()
+                else
+                    wb:inspectDown()
+                end
+	        else
+                -- Turn to face it, and inspect it.
+                local old_facing = wb.cur_position.facing
+                wb:faceAdjacentBlock(neighbor)
+                -- Even though faceAdjacentBlock will automatically inspect when turning,
+                -- that does not account for the case where we did not turn.
+                if old_facing == wb.cur_position.facing then
+                    wb:inspect()
+                end
+            end
 
             -- Check if this is a block we want to mine
             -- We do not need to check for air, and since we are always checking
@@ -241,8 +276,6 @@ local function recursive_miner(config)
                 -- We will mine this block later. Push to queue.
                 to_mine[#to_mine+1] = helpers.clonePosition(neighbor)
             end
-
-            ::skip::
         end
 
         -- Neighbors have been checked. Is there anything to do?
@@ -340,7 +373,7 @@ local function recursive_miner(config)
         -- front to back.
 
         local did_refuel
-        if #fuel_patterns ~= 0 or movement_budget - 1 ~= 0 then
+        if #fuel_patterns == 0 or movement_budget - 1 > 0 then
             goto skip_refuel
         end
 

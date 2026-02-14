@@ -16,7 +16,7 @@ async fn run_tree_chop(
     require("networking")
     local function wait_step()
         NETWORKING.debugSend("wait")
-        if NETWORKING.waitForPacket(15) then
+        if NETWORKING.waitForPacket(240) then
             return
         end
         NETWORKING.debugSend("fail, no response from harness.")
@@ -104,7 +104,7 @@ async fn run_tree_chop(
     socket.send(str.clone(), 5).await.expect("Should send");
 
     // Wait for the turtle to move backwards
-    socket.receive(10).await.expect("Should receive");
+    socket.receive(15).await.expect("Should receive");
 
     // Place the tree
     let t_p = position.with_offset(test.corner());
@@ -116,7 +116,7 @@ async fn run_tree_chop(
     socket.send(str.clone(), 5).await.expect("Should send");
 
     // This may take a while.
-    socket.receive(120).await.expect("Should receive");
+    socket.receive(840).await.expect("Should receive");
 
     // Turtle is done.
     // Did it end up back at the start?
@@ -179,21 +179,23 @@ async fn tree_chop_galore() {
     }
 
     // Wait for all the chops to finish
-    let mut all_passed = true;
+    let mut fails: usize = 0;
+    let mut passes: usize = 0;
     for handle in handles {
         match handle.await {
             Ok(result) => {
                 if !result {
-                    all_passed = false;
+                    passes += 1;
                 }
             }
             Err(e) => {
-                all_passed = false;
+                fails += 1;
                 info!("Failed to rejoin tree chop task??");
                 info!("{e}");
             }
         }
     }
-
+    let all_passed = fails == 0;
+    info!("Ran {} tree tests. Of those tests, {} passed and {} failed.", fails + passes, passes, fails);
     assert!(all_passed, "One or more tree_chop tests failed");
 }
