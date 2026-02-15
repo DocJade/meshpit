@@ -783,6 +783,7 @@ local function recursive_miner(config)
             -- Its worth moving in here. The scan will happen automatically on
             -- the next loop.
             move_or_die(wb, pos_to_mine)
+            post_movement_shortcuts(wb, seen_blocks, to_mine)
         end
 
         -- Remove the old block from the list
