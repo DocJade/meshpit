@@ -698,20 +698,6 @@ function helpers.taxicabDistance(pos1, pos2)
 	return math.abs(pos1.x - pos2.x) + math.abs(pos1.y - pos2.y) + math.abs(pos1.z - pos2.z)
 end
 
---- Check is a position is directly adjacent to another position.
----
---- Does not consider diagonals to be adjacent, positions must share a block
---- face, and positions are not adjacent to themselves.
----@param pos1 CoordPosition
----@param pos2 CoordPosition
----@return boolean
-function helpers.isPositionAdjacent(pos1, pos2)
-	-- Same position?
-	-- Too far away?
-	-- And adjacent, all in one check!
-	return helpers.taxicabDistance(pos1, pos2) == 1
-end
-
 --- Get a new position based on a movement direction and facing direction.
 ---
 --- Does not modify the incoming position, as it is immediately cloned.
@@ -760,69 +746,6 @@ function helpers.getTransformedPosition(direction, facing, start_position)
 
 	-- Return the finished table
 	return working_position
-end
-
---- From a starting position, deduce what actions need to be taken to move to
---- an adjacent position.
----
---- Takes in a MinecraftPosition to deduce based off of. Does not modify the starting
---- position.
----
---- Will return either one or two movement directions, as the move will always
---- require a transformation, but will not always require a rotation.
----
---- returns `nil` if the destination position is not adjacent to the turtle.
---- Attempting to move into the current position of the turtle will also return
---- nil, as that is not an adjacent position, and moreover, no move is required.
---- @param starting_position MinecraftPosition
---- @param destination CoordPosition
---- @return nil|MovementDirection[]
-function helpers.deduceAdjacentMove(starting_position, destination)
-	-- Make sure the position is adjacent to our current position, else
-	-- this would cause us to move forwards for no reason.
-	if not helpers.isPositionAdjacent(starting_position.position, destination) then
-		return nil
-	end
-
-	-- Only one of the 3 directions can have a value of +-1.
-	local x_delta = destination.x - starting_position.position.x
-	local y_delta = destination.y - starting_position.position.y
-	local z_delta = destination.z - starting_position.position.z
-
-	-- If the movement is vertical, the facing direction does not matter
-	if y_delta ~= 0 then
-		return {y_delta == -1 and "d" or "u"}
-	end
-
-	-- Determine the cardinal direction of the move
-	local move_direction = helpers.mostSignificantDirection(x_delta, z_delta)
-
-	-- Skip rotation if we're directly facing the target position, or
-	-- if we can move backwards into the position.
-	local cur_facing = starting_position.facing
-	if move_direction == cur_facing then
-		return {"f"}
-	elseif move_direction == helpers.invertDirection(cur_facing) then
-		return {"b"}
-	end
-
-	-- Rotation is required before movement.
-	-- Create a move set.
-	---@type MovementDirection[]
-	local movements = {}
-
-	-- This will always be one rotation, since we know we weren't able to move
-	-- directly forwards or backwards into the position we want to get into.
-	-- We will turn to face the position, since there is no cost difference to
-	-- turning left vs right.
-
-	-- Find the rotation. This will always be one turn.
-	movements[1] = helpers.findFacingRotation(cur_facing, move_direction)[1]
-
-	-- Add the move forwards into the position
-	movements[2] = "f"
-
-	return movements
 end
 
 -- === === ===
@@ -906,12 +829,130 @@ function helpers.findFacingRotation(start_direction, end_direction)
 	return moves
 end
 
+-- === === ===
+-- === === ===
+-- Adjacency helpers
+-- === === ===
+-- === === ===
 
+--- Check is a position is directly adjacent to another position.
+---
+--- Does not consider diagonals to be adjacent, positions must share a block
+--- face, and positions are not adjacent to themselves.
+---@param pos1 CoordPosition
+---@param pos2 CoordPosition
+---@return boolean
+function helpers.isPositionAdjacent(pos1, pos2)
+	-- Same position?
+	-- Too far away?
+	-- And adjacent, all in one check!
+	return helpers.taxicabDistance(pos1, pos2) == 1
+end
 
+--- From a starting position, deduce what actions need to be taken to move to
+--- an adjacent position.
+---
+--- Takes in a MinecraftPosition to deduce based off of. Does not modify the starting
+--- position.
+---
+--- Will return either one or two movement directions, as the move will always
+--- require a transformation, but will not always require a rotation.
+---
+--- returns `nil` if the destination position is not adjacent to the turtle.
+--- Attempting to move into the current position of the turtle will also return
+--- nil, as that is not an adjacent position, and moreover, no move is required.
+--- @param starting_position MinecraftPosition
+--- @param destination CoordPosition
+--- @return nil|MovementDirection[]
+function helpers.deduceAdjacentMove(starting_position, destination)
+	-- Make sure the position is adjacent to our current position, else
+	-- this would cause us to move forwards for no reason.
+	if not helpers.isPositionAdjacent(starting_position.position, destination) then
+		return nil
+	end
 
+	-- Only one of the 3 directions can have a value of +-1.
+	local x_delta = destination.x - starting_position.position.x
+	local y_delta = destination.y - starting_position.position.y
+	local z_delta = destination.z - starting_position.position.z
 
+	-- If the movement is vertical, the facing direction does not matter
+	if y_delta ~= 0 then
+		return {y_delta == -1 and "d" or "u"}
+	end
 
+	-- Determine the cardinal direction of the move
+	local move_direction = helpers.mostSignificantDirection(x_delta, z_delta)
 
+	-- Skip rotation if we're directly facing the target position, or
+	-- if we can move backwards into the position.
+	local cur_facing = starting_position.facing
+	if move_direction == cur_facing then
+		return {"f"}
+	elseif move_direction == helpers.invertDirection(cur_facing) then
+		return {"b"}
+	end
+
+	-- Rotation is required before movement.
+	-- Create a move set.
+	---@type MovementDirection[]
+	local movements = {}
+
+	-- This will always be one rotation, since we know we weren't able to move
+	-- directly forwards or backwards into the position we want to get into.
+	-- We will turn to face the position, since there is no cost difference to
+	-- turning left vs right.
+
+	-- Find the rotation. This will always be one turn.
+	movements[1] = helpers.findFacingRotation(cur_facing, move_direction)[1]
+
+	-- Add the move forwards into the position
+	movements[2] = "f"
+
+	return movements
+end
+
+--- Get the position of the block to a side of the incoming block relative to a
+--- movement direction from the starting position, accounting for some
+--- CardinalDirection.
+---
+--- Re-purposes the MovementDirection type, left and right are interpreted as
+--- the block to the left or right side of the incoming position instead of a rotation.
+---
+--- Does not modify incoming values.
+--- @param position CoordPosition -- The position to check the sides of
+--- @param facing CardinalDirection -- The direction we are facing from the perspective of the position.
+--- @param side MovementDirection -- Which side of the block from the original position to look at.
+--- @return CoordPosition
+function helpers.getAdjacentBlock(position, facing, side)
+	local delta
+
+	-- Implemented as an if-else chain since we need to add the incoming position
+	-- to the delta before returning.
+
+	if side == "u" or side == "d" then
+		-- Up and down are constant
+		delta = movement_vectors[side]
+	elseif side == "f" then
+		-- Forward is our current facing direction's vector
+		delta = movement_vectors[facing]
+	elseif side == "b" then
+		-- Flip that around
+		local f = helpers.invertDirection(facing)
+		delta = movement_vectors[f]
+	else
+		-- is either left or right, thus we can rotate to that side and
+		-- then use a movement vector from that, since we would now be facing that side.
+		local rotated_facing = helpers.rotateDirection(side, facing)
+		delta = movement_vectors[rotated_facing]
+	end
+
+	return {
+		x = position.x + delta.x,
+		y = position.y + delta.y,
+		z = position.z + delta.z,
+	}
+end
 
 -- === === ===
 -- === === ===

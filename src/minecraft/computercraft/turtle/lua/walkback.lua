@@ -25,16 +25,18 @@ local dir_to_num = constants.dir_to_num
 local movement_vectors = constants.movement_vectors
 
 -- ==
--- Import frequently used helper functions.
+-- Import helper functions.
+-- We do this once here as to not repeatedly import them every time a function
+-- is called.
 -- ==
 
 local getTransformedPosition = helpers.getTransformedPosition
 local rotateDirection = helpers.rotateDirection
-local invertDirection = helpers.invertDirection
 local deduceAdjacentMove = helpers.deduceAdjacentMove
 local isPositionAdjacent = helpers.isPositionAdjacent
 local mostSignificantDirection = helpers.mostSignificantDirection
 local findFacingRotation = helpers.findFacingRotation
+local getAdjacentBlock = helpers.getAdjacentBlock
 
 -- ==
 -- End of importing.
@@ -244,43 +246,6 @@ function walkback:doMovement(movement)
 		result, reason = self:turnLeft()
 	end
 	return result, reason
-end
-
---- Get the position of the block to a side of the turtle relative to the
---- turtle's current facing direction. Re-purposes the MovementDirection type,
---- however left and right are now literally the left and right side of the
---- turtle from the turtle's front perspective.
----
---- Does not modify global state.
----@param direction MovementDirection re-defines left and right.
----@returns CoordPosition
-function walkback:getAdjacentBlock(direction)
-	local pos = self.cur_position.position
-	local facing = self.cur_position.facing
-	local delta
-
-	if direction == "u" or direction == "d" then
-		-- Up and down are constant
-		delta = movement_vectors[direction]
-	elseif direction == "f" then
-		-- Forward is our current facing direction's vector
-		delta = movement_vectors[facing]
-	elseif direction == "b" then
-		-- Flip that around
-		local f = invertDirection(facing)
-		delta = movement_vectors[f]
-	else
-		-- is either left or right, thus we can rotate to that side and
-		-- then use a movement vector from that, since we would now be facing that side.
-		local side_facing = rotateDirection(direction, facing)
-		delta = movement_vectors[side_facing]
-	end
-
-	return {
-		x = pos.x + delta.x,
-		y = pos.y + delta.y,
-		z= pos.z + delta.z,
-	}
 end
 
 
@@ -1569,7 +1534,8 @@ end
 --- Returns `nil` if the block in front of the turtle is air.
 ---@return Block|nil
 function walkback:inspect()
-	local pos = self:getAdjacentBlock("f")
+	local current_pos, current_facing = self.cur_position.position, self.cur_position.facing
+	local pos = getAdjacentBlock(current_pos, current_facing, "f")
 	---@type table|string
 	local b
 	---@diagnostic disable-next-line: undefined-global
@@ -1586,7 +1552,8 @@ end
 --- Returns `nil` if the block in front of the turtle is air.
 ---@return Block|nil
 function walkback:inspectUp()
-	local pos = self:getAdjacentBlock("u")
+	local current_pos, current_facing = self.cur_position.position, self.cur_position.facing
+	local pos = getAdjacentBlock(current_pos, current_facing, "u")
 	---@type table|string
 	local b
 	---@diagnostic disable-next-line: undefined-global
@@ -1603,7 +1570,8 @@ end
 --- Returns `nil` if the block in front of the turtle is air.
 ---@return Block|nil
 function walkback:inspectDown()
-	local pos = self:getAdjacentBlock("d")
+	local current_pos, current_facing = self.cur_position.position, self.cur_position.facing
+	local pos = getAdjacentBlock(current_pos, current_facing, "d")
 	---@type table|string
 	local b
 	---@diagnostic disable-next-line: undefined-global

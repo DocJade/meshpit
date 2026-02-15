@@ -920,8 +920,6 @@ async fn rotation_breaking() {
     // break, turn 180, and repeat endlessly. This should never break the blocks
     // to the side of the turtle.
 
-    // TODO!!!!!!!!!!!!!
-
     let area = TestArea {
         size_x: 5,
         size_z: 5,
