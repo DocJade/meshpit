@@ -30,8 +30,16 @@
 --- @field mineable_tags MinecraftBlockTag[]? -- A list of block tags that can be mined. Works in tandem with mineable_names.
 --- @field fuel_patterns string[]? -- A list of string patterns that are allowed as fuel. For example, `coal` matches `minecraft:coal` or `minecraft:coal_block`
 
-local helpers = require "helpers"
-local task_helpers = require "task_helpers"
+local helpers = require("helpers")
+local task_helpers = require ("task_helpers")
+
+-- Frequently used helper functions
+local coordinatesAreEqual = helpers.coordinatesAreEqual
+local arrayContains = helpers.arrayContains
+local keyFromTable = helpers.keyFromTable
+local findString = helpers.findString
+local getAdjacentBlock = helpers.getAdjacentBlock
+local isPositionAdjacent = helpers.isPositionAdjacent
 
 --- Check if an input block matches the required names or tags.
 --- @param block Block|nil
@@ -44,14 +52,14 @@ function block_wanted(block, wanted_names, wanted_tags)
 
     -- Check the name first, then the tags.
     if wanted_names then
-        if helpers.arrayContains(wanted_names, block.name) then
+        if arrayContains(wanted_names, block.name) then
             return true
         end
     end
 
     if wanted_tags then
         for _, tag in ipairs(block.tag) do
-            if helpers.arrayContains(wanted_tags, tag) then
+            if arrayContains(wanted_tags, tag) then
                 return true
             end
         end
@@ -61,48 +69,489 @@ function block_wanted(block, wanted_names, wanted_tags)
     return false
 end
 
---- Get the coordinate positions of all the blocks next to the turtle.
+--- Get the coordinate positions of all the blocks next to a block.
 ---
 --- The ordering of the directions in here influences the search pattern of the
 --- turtle.
---- @param wb WalkbackSelf
+--- @param position CoordPosition
+--- @param facing CardinalDirection
 --- @return CoordPosition[]
-local function get_true_neighbor_blocks(wb)
+local function get_true_neighbor_blocks(position, facing)
     -- This should be fairly fast, since it's all just math, no actual
     -- game-state.
     -- Also, the ordering here gives us our priorities. First in last out.
     -- We prefer to go straight up, then going back down last.
     local neighbors = {}
-    neighbors[#neighbors + 1] = wb:getAdjacentBlock("d")
-    neighbors[#neighbors + 1] = wb:getAdjacentBlock("l")
-    neighbors[#neighbors + 1] = wb:getAdjacentBlock("b")
-    neighbors[#neighbors + 1] = wb:getAdjacentBlock("r")
-    neighbors[#neighbors + 1] = wb:getAdjacentBlock("f")
-    neighbors[#neighbors + 1] = wb:getAdjacentBlock("u")
+    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "d")
+    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "l")
+    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "b")
+    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "r")
+    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "f")
+    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "u")
     return neighbors
 end
 
 --- Get all of the coordinate positions of neighboring blocks that we have
 --- not yet examined.
---- @param wb WalkbackSelf
---- @return CoordPosition[]
+--- @param position CoordPosition
+--- @param facing CardinalDirection
 --- @param seen_blocks {[string]: true}
-local function get_neighbor_blocks(wb, seen_blocks)
-    local all_neighbors = get_true_neighbor_blocks(wb)
+--- @return CoordPosition[]
+local function get_unseen_neighbor_blocks(position, facing, seen_blocks)
+    local all_neighbors = get_true_neighbor_blocks(position, facing)
 
     ---@type CoordPosition[]
     local kept_neighbors = {}
     -- Discard the ones we've seen.
     for _, n in ipairs(all_neighbors) do
-        local key = helpers.keyFromTable(n)
-        -- This cannot be nil... Not gonna check tho
-        ---@cast key string
-        if not seen_blocks[key] then
+        if not have_seen_position(n, seen_blocks) then
             -- Haven't seen this one yet!
             kept_neighbors[#kept_neighbors+1] = n
         end
     end
     return kept_neighbors
+end
+
+--- Helper function to check if a position has been seen within the list of seen
+--- positions.
+--- @param position_to_check CoordPosition
+--- @param seen_blocks {[string]: true}
+--- @return boolean
+function have_seen_position(position_to_check, seen_blocks)
+    -- Key the position we're at
+    local key = keyFromTable(position_to_check)
+
+    -- This is never nil
+    ---@cast key string
+
+    -- Return if we have seen it.
+    return seen_blocks[key]
+end
+
+--- This is a pre-check we can run before moving into a block to see if its worth
+--- doing. IE, if we have already seen all of the neighbors of a block we would be
+--- moving into, then there is no reason to move in there.
+---
+--- Takes in a position you are thinking about moving into, returns a boolean on
+--- wether or not that move would yield new information.
+---
+--- Doesn't return a facing direction, since it just counts the neighbors.
+--- @param maybe_move_here CoordPosition
+--- @param seen_blocks {[string]: true}
+--- @return boolean
+function moving_would_give_info(maybe_move_here, seen_blocks)
+    -- If there is at least one block that has not been seen that you would be
+    -- able to see from that maybe position, then its worth moving into.
+    -- No need to provide accurate facing info.
+    return #get_unseen_neighbor_blocks(maybe_move_here, "n", seen_blocks) > 0
+end
+
+--- This is a post-check on movement. Call this after scanning!
+---
+--- If we have moved and are facing a block that we already want to mine,
+--- it may be worth pulling it out of the queue early and mining it immediately.
+---
+--- I would expect that on average, since we're already facing in that direction,
+--- it seems likely that by the time we pass this block again from the position
+--- we originally wanted to mine it from, we would have rotated, as 3/4 rotations
+--- would be facing the wrong way.
+---
+--- Additionally, this also means we can early break for blocks above and below
+--- us, completely removing any need for rotation.
+---
+--- Due to how this check works, this really only works if you are in the center
+--- of some already checked area.
+---
+--- Cases that make it worth it:
+--- - We don't need to move into that position after mining it, since all of
+---   its neighbors have already been seen, thus we save all of the movement
+---   required to get to the other earlier position we wanted to break from.
+---   IE: We mine the block early if stepping into it would give no info.
+---
+--- Does not modify incoming tables. You need to call mark_mined if you break
+--- a block provided by this function.
+---
+--- Returned position (if any) is a reference. Do not modify it.
+---
+--- Returns a boolean if you should mine a block now, and the coordinate you
+--- need to plug into mineAdjacent.
+--- @param cur_position MinecraftPosition
+--- @param seen_blocks {[string]: true}
+--- @param to_mine CoordPosition[]
+--- @return boolean, CoordPosition[]
+function already_facing_shortcut(cur_position, seen_blocks, to_mine)
+    local our_pos, our_facing = cur_position.position, cur_position.facing
+
+    -- We only need to check forwards, up and down. However, the order here
+    -- matters. We want to prefer a position that is the inverse of the usual
+    -- priority list. I can't explain why, but this feels intuitively correct.
+    -- TODO: Justify / prove this ^^^
+
+
+    ---@type CoordPosition[]
+    local check_positions = {}
+    check_positions[#check_positions + 1] = getAdjacentBlock(our_pos, our_facing, "u")
+    check_positions[#check_positions + 1] = getAdjacentBlock(our_pos, our_facing, "f")
+    check_positions[#check_positions + 1] = getAdjacentBlock(our_pos, our_facing, "d")
+
+    -- If we haven't seen these blocks, we can immediately skip them.
+    -- We dont mark the blocks as wanted.
+
+    -- Since this is called post-scan, we do not need to check if they are seen
+    -- positions, we only care if we want to mine them.
+
+
+    -- Check if mining those positions would give information. We will only keep
+    -- ones that will NOT give information, since that would make them safe to
+    -- mine without moving into.
+
+    -- We do this before checking if we want to mine them, as it is cheaper to
+    -- do these key lookups than it is to iterate through the list of
+    -- blocks that we want to mine.
+    --
+    -- TODO: if we change the to_mine type to be an array of tuples that come
+    -- with a key to test with, this would no longer be true. That would also
+    -- be smarter.
+
+    ---@type CoordPosition[]
+    local no_info = {}
+    for _, pos in ipairs(check_positions) do
+        -- The ordering that we get from this does not matter, we only care if
+        if not moving_would_give_info(pos, seen_blocks) then
+            -- This is shortcut-able.
+            no_info[#no_info+1] = pos
+        end
+    end
+
+    -- Skip if there is no valid positions.
+    if #no_info == 0 then
+        return false, {}
+    end
+
+    -- There is at least one valid shortcut. We will return all of the shortcuts
+    -- we see.
+    ---@type CoordPosition[]
+    local good_shortcuts = {}
+    for _, pos in ipairs(no_info) do
+        -- Check if we want to mine this block at all.
+        if position_wants_to_be_mined(pos, to_mine) then
+            -- Wanted! Return it!
+            good_shortcuts[#good_shortcuts+1] = pos
+        end
+    end
+
+    -- Maybe has valid shortcuts!
+    return good_shortcuts > 0, good_shortcuts
+end
+
+--- Check if a position wants to be mined.
+---
+--- This is slow, as it can iterate over all of the positions.
+---
+--- Returns a boolean, and the index into the array that the position is found
+--- at, if any.
+--- @param check_position CoordPosition
+--- @param to_mine CoordPosition[]
+--- @return boolean, number|nil
+function position_wants_to_be_mined(check_position, to_mine)
+    local saw_position = false
+    local index_seen = nil
+
+    -- We expect that almost all of the time, the block we are checking will be
+    -- near the top of the list, thus we iterate backwards.
+
+    for i = #to_mine, 1, -1 do
+        if coordinatesAreEqual(to_mine[i], check_position) then
+            saw_position = true
+            index_seen = i
+            break
+        end
+    end
+    return saw_position, index_seen
+end
+
+--- Mark a position as mined in our wanted list. If the incoming position was not
+--- marked as wanted, this will panic, as we mined some random block.
+---
+--- Modifies `to_mine`, does not modify the incoming position.
+--- @param mined_position CoordPosition
+--- @param to_mine CoordPosition[]
+function mark_mined(mined_position, to_mine)
+
+    -- Check if we actually needed to mine that position
+    local wanted, index = position_wants_to_be_mined(mined_position, to_mine)
+
+    -- We should never mine a block we did not want.
+    task_helpers.assert(wanted)
+
+    -- Remove it from the list. Since it may not be at the end, we'll use the
+    -- remove method. This is slower than just always removing from the end, but
+    -- most commonly we will be mining blocks towards the end of the list anyways,
+    -- so it shouldn't need to move too many items.
+    table.remove(to_mine, index)
+end
+
+--- Take in a list of positions including their directions and calculates the
+--- cost of doing all of the rotations in the order specified from some starting
+--- facing direction.
+--- @param starting CardinalDirection
+--- @param directions table<CoordPosition, CardinalDirection>[]
+--- @return number
+function calculate_turn_cost(starting, directions)
+    local total = 0
+    for _, d in ipairs(directions) do
+        local moves = helpers.findFacingRotation(starting, d[2])
+        total = total + #(moves or {})
+    end
+    return total
+end
+
+--- Inspect the neighboring blocks that we've never seen before in the most
+--- optimal order, then return what blocks we saw. May return 0 blocks.
+---
+--- Returns the neighboring blocks, and their position.
+---
+--- Can modify the facing direction of the turtle, the wanted list, and the seen
+--- list.
+--- @param wb WalkbackSelf
+--- @param seen_blocks {[string]: true}
+--- @return Block[], CoordPosition[]
+function smart_scan(wb, seen_blocks)
+    local p, f = wb.cur_position.position, wb.cur_position.facing
+    -- Find the directions that need to be scanned.
+    local to_see = get_unseen_neighbor_blocks(p, f, seen_blocks)
+    -- Bail if there is nothing to look at.
+    if #to_see == 0 then
+        return {}, {}
+    end
+
+    --- @cast to_see CoordPosition[]
+
+    -- We will now look at all of those blocks, so mark them as seen now.
+    for _, pos in ipairs(to_see) do
+        local key = helpers.keyFromTable(pos)
+        --- @cast key string
+        seen_blocks[key] = true
+    end
+
+    -- Split the list of blocks into the ones with a vertical change, and the
+    -- ones we have to rotate to face. Additionally, we will also keep track of
+    -- we have seen our current facing position in this list, and what directions
+    -- all of these positions are for a shortcut later.
+    --- @type CoordPosition[]
+    local verticals = {}
+
+    --- @type table<CoordPosition, CardinalDirection>[]
+    local horizontals = {}
+    local saw_starting = false
+
+    for _, see_p in ipairs(to_see) do
+        if see_p.y == p.y then
+            -- Horizontal. Get deltas and figure out the direction.
+            local d_x, d_z = see_p.x - p.x, see_p.z - p.z
+            local direction = helpers.mostSignificantDirection(d_x, d_z)
+            saw_starting = saw_starting or f == direction
+            horizontals[#horizontals+1] = {see_p, direction}
+        else
+            -- vert
+            verticals[#verticals+1] = see_p
+        end
+    end
+
+    -- If these are air (nil) they will not affect the table at all. Which is ok,
+    -- since we always add to the end.
+    --- @type Block[]
+    local blocks_looked_at = {}
+
+    -- Look up and down first, since those dont require anything fancy.
+    -- We only have to determine which way to look if there's only 1 vertical
+    -- position.
+    local c_v = #verticals
+    if c_v == 0 then
+        -- do nothing!
+    elseif c_v == 2 then
+        -- Both up and down.
+        blocks_looked_at[#blocks_looked_at+1] = wb:inspectUp()
+        blocks_looked_at[#blocks_looked_at+1] = wb:inspectDown()
+    else
+        -- Either up or down.
+        local d_y = verticals[1].y - p.y
+        if d_y > 0 then
+            blocks_looked_at[#blocks_looked_at+1] = wb:inspectUp()
+        else
+            blocks_looked_at[#blocks_looked_at+1] = wb:inspectDown()
+        end
+    end
+
+    -- Now for the horizontal ones.
+
+    -- Skip if there is nothing to do
+    local c_h = #horizontals
+    if c_h == 0 then
+        return blocks_looked_at, to_see
+    end
+
+    -- We pre-sort the positions here, since if we moved straight upwards, we
+    -- will need to rotate 3 times, but if the positions we check do not start
+    -- at the direction we are currently facing, then we would spin more times
+    -- than actually needed.
+
+    -- IE: We start facing north, and the scan directions given to us are
+    -- south, east, then west. This would result in us turning 5 times instead
+    -- of just 3.
+
+    -- Thankfully, the positions we get from get_true_neighbor_blocks is always
+    -- ordered clockwise in the horizontal component. Thus, if the first position
+    -- is not the position in front of us, we can "rotate" the entire array until
+    -- it is.
+
+    -- If the direction we are currently facing is not included, the logic is
+    -- a bit more complicated. However, we can actually cover both of these cases
+    -- by calculating the total number of rotations used in the array, then
+    -- optimize to reduce that number.
+
+    -- Best possible costs:
+
+    -- 4                 : 3
+    -- 3 Including start : 2
+    -- 3 Otherwise       : 3
+    -- 2 no gap, start   : 1
+    -- 2 no gap, no start: 2
+    -- 2 gaps, start     : 2
+    -- 2 gaps, no start  : 3
+    -- 1                 : irrelevant.
+
+    -- notice how the best cost is always the same as the length, unless our
+    -- current facing position is included within the list of moves, in which
+    -- case the cost is reduced by one.
+
+    -- Gotos here, so we need to put the locals up here.
+    local target_cost
+    local current_cost
+    -- Because tables are just references, we can make a shorter binding here
+    local t = horizontals
+
+    -- We do not need to sort if there is only 1 position to look at, as there is
+    -- no way to optimize how many rotations it will take.
+    if c_h == 1 then
+        goto done_sorting
+    end
+
+    -- Thus we can directly calculate the target cost.
+    target_cost = c_h - (saw_starting and 1 or 0)
+
+    -- Now we can permutate the array until we see the cost we want.
+    current_cost = calculate_turn_cost(f, t)
+
+    -- We might not need to sort.
+    if target_cost == current_cost then
+        -- Nice!
+        goto done_sorting
+    end
+
+    -- If there are only 2 positions, we can immediately deduce the best combination
+    if c_h == 2 then
+        -- The only other possible permutation is swapping the two elements.
+        -- Yes this works, and yes i hate it.
+        t[1], t[2] = t[2], t[1]
+        goto done_sorting
+    end
+
+    -- If there are 4 options, rotating the array until the first option is our
+    -- facing position will yield the best option.
+
+    -- 3 has a different pattern.
+    if c_h == 3 then goto permute_three end
+
+    while t[1][2] ~= f do
+        t[1], t[2], t[3], t[4] = t[4], t[1], t[2], t[3]
+    end
+
+    goto done_sorting
+
+    -- Now the pattern we do to alter the array is simple, and we are guaranteed
+    -- to always hit the cheapest one, since this algo will hit every possible
+    -- combination, if not in a weird order.
+
+    ::permute_three::
+    -- TODO: Is there a way to do this without a loop, ie in a constant way?
+    while current_cost ~= target_cost do
+        t[1], t[2], t[3] = t[2], t[3], t[1]
+        t[1], t[2] = t[2], t[1]
+        current_cost = calculate_turn_cost(f, t)
+    end
+
+
+    ::done_sorting::
+
+    -- Now that we're finally done sorting, we can run through those positions.
+    for _, p  in ipairs(horizontals) do
+        -- Turn
+        wb:faceAdjacentBlock(p[1])
+        -- inspect, and store!
+        blocks_looked_at[#blocks_looked_at+1] = wb:inspect()
+    end
+
+    -- We are finally done!
+    return blocks_looked_at, to_see
+end
+
+--- Dig an adjacent position, and if that fails, die.
+--- @param wb WalkbackSelf
+--- @param pos CoordPosition
+function mine_or_die(wb, pos)
+    local mine_result, mine_reason = wb:digAdjacent(pos)
+
+    -- Check for actually failures, ignore "Nothing to dig here"
+    if (not mine_result) and (mine_reason ~= "Nothing to dig here") then
+        task_helpers.throw("assumptions not met")
+    end
+end
+
+--- Move into an adjacent position, and if that fails, die.
+--- @param wb WalkbackSelf
+--- @param pos CoordPosition
+function move_or_die(wb, pos)
+    local move_result, move_reason = wb:moveAdjacent(pos)
+
+    -- Check for actually failures, ignore "Nothing to dig here"
+    if (not move_result) and (move_reason ~= "Nothing to dig here") then
+        -- Throw the more specific fuel error if needed.
+        if move_reason == "Out of fuel" then
+            task_helpers.throw("out of fuel")
+        end
+        task_helpers.throw("assumptions not met")
+    end
+end
+
+--- Automatically mine blocks that we know we can get rid of quickly after every
+--- move.
+---
+--- This is guaranteed to not move or rotate the turtle.
+---
+--- If blocks are mined, to_mine is automatically updated.
+--- @param wb WalkbackSelf
+--- @param seen_blocks {[string]: true}
+--- @param to_mine CoordPosition[]
+function post_movement_shortcuts(wb, seen_blocks, to_mine)
+    -- Check the shortcut
+    local have_shortcut, go_mine = already_facing_shortcut(wb.cur_position, seen_blocks, to_mine)
+    if not have_shortcut then
+        -- nothing to do
+        return
+    end
+
+    -- Shortcuts to mine!
+    ---@diagnostic disable-next-line: undefined-field
+    os.setComputerLabel("Shortcut!")
+
+    -- There are shortcuts! Mine them and mark them.
+    for _, pos in ipairs(go_mine) do
+        -- Mine
+        mine_or_die(wb, pos)
+        -- Mark
+        mark_mined(pos, to_mine)
+    end
 end
 
 --- Task that recursively* mines blocks based on name or tag.
@@ -234,49 +683,25 @@ local function recursive_miner(config)
 
         -- Checks pass, keep going.
 
-        -- Scan all neighboring blocks
-        -- Loop over the neighbors. This only returns ones we have not seen yet.
-        local neighbors = get_neighbor_blocks(wb, seen_blocks)
-        for _, neighbor in ipairs(neighbors) do
-            local position_key = helpers.keyFromTable(neighbor)
-            -- This should never be nil as CoordPosition meets the key rules. If
-            -- this is not true, we have WAY more problems elsewhere.
-            ---@cast position_key string
+        -- Scan the neighboring blocks
+        local neighbor_blocks, neighbor_positions = smart_scan(wb, seen_blocks)
 
-            -- We have now seen this position.
-            seen_blocks[position_key] = true
+        -- Skip if there is no blocks to mark
+        if #neighbor_blocks == 0 then
+            goto skip_marking
+        end
 
-            -- Look at the neighbor.
-            -- Don't need to turn for above and below neighbors.
-            -- Skip if the block is above or below
-	        if wb.cur_position.position.y ~= neighbor.y then
-	        	-- Vertical move, its up or down.
-                local is_up = (neighbor.y - wb.cur_position.position.y) > 0
-                if is_up then
-                    wb:inspectUp()
-                else
-                    wb:inspectDown()
-                end
-	        else
-                -- Turn to face it, and inspect it.
-                local old_facing = wb.cur_position.facing
-                wb:faceAdjacentBlock(neighbor)
-                -- Even though faceAdjacentBlock will automatically inspect when turning,
-                -- that does not account for the case where we did not turn.
-                if old_facing == wb.cur_position.facing then
-                    wb:inspect()
-                end
-            end
-
-            -- Check if this is a block we want to mine
-            -- We do not need to check for air, and since we are always checking
-            -- neighboring positions, we know we have looked at this block due
-            -- to the spin that happened before this loop.
-            if block_wanted(wb:blockQuery(neighbor), mineable_names, mineable_tags) then
-                -- We will mine this block later. Push to queue.
-                to_mine[#to_mine+1] = helpers.clonePosition(neighbor)
+        -- Mark the blocks as wanted if needed.
+        for i = 1, #neighbor_blocks do
+            if block_wanted(neighbor_blocks[i], mineable_names, mineable_tags) then
+                -- We want this.
+                -- No need to clone on the way in, as the positions are not borrowed
+                -- from anywhere.
+                to_mine[#to_mine+1] = neighbor_positions[i]
             end
         end
+
+        ::skip_marking::
 
         -- Neighbors have been checked. Is there anything to do?
         if #to_mine == 0 then
@@ -286,85 +711,45 @@ local function recursive_miner(config)
             break
         end
 
+        -- There is something to mine!
+        -- Mine the first thing as usual.
         local pos_to_mine = to_mine[#to_mine]
 
         -- Peek at the top block, are we next to it?
-        if not wb:isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
-            os.setComputerLabel("Moving back...")
+        if not isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
             -- Walk back until we are next to it.
             while true do
+                os.setComputerLabel("Moving back...")
                 -- We should have enough fuel to do this if we did our math correct
                 -- earlier.
                 local r, _ = wb:stepBack()
                 task_helpers.assert(r)
-                if wb:isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
+
+                if isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
                     break
                 end
+
+                -- While moving backwards, we may have a shortcut we can take.
+                -- Shortcuts run _after_ the break check, since if we called this
+                -- first, we could mine what is being looked for before the break.
+                post_movement_shortcuts(wb, seen_blocks, to_mine)
             end
         end
 
 
-        -- We are now next to the block we need to mine. Mine it AND Move into it.
-        -- We loop here because falling blocks (sand/gravel/decaying leaves) or
-        -- desyncs (?man idfk im just trying anything now) can cause the move to
-        -- fail even if the dig returned "nothing to dig".
-        local tries = 50
-        while true do
-            os.setComputerLabel("Breaking...")
-            -- Doesn't select a tool, since it does not matter.
-            local mine_result, mine_reason = wb:digAdjacent(pos_to_mine)
+        -- We are now next to the block we need to mine.
 
-            -- Check for actually failures, ignore "Nothing to dig here"
-            if not mine_result and mine_reason ~= "Nothing to dig here" then
-                os.setComputerLabel(mine_reason)
-                task_helpers.throw("assumptions not met: " .. tostring(mine_reason))
-            end
+        -- We will mine it, then move into it if moving in would provide information.
+        mine_or_die(wb, pos_to_mine)
 
-
-            -- Move into the position we just mined. This should work as we just
-            -- mined it out.
-            os.setComputerLabel("Moving in...")
-            local move_result, move_reason = wb:moveAdjacent(pos_to_mine)
-
-            if move_result then
-                -- Successfully moved!
-                break
-            elseif move_reason == "Out of fuel" then
-                -- This should never happen due to how we loop, but idk.
-                task_helpers.throw("out of fuel")
-            else
-                -- -- Movement obstructed. Something is amiss. We will try at most 50 times
-                -- -- before assuming something is actually very broken. It could be
-                -- -- that our facing direction got misaligned or that our position
-                -- -- has drifted. I have no idea, and it would be hard to determine
-                -- -- why here. Also this could be a falling block so... idk.
-                -- -- Fifty sounds like a lot, and probably is. IDK how tall piles of
-                -- -- sand or gravel could be. Better to overshoot than undershoot!
-
-                -- -- From testing with trees, most of the time it seems to only need
-                -- -- one retry.
-
-                -- -- TODO: Move this retry logic into walkback, since we really should
-                -- -- just be able to assume that if walkback returns that a block has
-                -- -- been mined, it SHOULD BE GONE lol. Same for if checking for a block
-                -- -- existing, might as well do it 5 times. Slower? Yes. Consistent?
-                -- -- Also yes, and wildly more important. This should also let us
-                -- -- turn the turtle action speed back up.
-
-                -- -- Try again. This is self-slowing due to calling movement methods
-                -- -- which are speed limited.
-                -- tries = tries - 1
-                -- if tries == 0 then
-                --     -- Well shit.
-                --     os.setComputerLabel("Movement obstructed after 50 tries.")
-                --     task_helpers.throw("assumptions not met")
-                -- end
-            end
+        if moving_would_give_info(pos_to_mine, seen_blocks) then
+            -- Its worth moving in here. The scan will happen automatically on
+            -- the next loop.
+            move_or_die(wb, pos_to_mine)
         end
 
         -- Remove the old block from the list
-        os.setComputerLabel("Removing old...")
-        to_mine[#to_mine] = nil
+        mark_mined(pos_to_mine, to_mine)
 
         -- If we are running out of fuel, refuel if we are allowed to.
         -- We always burn only one item to keep our usage minimal and not overshoot.
@@ -388,7 +773,7 @@ local function recursive_miner(config)
             for _, pattern in pairs(fuel_patterns) do
                 ---@cast pattern string
                 -- Check if item matches
-                if not helpers.findString(item.name, pattern) then goto bad_pattern end
+                if not findString(item.name, pattern) then goto bad_pattern end
 
                 -- Valid item, try using it.
                 wb:select(i)

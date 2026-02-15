@@ -184,8 +184,10 @@ async fn tree_chop_galore() {
     for handle in handles {
         match handle.await {
             Ok(result) => {
-                if !result {
+                if result {
                     passes += 1;
+                } else {
+                    fails += 1;
                 }
             }
             Err(e) => {

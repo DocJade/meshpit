@@ -71,6 +71,7 @@ end
 --- on the line above the throw why you are throwing.
 --- @param reason TaskFailureReason
 function task_helpers.throw(reason)
+    ---@diagnostic disable-next-line: undefined-field
     os.setComputerLabel("task threw! " .. reason)
     ---@type TaskFailure
     local task_failure = {
@@ -109,6 +110,7 @@ end
 --- do not need to worry about that, as the OS will clean up in that case.
 function task_helpers.taskYield()
     -- This seems like a pointless wrapper, but maybe we will do more here later.
+    ---@diagnostic disable-next-line: undefined-field
     os.queueEvent("yield")
     coroutine.yield("yield")
 end
