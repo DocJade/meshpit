@@ -15,7 +15,7 @@
 --- @field start_time number -- Starting timestamp.
 --- @field walkback WalkbackSelf -- A reference to the global walkback.
 --- @field start_position CoordPosition -- A copy (NOT REFERENCE) to where this task was started.
---- @field start_facing FacingDirection -- What direction was being faced when the task started.
+--- @field start_facing CardinalDirection -- What direction was being faced when the task started.
 --- @field definition TaskDefinition -- The inner definition for the task.
 
 --- Partial task configs only hold enough information for the definition of the

@@ -1,7 +1,23 @@
 -- Weirdly, lua doesn't have some methods it really should.
 local helpers = {}
 local panic = require("panic")
+local constants = require("constants")
 print("Setting up helpers...")
+
+
+-- == == ==
+-- Import constants that we need
+local dir_to_num = constants.dir_to_num
+local dirs = constants.dirs
+local movement_vectors = constants.movement_vectors
+-- == == ==
+
+
+-- === === ===
+-- === === ===
+-- Yield helpers
+-- === === ===
+-- === === ===
 
 --- Yield, does not yield from a coroutine.
 function helpers.quick_yield()
@@ -11,257 +27,11 @@ function helpers.quick_yield()
     os.pullEvent("yield")
 end
 
---- Deep-copy a table (or anything), a lot of the time we do NOT want to take tables
---- by reference. So we need to copy it.
----@param input any
----@param seen nil
----@return table any a deep copy of the input
-function helpers.deepCopy(input, seen)
-    -- Each iteration of the loop yields, as this is an intensive function.
-    helpers.quick_yield()
-
-    -- No need to deep copy if this is not a table.
-    if type(input) ~= "table" then
-        return input
-    end
-    seen = seen or {}
-    -- skip if we've already seen this table
-    if seen[input] then
-        return seen[input]
-    end
-    local copy = {}
-    seen[input] = copy
-    -- recurse into the keys and values, since
-    -- the keys can also be tables!
-    for key, val in pairs(input) do
-        copy[helpers.deepCopy(key, seen)] = helpers.deepCopy(val, seen)
-    end
-    -- Copy the metatable as well if it exists
-    local meta = getmetatable(input)
-    if meta then
-        setmetatable(copy, helpers.deepCopy(meta, seen))
-    end
-
-    return copy
-end
-
---- Create a string from a table, used for indexing into hashmaps and such.
----
---- The input table must obey the following rules:
---- - The keys and values must be types that can be cast to strings safely
---- - - string, number, boolean (you should really not use these in keys)
---- - There must not be any duplicate keys in the table
---- - - This also applies to having a key at `1` and `"1"`, as these would both
---- - - map to the same string key.
----
---- Tables that do not obey these rules will return nil.
----
---- Does not modify the incoming table.
----
---- No method to cast back from this format is provided. This is by design,
---- its supposed to act as our hash function for generic tables.
----@generic K : string|number|boolean
----@generic V : string|number|boolean
----@param input_table table<K, V>
----@return string|nil
-function helpers.keyFromTable(input_table)
-    local keys = {}
-    local seen_keys = {}
-
-    -- Ignore the linter, its hallucinating here about k,v
-
-    -- Pre-sort the keys since we need them to be in order, and table.sort() sorts
-    -- the values, and provides no way to sort keys.
-    for k, _ in pairs(input_table) do
-        -- Also check that the keys are valid
-        local k_t = type(k)
-        local k_ok = k_t == "string" or k_t == "number" or k_t == "boolean"
-        if not k_ok then
-            return nil
-        end
-        local new_key = tostring(k)
-        -- Duplicate key?
-        if seen_keys[new_key] ~= nil then
-            return nil
-        end
-        seen_keys[new_key] = true
-        table.insert(keys, new_key)
-    end
-
-    -- Sort the keys
-    table.sort(keys)
-
-    -- Now add the values.
-    local ordered_pairs = {}
-    for i = 1, #keys do
-        local key = keys[i]
-        local value = input_table[key]
-
-        -- Make sure value is valid as well
-        local v_t = type(value)
-        local v_ok = v_t == "string" or v_t == "number" or v_t == "boolean"
-        if not v_ok then
-            return nil
-        end
-        local new_value = tostring(value)
-        -- "k:v"
-        ordered_pairs[i] = keys[i] .. ":" .. new_value
-    end
-
-    -- Concat those into a string that we can use.
-    -- "k:v|k:v|k:v"
-    return table.concat(ordered_pairs, "|")
-end
-
---- Check if two values are exactly the same by value. Also checks if they are
---- the same type. This will be very slow on large tables or tables that use
---- other tables as keys.
----
---- Panics on threads, functions, or userdata.
----
---- This aims to cover most edge cases, but theoretically if create a table with
---- several deeply equal table keys that live at different addresses, this
---- could falsely return true even if the tables are not COMPLETELY identical.
---- This is close enough. You really shouldn't use tables as keys anyways.
----
---- Does not check metatables.
----@generic T
----@param a T
----@param b T
----@param seen table|nil? Internal for recursion, not required.
----@return boolean
-function helpers.deepEquals(a, b, seen)
-    -- This is an expensive function.
-    helpers.quick_yield()
-
-    -- types are the same
-    local t_a = type(a)
-    if t_a ~= type(b) then
-        return false
-    end
-
-    -- This function is not meant to be used for threads, functions or userdata.
-    if t_a == "thread" or t_a == "function" or t_a == "userdata" then
-        local message = "Attempted to run deepEquals on an unsupported type ["
-        message = message .. t_a .. "]!"
-        panic.panic(message)
-        return false -- never called.
-    end
-
-    -- Make sure that a or b are non NaN
-    if a ~= a or b ~= b then
-        -- There's a nan!
-        -- Nan's are never equal to themselves,
-        -- but we can still return that they are both nan in this case.
-        local a_nan = a ~= a
-        local b_nan = b ~= b
-        -- We return DEEP type/value equality here, not mathematical equality.
-        return a_nan and b_nan
-    end
-
-    -- Then, if its not a table, we can compare by value
-    if t_a ~= "table" then
-        return a == b
-    end
-
-    -- Must be a table, we can check if they reference the same data.
-    if a == b then
-        return true
-    end
-
-    -- Need to compare at the value level. So time to recurse.
-    -- Need to keep track of seen items as to not infinitely recurse.
-    seen = seen or {}
-    if seen[a] == b then
-        return true
-    end
-    seen[a] = b
-
-    -- Track how many items `a` has.
-    local count_a = 0
-
-    -- Since order is unspecified, we cant iterate the keys in parallel,
-    -- we must index the `b` table with the `a` table key.
-    --
-    -- This also checks if the keys used to index into the tables are the same,
-    -- which makes this slow for hashmaps, but this is a deep check after all.
-    for ka, va in pairs(a) do
-        local vb = b[ka]
-
-        -- if vb is nil, it could be due to indexing with tables, thus having
-        -- different key references while the insides of the keys are actually
-        -- still the same. We must recurse into the keys if so.
-        if vb ~= nil then
-            -- Some value, either a non-table index, or a matching reference index.
-            if not helpers.deepEquals(va, vb, seen) then
-                return false
-            end
-        elseif type(ka) == "table" then
-            -- Table did not match on reference, but could still have the
-            -- same content deep-down.
-
-            -- Need to check if `b` has a key that matches deeply.
-            local found_match = false
-            for kb, new_vb in pairs(b) do
-                -- Only need to check table keys
-                if type(kb) ~= "table" then
-                    goto skip
-                end
-
-                -- New table key, check
-                if not helpers.deepEquals(ka, kb, seen) then
-                    -- wrong table
-                    goto skip
-                end
-
-                -- Tables match, do keys match?
-                if not helpers.deepEquals(va, new_vb, seen) then
-                    -- Values did not match! Equal keys, but not equal values
-                    -- However, its possible (although very gross) that there
-                    -- could be multiple keys with the same underlying values
-                    -- in b, thus we have to exhaust all of the possibilities
-                    goto skip
-                end
-
-                -- Everything checks ou!
-                found_match = true
-                ::skip::
-            end
-
-            -- Find anything?
-            if not found_match then
-                return false
-            end
-        end
-        count_a = count_a + 1
-    end
-
-    -- Finally, check that `b` did not have more items than `a`
-    local count_b = 0
-    for _ in pairs(b) do
-        count_b = count_b + 1
-    end
-
-    return count_a == count_b
-end
-
---- Check if an array contains a matching item.
---- @generic T
---- @param array T[]
---- @param to_find T
---- @return boolean
-function helpers.arrayContains(array, to_find)
-    local to_find_type = type(to_find)
-    for _, v in ipairs(array) do
-        -- skip incorrect types
-        if to_find_type == type(v) then
-            if v == to_find then
-                return true
-            end
-        end
-    end
-    return false
-end
+-- === === ===
+-- === === ===
+-- String helpers
+-- === === ===
+-- === === ===
 
 --- Find a string within a substring.
 --- @param string string
@@ -283,6 +53,8 @@ function helpers.findString(string, pattern)
     end
 
     -- Loop over the sub-strings.
+    -- TODO: This can be faster by skipping forwards to the position where the
+    -- string no longer met the pattern.
     for i = 1, (s_len - p_len) + 1 do
         helpers.quick_yield()
         for j = 1, p_len do
@@ -293,13 +65,12 @@ function helpers.findString(string, pattern)
     return false
 end
 
---- Check if two coordinate positions are the same position.
----@param pos1 CoordPosition
----@param pos2 CoordPosition
----@return boolean
-function helpers.coordinatesAreEqual(pos1, pos2)
-    return pos1.x == pos2.x and pos1.y == pos2.y and pos1.z == pos2.z
-end
+
+-- === === ===
+-- === === ===
+-- Array helpers
+-- === === ===
+-- === === ===
 
 --- Get a sub-slice of a array. This slice is inclusive on both ends.
 ---
@@ -321,33 +92,35 @@ function helpers.slice_array(input_table, slice_start, slice_end)
     return slice
 end
 
---- Unwrap a T|nil value, asserting that is is not nil.
----@generic T
----@param value T|nil
----@return T
-function helpers.unwrap(value)
-    assert(value ~= nil, "Unwrapped on a nil!")
-    -- Tell linter this must no longer be nil.
-    ---@cast value -nil
-    return value
-end
-
---- Cast a table into a string, no matter the internal data. Will NOT recurse into
---- sub tables. Meant for debugging only, as the ordering here is not stable.
----@param table table
----@return string
-function forceStringTable(table)
-    local final_string = "Data of table (" .. tostring(table) .. "): "
-    for key, value in pairs(table) do
-        final_string = final_string .. "[key: (" .. tostring(key) .. "), value: (" .. tostring(value) .. ")]"
+--- Check if an array contains a matching item.
+--- @generic T
+--- @param array T[]
+--- @param to_find T
+--- @return boolean
+function helpers.arrayContains(array, to_find)
+    local to_find_type = type(to_find)
+    for _, v in ipairs(array) do
+        -- skip incorrect types
+        if to_find_type == type(v) then
+            if v == to_find then
+                return true
+            end
+        end
     end
-    return final_string
+    return false
 end
 
---Table types for linting to prevent returning the wrong things.
+-- === === ===
+-- === === ===
+-- JSON related helpers
+-- === === ===
+-- === === ===
 
----@class SeenCleaned table
----@class Seen table
+-- Table types for linting to prevent returning the wrong things.
+
+--- @class SeenCleaned table
+--- @class Seen table
+
 
 --- Clean up a type for JSON export. Will panic if the type or any sub-tables
 --- contain mixed table types (ie a table that is both an array and kv pairs) and
@@ -541,20 +314,6 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     return cleaned_table, seen_cleaned
 end
 
---- Clone a CoordPosition.
----
---- Does not modify the incoming table, or copy meta.
----@param position CoordPosition
----@return CoordPosition
-function helpers.clonePosition(position)
-    local new = {
-        x = position.x,
-        y = position.y,
-        z = position.z,
-    }
-    return new
-end
-
 
 --- The built-in json serializer is not good enough.
 ---
@@ -605,6 +364,561 @@ function helpers.deserializeJSON(json)
     return true, result_or_error
 end
 
+-- === === ===
+-- === === ===
+-- Generic table helpers
+-- === === ===
+-- === === ===
+
+--- Deep-copy a table (or anything), a lot of the time we do NOT want to take tables
+--- by reference. So we need to copy it.
+---@param input any
+---@param seen nil
+---@return table any a deep copy of the input
+function helpers.deepCopy(input, seen)
+    -- Each iteration of the loop yields, as this is an intensive function.
+    helpers.quick_yield()
+
+    -- No need to deep copy if this is not a table.
+    if type(input) ~= "table" then
+        return input
+    end
+    seen = seen or {}
+    -- skip if we've already seen this table
+    if seen[input] then
+        return seen[input]
+    end
+    local copy = {}
+    seen[input] = copy
+    -- recurse into the keys and values, since
+    -- the keys can also be tables!
+    for key, val in pairs(input) do
+        copy[helpers.deepCopy(key, seen)] = helpers.deepCopy(val, seen)
+    end
+    -- Copy the metatable as well if it exists
+    local meta = getmetatable(input)
+    if meta then
+        setmetatable(copy, helpers.deepCopy(meta, seen))
+    end
+
+    return copy
+end
+
+--- Create a string from a table, used for indexing into hashmaps and such.
+---
+--- The input table must obey the following rules:
+--- - The keys and values must be types that can be cast to strings safely
+--- - - string, number, boolean (you should really not use these in keys)
+--- - There must not be any duplicate keys in the table
+--- - - This also applies to having a key at `1` and `"1"`, as these would both
+--- - - map to the same string key.
+---
+--- Tables that do not obey these rules will return nil.
+---
+--- Does not modify the incoming table.
+---
+--- No method to cast back from this format is provided. This is by design,
+--- its supposed to act as our hash function for generic tables.
+---@generic K : string|number|boolean
+---@generic V : string|number|boolean
+---@param input_table table<K, V>
+---@return string|nil
+function helpers.keyFromTable(input_table)
+    local keys = {}
+    local seen_keys = {}
+
+    -- Ignore the linter, its hallucinating here about k,v
+
+    -- Pre-sort the keys since we need them to be in order, and table.sort() sorts
+    -- the values, and provides no way to sort keys.
+    for k, _ in pairs(input_table) do
+        -- Also check that the keys are valid
+        local k_t = type(k)
+        local k_ok = k_t == "string" or k_t == "number" or k_t == "boolean"
+        if not k_ok then
+            return nil
+        end
+        local new_key = tostring(k)
+        -- Duplicate key?
+        if seen_keys[new_key] ~= nil then
+            return nil
+        end
+        seen_keys[new_key] = true
+        table.insert(keys, new_key)
+    end
+
+    -- Sort the keys
+    table.sort(keys)
+
+    -- Now add the values.
+    local ordered_pairs = {}
+    for i = 1, #keys do
+        local key = keys[i]
+        local value = input_table[key]
+
+        -- Make sure value is valid as well
+        local v_t = type(value)
+        local v_ok = v_t == "string" or v_t == "number" or v_t == "boolean"
+        if not v_ok then
+            return nil
+        end
+        local new_value = tostring(value)
+        -- "k:v"
+        ordered_pairs[i] = keys[i] .. ":" .. new_value
+    end
+
+    -- Concat those into a string that we can use.
+    -- "k:v|k:v|k:v"
+    return table.concat(ordered_pairs, "|")
+end
+
+--- Cast a table into a string, no matter the internal data. Will NOT recurse into
+--- sub tables. Meant for debugging only, as the ordering here is not stable.
+---@param table table
+---@return string
+function forceStringTable(table)
+    local final_string = "Data of table (" .. tostring(table) .. "): "
+    for key, value in pairs(table) do
+        final_string = final_string .. "[key: (" .. tostring(key) .. "), value: (" .. tostring(value) .. ")]"
+    end
+    return final_string
+end
+
+--- Check if two values are exactly the same by value. Also checks if they are
+--- the same type. This will be very slow on large tables or tables that use
+--- other tables as keys.
+---
+--- Panics on threads, functions, or userdata.
+---
+--- This aims to cover most edge cases, but theoretically if create a table with
+--- several deeply equal table keys that live at different addresses, this
+--- could falsely return true even if the tables are not COMPLETELY identical.
+--- This is close enough. You really shouldn't use tables as keys anyways.
+---
+--- Does not check metatables.
+---@generic T
+---@param a T
+---@param b T
+---@param seen table|nil? Internal for recursion, not required.
+---@return boolean
+function helpers.deepEquals(a, b, seen)
+    -- This is an expensive function.
+    helpers.quick_yield()
+
+    -- types are the same
+    local t_a = type(a)
+    if t_a ~= type(b) then
+        return false
+    end
+
+    -- This function is not meant to be used for threads, functions or userdata.
+    if t_a == "thread" or t_a == "function" or t_a == "userdata" then
+        local message = "Attempted to run deepEquals on an unsupported type ["
+        message = message .. t_a .. "]!"
+        panic.panic(message)
+        return false -- never called.
+    end
+
+    -- Make sure that a or b are non NaN
+    if a ~= a or b ~= b then
+        -- There's a nan!
+        -- Nan's are never equal to themselves,
+        -- but we can still return that they are both nan in this case.
+        local a_nan = a ~= a
+        local b_nan = b ~= b
+        -- We return DEEP type/value equality here, not mathematical equality.
+        return a_nan and b_nan
+    end
+
+    -- Then, if its not a table, we can compare by value
+    if t_a ~= "table" then
+        return a == b
+    end
+
+    -- Must be a table, we can check if they reference the same data.
+    if a == b then
+        return true
+    end
+
+    -- Need to compare at the value level. So time to recurse.
+    -- Need to keep track of seen items as to not infinitely recurse.
+    seen = seen or {}
+    if seen[a] == b then
+        return true
+    end
+    seen[a] = b
+
+    -- Track how many items `a` has.
+    local count_a = 0
+
+    -- Since order is unspecified, we cant iterate the keys in parallel,
+    -- we must index the `b` table with the `a` table key.
+    --
+    -- This also checks if the keys used to index into the tables are the same,
+    -- which makes this slow for hashmaps, but this is a deep check after all.
+    for ka, va in pairs(a) do
+        local vb = b[ka]
+
+        -- if vb is nil, it could be due to indexing with tables, thus having
+        -- different key references while the insides of the keys are actually
+        -- still the same. We must recurse into the keys if so.
+        if vb ~= nil then
+            -- Some value, either a non-table index, or a matching reference index.
+            if not helpers.deepEquals(va, vb, seen) then
+                return false
+            end
+        elseif type(ka) == "table" then
+            -- Table did not match on reference, but could still have the
+            -- same content deep-down.
+
+            -- Need to check if `b` has a key that matches deeply.
+            local found_match = false
+            for kb, new_vb in pairs(b) do
+                -- Only need to check table keys
+                if type(kb) ~= "table" then
+                    goto skip
+                end
+
+                -- New table key, check
+                if not helpers.deepEquals(ka, kb, seen) then
+                    -- wrong table
+                    goto skip
+                end
+
+                -- Tables match, do keys match?
+                if not helpers.deepEquals(va, new_vb, seen) then
+                    -- Values did not match! Equal keys, but not equal values
+                    -- However, its possible (although very gross) that there
+                    -- could be multiple keys with the same underlying values
+                    -- in b, thus we have to exhaust all of the possibilities
+                    goto skip
+                end
+
+                -- Everything checks ou!
+                found_match = true
+                ::skip::
+            end
+
+            -- Find anything?
+            if not found_match then
+                return false
+            end
+        end
+        count_a = count_a + 1
+    end
+
+    -- Finally, check that `b` did not have more items than `a`
+    local count_b = 0
+    for _ in pairs(b) do
+        count_b = count_b + 1
+    end
+
+    return count_a == count_b
+end
+
+-- === === ===
+-- === === ===
+-- Position based helpers
+-- === === ===
+-- === === ===
+
+--- Clone a CoordPosition.
+---
+--- Does not modify the incoming table, or copy meta.
+---@param position CoordPosition
+---@return CoordPosition
+function helpers.clonePosition(position)
+    local new = {
+        x = position.x,
+        y = position.y,
+        z = position.z,
+    }
+    return new
+end
+
+--- Check if two coordinate positions are the same position.
+---@param pos1 CoordPosition
+---@param pos2 CoordPosition
+---@return boolean
+function helpers.coordinatesAreEqual(pos1, pos2)
+    return pos1.x == pos2.x and pos1.y == pos2.y and pos1.z == pos2.z
+end
+
+--- Cast a x,z delta to a direction. Clamps values and picks the most significant
+--- direction. Does not do diagonal directions.
+---
+--- If both axis are of equal length, it will prefer North.
+---@param x number
+---@param z number
+---@return CardinalDirection
+function helpers.mostSignificantDirection(x,z)
+	-- absolutes to get the most significant distance on an axis
+	local abs_x = math.abs(x)
+    local abs_z = math.abs(z)
+	-- If z is greater than x, the more significant direction is either north or south.
+	-- if the numbers are equal, there is no
+	if abs_z >= abs_x then
+		return z > 0 and "s" or "n"
+	else
+		return x > 0 and "e" or "w"
+	end
+end
+
+--- Apply a transformation to a position.
+---
+--- Modifies the incoming origin table! Be careful!
+---@param origin CoordPosition The position to transform
+---@param delta CoordPosition The transformation to apply
+function helpers.offsetPosition(origin, delta)
+    origin.x = origin.x + delta.x
+    origin.y = origin.y + delta.y
+    origin.z = origin.z + delta.z
+end
+
+--- Invert a position by negating all of its values.
+---
+--- Modifies the incoming table, be careful with vector tables!
+---@param position CoordPosition
+function helpers.invertPosition(position)
+    position.x = position.x * -1
+    position.y = position.y * -1
+    position.z = position.z * -1
+end
+
+--- Get the taxicab distance between two positions. Will always be a positive,
+--- whole integer.
+---@param pos1 CoordPosition
+---@param pos2 CoordPosition
+---@return number
+function helpers.taxicabDistance(pos1, pos2)
+	-- local x = math.abs(pos1.x - pos2.x)
+	-- local y = math.abs(pos1.y - pos2.y)
+	-- local z = math.abs(pos1.z - pos2.z)
+	-- return x + y + z
+	return math.abs(pos1.x - pos2.x) + math.abs(pos1.y - pos2.y) + math.abs(pos1.z - pos2.z)
+end
+
+--- Check is a position is directly adjacent to another position.
+---
+--- Does not consider diagonals to be adjacent, positions must share a block
+--- face, and positions are not adjacent to themselves.
+---@param pos1 CoordPosition
+---@param pos2 CoordPosition
+---@return boolean
+function helpers.isPositionAdjacent(pos1, pos2)
+	-- Same position?
+	-- Too far away?
+	-- And adjacent, all in one check!
+	return helpers.taxicabDistance(pos1, pos2) == 1
+end
+
+--- Get a new position based on a movement direction and facing direction.
+---
+--- Does not modify the incoming position, as it is immediately cloned.
+---
+--- Returns a new position with the transformation applied. This new position is
+--- always a new table, regardless if the incoming table needed to be modified.
+---
+--- Ignores rotation movements, as they do not move in coordinate space.
+--- @param direction MovementDirection The way in which the turtle moved.
+--- @param facing CardinalDirection Our current facing direction, this is not updated.
+--- @param start_position CoordPosition Position to offset from.
+--- @return CoordPosition
+function helpers.getTransformedPosition(direction, facing, start_position)
+
+	-- Clone the incoming table
+	local working_position = helpers.clonePosition(start_position)
+
+    -- North -z
+    -- East: +x
+    -- South +z
+    -- West: -x
+    -- Up: +y
+    -- Down: +y
+
+    -- Skip rotations
+    if string.match(direction, "^[lr]") then
+        -- no change
+        return working_position
+    end
+    -- Up down
+    if direction == "u" or direction == "d" then
+        working_position.y = working_position.y + (direction == "u" and 1 or -1)
+        return working_position
+    end
+    -- Forward back is hard, since its based on facing direction
+    -- this is why we have the lookup table
+    local delta = movement_vectors[facing]
+    -- Invert if we're moving backwards
+    if direction == "b" then
+		-- This is a reference to the vectors table, so we must clone it.
+        delta = helpers.clonePosition(delta)
+        helpers.invertPosition(delta)
+    end
+    -- Offset. We are okay to modify this table as we made a copy.
+    helpers.offsetPosition(working_position, delta)
+
+	-- Return the finished table
+	return working_position
+end
+
+--- From a starting position, deduce what actions need to be taken to move to
+--- an adjacent position.
+---
+--- Takes in a MinecraftPosition to deduce based off of. Does not modify the starting
+--- position.
+---
+--- Will return either one or two movement directions, as the move will always
+--- require a transformation, but will not always require a rotation.
+---
+--- returns `nil` if the destination position is not adjacent to the turtle.
+--- Attempting to move into the current position of the turtle will also return
+--- nil, as that is not an adjacent position, and moreover, no move is required.
+--- @param starting_position MinecraftPosition
+--- @param destination CoordPosition
+--- @return nil|MovementDirection[]
+function helpers.deduceAdjacentMove(starting_position, destination)
+	-- Make sure the position is adjacent to our current position, else
+	-- this would cause us to move forwards for no reason.
+	if not helpers.isPositionAdjacent(starting_position.position, destination) then
+		return nil
+	end
+
+	-- Only one of the 3 directions can have a value of +-1.
+	local x_delta = destination.x - starting_position.position.x
+	local y_delta = destination.y - starting_position.position.y
+	local z_delta = destination.z - starting_position.position.z
+
+	-- If the movement is vertical, the facing direction does not matter
+	if y_delta ~= 0 then
+		return {y_delta == -1 and "d" or "u"}
+	end
+
+	-- Determine the cardinal direction of the move
+	local move_direction = helpers.mostSignificantDirection(x_delta, z_delta)
+
+	-- Skip rotation if we're directly facing the target position, or
+	-- if we can move backwards into the position.
+	local cur_facing = starting_position.facing
+	if move_direction == cur_facing then
+		return {"f"}
+	elseif move_direction == helpers.invertDirection(cur_facing) then
+		return {"b"}
+	end
+
+	-- Rotation is required before movement.
+	-- Create a move set.
+	---@type MovementDirection[]
+	local movements = {}
+
+	-- This will always be one rotation, since we know we weren't able to move
+	-- directly forwards or backwards into the position we want to get into.
+	-- We will turn to face the position, since there is no cost difference to
+	-- turning left vs right.
+
+	-- Find the rotation. This will always be one turn.
+	movements[1] = helpers.findFacingRotation(cur_facing, move_direction)[1]
+
+	-- Add the move forwards into the position
+	movements[2] = "f"
+
+	return movements
+end
+
+-- === === ===
+-- === === ===
+-- Rotation helpers
+-- === === ===
+-- === === ===
+
+--- Rotate a direction based on a movement direction. Does nothing if
+--- the movement does not effect rotation.
+---
+--- Does not modify the original direction (as its a string),
+--- returns a new direction.
+---
+---@param move_direction MovementDirection The way in which the turtle moved.
+---@param original_facing CardinalDirection The facing direction to transform.
+---@return CardinalDirection
+function helpers.rotateDirection(move_direction, original_facing)
+    -- This checks for for non-rotation,
+    -- since the directional movements wont be found.
+    if string.match(move_direction, "^[fbud]") then
+        -- no change
+        return original_facing
+    end
+
+    -- Index into an array based on the direction.
+    local found = dir_to_num[original_facing]
+
+    -- This should always give us a direction. If you pass it undefined values,
+    -- you get undefined behavior!
+    ---@cast found number
+
+    -- Rotate the direction by offsetting into the dir table
+    local change = (move_direction == "l") and -1 or 1
+    return dirs[((found - 1 + change + 4) % 4) + 1]
+end
+
+--- Get the opposite facing direction from a direction.
+---
+--- Does not modify the incoming direction, as it is a string.
+---@param direction CardinalDirection
+---@return CardinalDirection opposite
+function helpers.invertDirection(direction)
+	local found = dir_to_num[direction]
+
+	-- 2 rotates us 180
+	return dirs[((found - 1 + 2 + 4) % 4) + 1]
+end
+
+--- Find what moves are required to face in a direction from a starting direction.
+---
+--- May return no movements in the form of an empty table if already facing
+--- the correct direction.
+---@param start_direction CardinalDirection
+---@param end_direction CardinalDirection
+---@return MovementDirection[]?
+function helpers.findFacingRotation(start_direction, end_direction)
+	local moves = {}
+	if start_direction == end_direction then
+		return moves
+	end
+
+	local start_num = dir_to_num[start_direction]
+	local end_num = dir_to_num[end_direction]
+
+	-- Clockwise
+	local right_distance = (end_num - start_num + 4) % 4
+	-- Counter
+	local left_distance = (start_num - end_num + 4) % 4
+	local times = math.min(right_distance, left_distance)
+
+	-- Prefer right turns
+	local turn_direction = "r"
+	if left_distance < right_distance then
+		turn_direction = "l"
+	end
+
+	for i = 1, times do
+		moves[i] = turn_direction
+	end
+	return moves
+end
+
+
+
+
+
+
+
+
+-- === === ===
+-- === === ===
+-- Sanity checks.
+-- === === ===
+-- === === ===
+
 print("Sanity checks...")
 _ = helpers.serializeJSON("test")
 _ = helpers.serializeJSON({})
@@ -626,5 +940,6 @@ _ = helpers.serializeJSON(temp)
 -- circle["wow"] = circle
 -- _ = helpers.serializeJSON(circle)
 print("Done setting up helpers!")
+
 
 return helpers

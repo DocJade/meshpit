@@ -51,8 +51,11 @@ impl MeshpitLibraries {
     pub fn to_files(self) -> Vec<PathBuf> {
         let mut paths: Vec<PathBuf> = vec![];
 
-        let lua_folder = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("src/minecraft/computercraft/turtle/lua");
+        let lua_folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/minecraft/computercraft/turtle/lua");
+
+        // Turtles always get the constants, as the file is quite small anyways.
+        paths.push(lua_folder.join("constants.lua"));
+
         if self.networking.unwrap_or(false) {
             paths.push(lua_folder.join("networking.lua"));
         };

@@ -4,6 +4,41 @@ local panic = require("panic")
 local helpers = require("helpers")
 local block_helper = require("block")
 local item_helper = require("item")
+local constants = require("constants")
+
+-- ==
+-- Import local constants.
+-- ==
+
+
+--- Integer representations of cardinal directions. 1 indexed, clockwise from north.
+---@type string[]
+local dirs = constants.dirs
+
+-- Allow converting from string forms of cardinal directions to their one indexed
+--- counterpart in `dirs`
+---@type {[CardinalDirection]: number}
+local dir_to_num = constants.dir_to_num
+
+--- Movement vectors based on direction
+---@type {[string]: CoordPosition}
+local movement_vectors = constants.movement_vectors
+
+-- ==
+-- Import frequently used helper functions.
+-- ==
+
+local getTransformedPosition = helpers.getTransformedPosition
+local rotateDirection = helpers.rotateDirection
+local invertDirection = helpers.invertDirection
+local deduceAdjacentMove = helpers.deduceAdjacentMove
+local isPositionAdjacent = helpers.isPositionAdjacent
+local mostSignificantDirection = helpers.mostSignificantDirection
+local findFacingRotation = helpers.findFacingRotation
+
+-- ==
+-- End of importing.
+-- ==
 
 -- Table that holds the functions, and holds the state of walkback as well.
 ---@class WalkbackSelf
@@ -42,39 +77,15 @@ local walkback = {
 	--- @type number
 	speed_limit_milliseconds = 0, -- TODO: Turn this back on as needed.
 
-    --- The current walkback chain. An array of positions.
-    --- Position 0 is the first step in the chain.
-    ---
-    --- We don't store facing direction, thus we do not guarantee that
-    --- walkbacks will end you facing in the same direction that you started.
-    ---@alias WalkbackChain CoordPosition[]
-    ---@type CoordPosition[]
+    ---@type WalkbackChain
     walkback_chain = {};
 
-    -- Hashmap of all of the positions we've seen so far in this walkback chain.
-    -- Implemented as:
-    -- key: string
-	-- - The string is derived from casting CoordPosition to a key
-	-- - via using helpers.keyFromTable(CoordPosition)
-    -- value: Returns the index into the walkback_chain where this position lives.
-    ---@alias ChainSeenPositions {[string]: number}
     ---@type ChainSeenPositions
     chain_seen_positions = {};
 
-	--- Hashset of ALL positions this turtle has visited since the last time
-	--- reset was called. This does not allow you to index into the walkback_chain,
-	--- since it only contains booleans.
-	---
-	--- Keyed with helpers.keyFromTable(CoordPosition)
-	---@alias AllSeenPositions {[string]: boolean}
-	---@type AllSeenPositions
+	--- @type AllSeenPositions
     all_seen_positions = {};
 
-	--- Hashmap of ALL the blocks a turtle has seen since the last time reset was
-	--- called. This does not have an index, as the data is not ordered.
-	---
-	--- Keyed with helpers.keyFromTable(CoordPosition)
-	---@alias AllSeenBlocks {[string]: Block}
 	---@type AllSeenBlocks
 	all_seen_blocks = {}
 
@@ -84,387 +95,7 @@ local walkback = {
 }
 
 -- ========================
--- Type definitions
--- ========================
-
----@alias FacingDirection
----| "n" # North: -Z
----| "e" # East: +X
----| "s" # South: +Z
----| "w" # West: -X
-
---- Casting between a facing direction and a tuple (table lol) of x,z change.
----@type {[FacingDirection]: table<number, number>}
-local dir_to_change = {n = {0, -1}, e = {1, 0}, s = {0, 1}, w = {-1, 0}}
-
---- Cast a x,z delta to a direction. Clamps values and picks the most significant
---- direction. Does not do diagonal directions.
----
---- If both axis are of equal length, it will prefer North.
----@param x number
----@param z number
----@return FacingDirection
-local function mostSignificantDirection(x,z)
-	-- absolutes to get the most significant distance on an axis
-	local abs_x = math.abs(x)
-    local abs_z = math.abs(z)
-	-- If z is greater than x, the more significant direction is either north or south.
-	-- if the numbers are equal, there is no
-	if abs_z >= abs_x then
-		return z > 0 and "s" or "n"
-	else
-		return x > 0 and "e" or "w"
-	end
-end
-
---- Casting back and forth to integer representation.
----@type string[]
-local dirs = {"n", "e", "s", "w"}
-
----@type {[FacingDirection]: number}
-local dir_to_num = {n = 1, e = 2, s = 3, w = 4}
--- `local num_to_dir` is the same as just indexing into dirs. do that.
-
----@alias CoordPosition {x: number, y: number, z: number}
-
----@alias MovementDirection
----| "f" # Forward
----| "b" # Back
----| "u" # Up
----| "d" # Down
----| "l" # Turn left
----| "r" # Turn right
-
---- Some turtle command take in a side parameter of the turtle, this is either
---- left, right, or nil.
----@alias TurtleSide "left"|"right"|nil
-
-
---- Movement vectors based on direction
----@type {[string]: CoordPosition}
-local movement_vectors = {
-    n = {
-        x = 0,
-        y = 0,
-        z = -1
-    },
-    e = {
-        x = 1,
-        y = 0,
-        z = 0
-    },
-    s = {
-        x = 0,
-        y = 0,
-        z = 1
-    },
-    w = {
-        x = -1,
-        y = 0,
-        z = 0
-    },
-    u = {
-        x = 0,
-        y = 1,
-        z = 0
-    },
-    d = {
-        x = 0,
-        y = -1,
-        z = 0
-    },
-}
-
----@alias MinecraftPosition {position: CoordPosition, facing: FacingDirection}
----@type MinecraftPosition
-
-
---- The walkback positions that we can push and pop should not contain the
---- list of blocks we've seen, as we don't wanna forget that information when
---- path-finding or if the walkback never gets pushed again
---- @alias PoppedWalkback {position: MinecraftPosition, chain: WalkbackChain, seen: ChainSeenPositions}
----@type PoppedWalkback
-
---- All possible return messages on why a turtle movement failed.
---- Values gathered from:
---- https://github.com/cc-tweaked/CC-Tweaked/blob/mc-1.20.x/projects/common/src/main/java/dan200/computercraft/shared/turtle/core/TurtleMoveCommand.java
---- Some values are assumes to just be impossible.
----@alias MovementError
----| "Movement obstructed" -- Block is solid, or, even with pushing enabled, an entity cannot be pushed out of the way.
----| "Out of fuel" -- Self explanatory
----| "Movement failed" -- Failed for a reason outside of CC:Tweaked s control? Realistically should not happen
----| "Too low to move" -- Self explanatory
----| "Too high to move" -- Self explanatory
----| "Cannot leave the world" -- Minecraft itself considers the movement to be out of bounds. world.isInWorldBounds(). No idea how that works.
----| "Cannot leave loaded world" -- Self explanatory. Should not occur if our chunk loading solution works correctly.
--- ---| "Cannot enter protected area" -- Apparently spawn protection related. But spawn protection no longer exists, we should never see this.
--- ---| "Cannot pass the world border" -- This is so far out that it should be impossible to ever reach this.
--- ---| "Unknown direction" -- Theoretically impossible to hit.
----@type MovementError
-
----@alias ItemError
----| "No space for items"
----| "No items to drop"
----| "No items to take"
----@type ItemError
-
----@alias UpgradeError
----| "Not a valid upgrade"
----@type UpgradeError
-
----@alias CraftError
----| "No matching recipes"
----@type CraftError
-
----@alias RefuelError
----| "No items to combust"
----| "Items not combustible"
-
---- This should be covered by Mining and Attacking error.
----@alias ToolError
----| "No tool to dig with"
----| "No tool to attack with"
----@type ToolError
-
----@alias PlacementError
----| "No items to place"
----| "Cannot place block here"
----| "Cannot place item here"
----| "Cannot place in protected area"
----@type PlacementError
-
----@alias MiningError
----| "No tool to dig with"
----| "Nothing to dig here"
----| "Cannot break unbreakable block"
----| "Cannot break protected block"
----| "Cannot break block with this tool"
----@type MiningError
-
-
-
--- ========================
--- Position and rotation helpers
--- ========================
-
---- Rotate a direction based on a movement direction. Does nothing if
---- the movement does not effect rotation.
----
---- Does not modify the original direction (as its a string),
---- returns a new direction.
----
----@param move_direction MovementDirection The way in which the turtle moved.
----@param original_facing FacingDirection The facing direction to transform.
----@return FacingDirection
-local function rotateDirection(move_direction, original_facing)
-    -- This checks for for non-rotation,
-    -- since the directional movements wont be found.
-    if string.match(move_direction, "^[fbud]") then
-        -- no change
-        return original_facing
-    end
-    -- Index into an array based on the direction.
-    local found = dir_to_num[original_facing]
-    if not found then
-        panic.panic("Invalid facing direction [" .. original_facing .. "]!", true)
-    end
-    -- Rotate the direction by offsetting into the dir table
-    local change = (move_direction == "l") and -1 or 1
-    return dirs[((found - 1 + change + 4) % 4) + 1]
-end
-
---- Get the opposite facing direction from a direction.
----
---- Does not modify the incoming direction, as it is a string.
----@param direction FacingDirection
----@return FacingDirection opposite
-local function invertDirection(direction)
-	local found = dir_to_num[direction]
-	-- 2 rotates us 180
-	return dirs[((found - 1 + 2 + 4) % 4) + 1]
-end
-
---- Find what moves are required to face in a direction from a starting direction.
----
---- May return no movements in the form of an empty table if already facing
---- the correct direction.
----@param start_direction FacingDirection
----@param end_direction FacingDirection
----@return MovementDirection[]?
-local function findFacingRotation(start_direction, end_direction)
-	local moves = {}
-	if start_direction == end_direction then
-		return moves
-	end
-
-	local start_num = dir_to_num[start_direction]
-	local end_num = dir_to_num[end_direction]
-
-	-- Clockwise
-	local right_distance = (end_num - start_num + 4) % 4
-	-- Counter
-	local left_distance = (start_num - end_num + 4) % 4
-	local times = math.min(right_distance, left_distance)
-
-	-- Prefer right turns
-	local turn_direction = "r"
-	if left_distance < right_distance then
-		turn_direction = "l"
-	end
-
-	for i = 1, times do
-		moves[i] = turn_direction
-	end
-	return moves
-end
-
---- Apply a transformation to a position.
----
---- Modifies the incoming table.
----@param origin CoordPosition The position to transform
----@param delta CoordPosition The transformation to apply
-local function offsetPosition(origin, delta)
-    origin.x = origin.x + delta.x
-    origin.y = origin.y + delta.y
-    origin.z = origin.z + delta.z
-end
-
---- Invert a position by negating all of its values.
----
---- Modifies the incoming table, be careful with vector tables!
----@param position CoordPosition
-local function invertPosition(position)
-    position.x = position.x * -1
-    position.y = position.y * -1
-    position.z = position.z * -1
-end
-
---- Get the new position of the turtle based on a movement direction,
---- and its current facing direction.
----
---- Modifies the incoming position table.
----
---- Ignores rotation movements, as they do not move in coordinate space.
---- @param direction MovementDirection The way in which the turtle moved.
---- @param facing FacingDirection Our current facing direction, this is not updated.
---- @param start_position CoordPosition Position to offset from.
-local function transformPosition(direction, facing, start_position)
-    -- North -z
-    -- East: +x
-    -- South +z
-    -- West: -x
-    -- Up: +y
-    -- Down: +y
-    -- Skip rotations
-    if string.match(direction, "^[lr]") then
-        -- no change
-        return
-    end
-    -- Up down
-    if direction == "u" or direction == "d" then
-        start_position.y = start_position.y + (direction == "u" and 1 or -1)
-        return
-    end
-    -- Forward back is hard, since its based on facing direction
-    -- this is why we have the lookup table
-    local delta = movement_vectors[facing]
-    -- Invert if we're moving backwards
-    if direction == "b" then
-        delta = helpers.clonePosition(delta)
-        invertPosition(delta)
-    end
-    -- Offset
-    offsetPosition(start_position, delta)
-end
-
---- Get the taxicab distance between two positions. Will always be a positive,
---- whole integer.
----@param pos1 CoordPosition
----@param pos2 CoordPosition
----@return number
-function walkback:taxicabDistance(pos1, pos2)
-	-- local x = math.abs(pos1.x - pos2.x)
-	-- local y = math.abs(pos1.y - pos2.y)
-	-- local z = math.abs(pos1.z - pos2.z)
-	-- return x + y + z
-	return math.abs(pos1.x - pos2.x) + math.abs(pos1.y - pos2.y) + math.abs(pos1.z - pos2.z)
-end
-
---- Check is a position is directly adjacent to another position.
----
---- Does not consider diagonals to be adjacent,
---- positions must share a block face, and
---- positions are not adjacent to themselves.
----@param pos1 CoordPosition
----@param pos2 CoordPosition
----@return boolean
-function walkback:isPositionAdjacent(pos1, pos2)
-	-- Same position?
-	-- Too far away?
-	-- And adjacent, all in one check!
-	return self:taxicabDistance(pos1, pos2) == 1
-end
-
-
---- From our current position, deduce what actions need to be taken to move to
---- an adjacent position.
----
---- Uses global state for getting current position, does not modify it.
----
---- Can return multiple movement directions, as moving laterally requires a turn,
---- then a movement.
----
---- returns `nil` if the destination position is not adjacent to the turtle. The
---- turtle's current position is also not considered adjacent, as no move is
---- required to get to that position.
---- @param destination CoordPosition
---- @return nil|MovementDirection[]
---- @private
-function walkback:deduceAdjacentMove(destination)
-	-- Make sure the position is adjacent to our current position, else
-	-- this would cause us to move forwards for no reason.
-	if not self:isPositionAdjacent(self.cur_position.position, destination) then
-		return nil
-	end
-
-	-- Only one of the 3 directions can have a value of +-1.
-	local x_delta = destination.x - self.cur_position.position.x
-	local y_delta = destination.y - self.cur_position.position.y
-	local z_delta = destination.z - self.cur_position.position.z
-
-	-- If the movement is vertical, the facing direction does not matter
-	if y_delta ~= 0 then
-		return {y_delta == -1 and "d" or "u"}
-	end
-
-	-- Determine the cardinal direction of the move
-	local move_direction = mostSignificantDirection(x_delta, z_delta)
-
-	-- Skip rotation if we're facing in the opposite direction, since we
-	-- can just move backwards.
-	local cur_facing = self.cur_position.facing
-	if move_direction == invertDirection(cur_facing) then
-		return {"b"}
-	end
-
-	-- Create a move set.
-	---@type MovementDirection[]
-	local movements = {}
-
-	-- Rotate if needed
-	local rotations = findFacingRotation(cur_facing, move_direction) or {}
-	for i, v in ipairs(rotations) do
-		movements[i] = v
-	end
-
-	-- Move forwards into that position.
-	movements[#movements +1 ] = "f"
-
-	return movements
-end
-
--- ========================
--- Internal Methods
+-- Internal Walkback Methods
 -- ========================
 
 --- Record a movement based on a move direction.
@@ -487,7 +118,8 @@ function walkback:recordMove(direction)
 
     -- Movement is positional
     -- Apply the transformation,
-    transformPosition(direction, self.cur_position.facing, self.cur_position.position)
+    local new_pos = getTransformedPosition(direction, self.cur_position.facing, self.cur_position.position)
+	self.cur_position.position = new_pos
 
 	-- Trim movement if needed.
 	-- If we trimmed, that means the end of the chain is already our end
@@ -687,7 +319,7 @@ end
 --- @param x number X position
 --- @param y number Y position
 --- @param z number Z position
---- @param facing FacingDirection Facing direction
+--- @param facing CardinalDirection Facing direction
 --- @return nil
 function walkback:setup(x, y, z, facing)
     self.cur_position.position.x = x
@@ -773,9 +405,10 @@ end
 function walkback:stepBack()
 	-- The previous position should always be adjacent, we're just gonna assume
 	-- that entirely here for speed. Good luck!
-	local dest = helpers.unwrap(self:previousPosition())
+	local dest = panic.unwrap(self:previousPosition())
 	-- There should be at least one move.
-	local moves = helpers.unwrap(self:deduceAdjacentMove(dest))
+	local start = self.cur_position
+	local moves = panic.unwrap(deduceAdjacentMove(start, dest))
 	for _, move in ipairs(moves) do
 		local ok, result = self:doMovement(move)
 		if not ok then
@@ -1133,7 +766,7 @@ end
 --- @return boolean
 function walkback:faceAdjacentBlock(adjacent)
 	-- Check that the position is indeed, adjacent.
-	if not self:isPositionAdjacent(self.cur_position.position, adjacent) then
+	if not isPositionAdjacent(self.cur_position.position, adjacent) then
 		return false
 	end
 
@@ -1176,12 +809,13 @@ end
 ---@return boolean, MovementError|nil
 function walkback:moveAdjacent(adjacent)
 	-- Check that the position is indeed, adjacent.
-	if not self:isPositionAdjacent(self.cur_position.position, adjacent) then
+	if not isPositionAdjacent(self.cur_position.position, adjacent) then
 		return false
 	end
 
 	-- Use our inner adjacent move call
-	local moves = self:deduceAdjacentMove(adjacent)
+	local start = self.cur_position
+	local moves = deduceAdjacentMove(start, adjacent)
 
 	-- This is not nil, since we know its not our current position.
 	---@cast moves MovementDirection[]
@@ -1305,7 +939,7 @@ end
 --- Turns to face a cardinal direction.
 ---
 --- Also scans while turning.
----@param direction FacingDirection
+---@param direction CardinalDirection
 function walkback:turnToFace(direction)
 	-- Rotate if needed
 	local start_facing = self.cur_position.facing
@@ -2081,7 +1715,7 @@ end
 ---@return boolean, MiningError|nil
 function walkback:digAdjacent(adjacent, side)
 	-- Confirm this is really adjacent
-	if not self:isPositionAdjacent(self.cur_position.position, adjacent) then
+	if not isPositionAdjacent(self.cur_position.position, adjacent) then
 		return false, nil
 	end
 
@@ -2166,7 +1800,7 @@ end
 ---@return boolean, PlacementError|nil
 function walkback:placeAdjacent(adjacent)
 	-- Confirm this is really adjacent
-	if not self:isPositionAdjacent(self.cur_position.position, adjacent) then
+	if not isPositionAdjacent(self.cur_position.position, adjacent) then
 		return false, nil
 	end
 

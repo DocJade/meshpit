@@ -87,6 +87,17 @@ function panic.assert(condition, message, message_only)
     end
 end
 
+--- Unwrap a T|nil value, asserting that is is not nil. Panics if it is nil.
+---@generic T
+---@param value T|nil
+---@return T
+function panic.unwrap(value)
+    panic.assert(value ~= nil, "Unwrapped on a nil!")
+    -- Tell linter this must no longer be nil.
+    ---@cast value -nil
+    return value
+end
+
 -- Functions for getting local and global variables
 -- https://stackoverflow.com/questions/2834579/print-all-local-variables-accessible-to-the-current-scope-in-lua
 function panicLocals()
