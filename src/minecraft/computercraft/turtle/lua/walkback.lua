@@ -903,7 +903,8 @@ end
 
 --- Turns to face a cardinal direction.
 ---
---- Also scans while turning.
+--- Does not scan, if you need to scan the positions on the way, you should't
+--- be using this method.
 ---@param direction CardinalDirection
 function walkback:turnToFace(direction)
 	-- Rotate if needed
@@ -917,12 +918,7 @@ function walkback:turnToFace(direction)
 	for _, move in ipairs(rotations) do
 		-- Rotations cannot fail.
 		self:doMovement(move)
-		-- Might as well inspect the blocks around us when we do this.
-		self:inspect()
 	end
-
-	self:inspectUp()
-	self:inspectDown()
 end
 
 -- ============
