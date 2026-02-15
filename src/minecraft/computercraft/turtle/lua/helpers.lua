@@ -34,35 +34,21 @@ end
 -- === === ===
 
 --- Find a string within a substring.
---- @param string string
---- @param pattern string
+---
+--- Returns true if the string is contained within the other string.
+--- @param checked_string string
+--- @param sub_string string
 --- @return boolean
-function helpers.findString(string, pattern)
-    local p_len = #pattern
-    local s_len = #string
+function helpers.findString(checked_string, sub_string)
 
-    -- Pattern has to be shorter than the string.
-    if p_len > s_len then return false end
+    -- is just a wrapper around the normal pattern matching. Why? IDK.
+    -- used to have a custom method, then i realized I'm an idiot and shouldn't
+    -- do that, since the core implementation is better than anything I could
+    -- ever write.
 
-    -- Pattern cannot be empty
-    if p_len == 0 then return false end
-
-    -- If the lengths are the same, we can directly compare
-    if  p_len == s_len then
-        return string == pattern
-    end
-
-    -- Loop over the sub-strings.
-    -- TODO: This can be faster by skipping forwards to the position where the
-    -- string no longer met the pattern.
-    for i = 1, (s_len - p_len) + 1 do
-        helpers.quick_yield()
-        for j = 1, p_len do
-            if string[i + j] ~= pattern[j] then break end
-            if j == p_len then return true end
-        end
-    end
-    return false
+    local start_index, _ = string.find(checked_string, sub_string)
+    -- If there is a starting index, the string was in there.
+    return start_index ~= nil
 end
 
 
