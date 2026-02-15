@@ -32,6 +32,7 @@
 
 local helpers = require("helpers")
 local task_helpers = require ("task_helpers")
+local constants = require("constants")
 
 -- Frequently used helper functions
 local coordinatesAreEqual = helpers.coordinatesAreEqual
@@ -143,7 +144,7 @@ function moving_would_give_info(maybe_move_here, seen_blocks)
     -- If there is at least one block that has not been seen that you would be
     -- able to see from that maybe position, then its worth moving into.
     -- No need to provide accurate facing info.
-    return #get_unseen_neighbor_blocks(maybe_move_here, "n", seen_blocks) > 0
+    return #(get_unseen_neighbor_blocks(maybe_move_here, "n", seen_blocks) or {}) > 0
 end
 
 --- This is a post-check on movement. Call this after scanning!
@@ -241,7 +242,7 @@ function already_facing_shortcut(cur_position, seen_blocks, to_mine)
     end
 
     -- Maybe has valid shortcuts!
-    return good_shortcuts > 0, good_shortcuts
+    return #good_shortcuts > 0, good_shortcuts
 end
 
 --- Check if a position wants to be mined.
@@ -299,9 +300,13 @@ end
 --- @return number
 function calculate_turn_cost(starting, directions)
     local total = 0
+    print("Calculating cost of a " .. #directions .. " long sequence...")
+    -- Needs to take into account the new facing direction after a turn.
+    local current_facing = starting
     for _, d in ipairs(directions) do
-        local moves = helpers.findFacingRotation(starting, d[2])
+        local moves = helpers.findFacingRotation(current_facing, d[2])
         total = total + #(moves or {})
+        current_facing = d[2]
     end
     return total
 end
@@ -363,23 +368,30 @@ function smart_scan(wb, seen_blocks)
     --- @type Block[]
     local blocks_looked_at = {}
 
-    -- Look up and down first, since those dont require anything fancy.
-    -- We only have to determine which way to look if there's only 1 vertical
-    -- position.
+    -- We also now need to keep track of the positions looked at to make sure
+    -- they stay in sync with blocks_looked_at.
+    --- @type CoordPosition[]
+    local positions_looked_at = {}
+
+    -- Look up and down first, since those dont require anything fancy, or any
+    -- rotation.
     local c_v = #verticals
     if c_v == 0 then
-        -- do nothing!
-    elseif c_v == 2 then
-        -- Both up and down.
-        blocks_looked_at[#blocks_looked_at+1] = wb:inspectUp()
-        blocks_looked_at[#blocks_looked_at+1] = wb:inspectDown()
+        -- Don't need to look up or down.
     else
-        -- Either up or down.
-        local d_y = verticals[1].y - p.y
-        if d_y > 0 then
-            blocks_looked_at[#blocks_looked_at+1] = wb:inspectUp()
-        else
-            blocks_looked_at[#blocks_looked_at+1] = wb:inspectDown()
+        for _, v in ipairs(verticals) do
+            local inspected
+            if v.y - p.y > 0 then
+                inspected = wb:inspectUp()
+            else
+                inspected= wb:inspectDown()
+            end
+            -- Only add if we saw something
+            if inspected ~= nil then
+                -- Not air
+                blocks_looked_at[#blocks_looked_at+1] = inspected
+                positions_looked_at[#positions_looked_at+1] = v
+            end
         end
     end
 
@@ -388,7 +400,7 @@ function smart_scan(wb, seen_blocks)
     -- Skip if there is nothing to do
     local c_h = #horizontals
     if c_h == 0 then
-        return blocks_looked_at, to_see
+        return blocks_looked_at, positions_looked_at
     end
 
     -- We pre-sort the positions here, since if we moved straight upwards, we
@@ -425,9 +437,14 @@ function smart_scan(wb, seen_blocks)
     -- current facing position is included within the list of moves, in which
     -- case the cost is reduced by one.
 
+    -- Thus we can directly calculate the target cost.
+    local target_cost = c_h - (saw_starting and 1 or 0)
+
     -- Gotos here, so we need to put the locals up here.
-    local target_cost
+
     local current_cost
+    local first_distance
+    local second_distance
     -- Because tables are just references, we can make a shorter binding here
     local t = horizontals
 
@@ -437,8 +454,6 @@ function smart_scan(wb, seen_blocks)
         goto done_sorting
     end
 
-    -- Thus we can directly calculate the target cost.
-    target_cost = c_h - (saw_starting and 1 or 0)
 
     -- Now we can permutate the array until we see the cost we want.
     current_cost = calculate_turn_cost(f, t)
@@ -463,37 +478,59 @@ function smart_scan(wb, seen_blocks)
     -- 3 has a different pattern.
     if c_h == 3 then goto permute_three end
 
+    -- Rotate the array till the first position is our facing position.
     while t[1][2] ~= f do
         t[1], t[2], t[3], t[4] = t[4], t[1], t[2], t[3]
     end
 
     goto done_sorting
 
-    -- Now the pattern we do to alter the array is simple, and we are guaranteed
-    -- to always hit the cheapest one, since this algo will hit every possible
-    -- combination, if not in a weird order.
+    -- Three is a bit complicated, but basically, we check if the difference in
+    -- the integer version of the direction has a difference of 1 between each
+    -- faced direction.
+
+    -- So we can just build the array ourself
+
+    -- This is the same as just sorting the array based on distance. However, if
+    -- there is a tie in the first 2 places on distance due to the starting position
+    -- not being included in the 3 positions, that would result in 90, 180, 90 turns.
+    -- Thus, we then will check again to see the difference between 1 and 2 from
+    -- the start position. If they are the same, we can safely swap one of them
+    -- into the last position.
+
+    -- TODO: Man this is probably a bit wasteful since its making tables and such
+    -- but idk this is the 5th or so thing i have tried tonight.
 
     ::permute_three::
-    -- TODO: Is there a way to do this without a loop, ie in a constant way?
-    while current_cost ~= target_cost do
-        t[1], t[2], t[3] = t[2], t[3], t[1]
-        t[1], t[2] = t[2], t[1]
-        current_cost = calculate_turn_cost(f, t)
-    end
+    table.sort(t, function (a, b)
+        local left = #(helpers.findFacingRotation(f, a[2]) or {})
+        local right = #(helpers.findFacingRotation(f, b[2]) or {})
+        return left < right
+    end)
 
+    -- Swap the final two elements if needed.
+    first_distance = #(helpers.findFacingRotation(f, t[1][2]) or {})
+    second_distance = #(helpers.findFacingRotation(f, t[2][2]) or {})
+    if first_distance == second_distance then
+        t[2], t[3] = t[3], t[2]
+    end
 
     ::done_sorting::
 
     -- Now that we're finally done sorting, we can run through those positions.
-    for _, p  in ipairs(horizontals) do
+    for _, sorted_pos  in ipairs(horizontals) do
         -- Turn
-        wb:faceAdjacentBlock(p[1])
+        wb:faceAdjacentBlock(sorted_pos[1])
         -- inspect, and store!
-        blocks_looked_at[#blocks_looked_at+1] = wb:inspect()
+        local inspected = wb:inspect()
+        if inspected ~= nil then
+            blocks_looked_at[#blocks_looked_at+1] = inspected
+            positions_looked_at[#positions_looked_at+1] = sorted_pos[1]
+        end
     end
 
     -- We are finally done!
-    return blocks_looked_at, to_see
+    return blocks_looked_at, positions_looked_at
 end
 
 --- Dig an adjacent position, and if that fails, die.
