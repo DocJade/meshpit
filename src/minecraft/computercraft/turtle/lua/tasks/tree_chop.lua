@@ -35,6 +35,7 @@ local task_helpers = require "task_helpers"
 local sapling_tag = "minecraft:saplings"
 local log_tag = "minecraft:logs"
 local leaves_tag = "minecraft:leaves"
+local stick_name = "minecraft:stick"
 
 --- Task that automatically cuts down trees.
 ---
@@ -215,7 +216,10 @@ local function tree_chop(config)
     miner_data = {
         name = "recursive_miner",
         mineable_tags = {log_tag, leaves_tag},
-        fuel_patterns = {"log"}
+        -- These patterns are anchored so we only try to mine items that END with
+        -- these names. Otherwise `stick` would match `sticky_piston` for example.
+        -- We also want to burn sticks before logs.
+        fuel_patterns = {"stick$", "log$"}
     }
 
     -- Each tree is expected to give us at least 4 logs, which at 15 fuel per
