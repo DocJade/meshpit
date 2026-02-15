@@ -33,20 +33,19 @@ end
 -- === === ===
 -- === === ===
 
---- Find a string within a substring.
+--- Find a pattern within a substring.
 ---
---- Returns true if the string is contained within the other string.
+--- Returns true if the pattern is contained within the other string.
 --- @param checked_string string
---- @param sub_string string
+--- @param pattern string
 --- @return boolean
-function helpers.findString(checked_string, sub_string)
-
+function helpers.findString(checked_string, pattern)
     -- is just a wrapper around the normal pattern matching. Why? IDK.
     -- used to have a custom method, then i realized I'm an idiot and shouldn't
     -- do that, since the core implementation is better than anything I could
     -- ever write.
 
-    local start_index, _ = string.find(checked_string, sub_string)
+    local start_index, _ = string.find(checked_string, pattern)
     -- If there is a starting index, the string was in there.
     return start_index ~= nil
 end
