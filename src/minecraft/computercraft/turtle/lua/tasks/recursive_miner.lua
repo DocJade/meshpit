@@ -144,6 +144,10 @@ function moving_would_give_info(maybe_move_here, seen_blocks)
     -- If there is at least one block that has not been seen that you would be
     -- able to see from that maybe position, then its worth moving into.
     -- No need to provide accurate facing info.
+
+    -- TODO: Improve this to split this check up to also allow for moving into
+    -- positions that have no new info, but would allow for taking a shortcut.
+
     return #(get_unseen_neighbor_blocks(maybe_move_here, "n", seen_blocks) or {}) > 0
 end
 
@@ -591,6 +595,148 @@ function post_movement_shortcuts(wb, seen_blocks, to_mine)
     end
 end
 
+--- Pick the next position to mine. Peeks at the top of the stack and re-orders
+--- it based on priorities and preferring to avoid rotation.
+---
+--- May (and most likely will) modify to-mine.
+---
+--- Uses walkback purely for positional data.
+---
+--- Returns the next position that should be mined. May not necessarily be the
+--- top of the stack.
+--- @param wb WalkbackSelf
+--- @param to_mine CoordPosition[]
+--- @param seen_blocks {[string]: true}
+--- @param mineable_names string[]
+--- @param mineable_tags string[]
+--- @return CoordPosition
+function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
+    local p, f = wb.cur_position.position, wb.cur_position.facing
+
+    -- Bail if there is nothing to do, or only one thing to do. As re-ordering
+    -- those would be pointless.
+    if #to_mine <= 1 then
+        return to_mine[#to_mine]
+    end
+
+    -- Pop off things to mine from the top of the stack until we hit a position
+    -- that is non-adjacent, or run out of positions. We will also attach a
+    -- number to keep track of this position's score.
+    --
+    -- Remember that everything in popped is going to be references, so we cannot
+    -- modify the positions, thus we clone them. Although we never change the
+    -- positions, we just need to make sure we don't accidentally remove the
+    -- position we are referencing when we add everything back on after sorting.
+    --- @type {pos: CoordPosition[], score: number}
+    local popped = {}
+
+    while true do
+        if #to_mine - #popped == 0 then break end
+        local peek = to_mine[#to_mine - #popped]
+        if not helpers.isPositionAdjacent(p, peek) then break end
+        popped[#popped+1] = {pos = helpers.clonePosition(peek), score = 0}
+    end
+
+
+    -- Scoring criteria:
+    -- 1: -1 point for every rotation required to face the block to break.
+    --    This does not effect up and down.
+    -- 2: +1 point for ever position that would be revealed by mining that block
+    --    and moving into it. Prioritizes filling out the search space, resulting
+    --    in more shortcuts.
+    -- 3: Variable amount of points added based on what position in the priority
+    --    list the block that would be mined is. IE: If the list is 5 blocks
+    --    long, the first block would give a score of 5, second would get 4, and
+    --    so on.
+
+    -- 1: Rotations
+    for _, pop_pos in ipairs(popped) do
+        -- Skip up and down
+        if pop_pos.pos.y == wb.cur_position.position.y then
+            local direction = helpers.mostSignificantDirection(pop_pos.pos.x - pop_pos.pos.x, pop_pos.pos.z - pop_pos.pos.z)
+            local turns = #(helpers.findFacingRotation(f, direction) or {})
+            pop_pos.score = pop_pos.score - turns
+        end
+    end
+
+
+    -- 2: Blocks revealed.
+    -- Luckily we already have get_unseen_neighbor_blocks, so we can use that.
+    for _, pop_pos in ipairs(popped) do
+        -- Direction does not matter, since we're just counting.
+        local revealed = get_unseen_neighbor_blocks(pop_pos.pos, "n", seen_blocks) or {}
+        pop_pos.score = pop_pos.score + #revealed
+    end
+
+    -- 3: Mining priorities
+
+    -- We actually want to incentivize this a little bit harder, since its very
+    -- easy for this to get overpowered by check 2. Thus the bonus given is
+    -- very large to practically separate the different kinds of blocks into groups.
+    local scaling_factor = 10
+
+    for _, pop_pos in ipairs(popped) do
+        -- Grab what block this is
+        local block = wb:blockQuery(pop_pos.pos)
+        -- This cannot be nil, otherwise it wouldn't be in the queue.
+        assert(block)
+        -- Check name first since its cheaper (probably?)
+        -- Patterns, so direct comparisons dont work.
+        for i, name_pattern in ipairs(mineable_names) do
+            if helpers.findString(name_pattern, block.name) then
+                -- Neat! Score based on position.
+                -- Since lua 1 indexing, gotta also add 1 here lol.
+                pop_pos.score = pop_pos.score + ((#mineable_names - i + 1) * scaling_factor)
+                goto next_position
+            end
+        end
+
+        -- No names, so it must be tags.
+        assert(#mineable_tags > 0)
+
+        -- Now for tags.
+        -- These aren't patterns so they can be directly compared.
+        for i, tag in ipairs(mineable_tags) do
+            if helpers.arrayContains(block.tag, tag) then
+                pop_pos.score = pop_pos.score + ((#mineable_tags - i + 1) * scaling_factor)
+                goto next_position
+            end
+        end
+
+        -- This is unreachable.
+        assert(false, "unreachable. No name or tag match?")
+
+        ::next_position::
+    end
+
+
+    -- Now sort by score.
+    table.sort(popped, function (a, b)
+        return a.score > b.score
+    end)
+
+    -- The items are now sorted where the best position is at the front of the list,
+    -- thus we push them onto the top of the stack backwards.
+
+    for i, pop_pos in ipairs(popped) do
+        to_mine[#to_mine - #popped + i] = pop_pos.pos
+    end
+
+    -- Return the new winner.
+    return to_mine[#to_mine]
+
+    -- TODO: Make this not prefer moving vertically, since that reduces our chances
+    -- for shortcuts. The more horizontal movement, the better.
+    -- Also score if mining a block and moving into its position would remove the
+    -- last unknown neighbor of another block next to it.
+    -- TODO: Make it so the post_movement_shortcuts can be called pre-movement as well?
+    --   I just wanna make sure that if we move forwards into a position, we remove all
+    --   of the shortcuts before we leave.
+    -- TODO: It seems to still be picking sub-optimal rotations in the 3 case due to
+    --       how we pick the next thing to mine here.
+
+end
+
 --- Task that recursively* mines blocks based on name or tag.
 ---
 --- Never re-orders inventory, or changes what slot is selected.
@@ -652,8 +798,8 @@ local function recursive_miner(config)
     -- Just shorten the name of these
     local fuel_buffer = config.definition.fuel_buffer
     local fuel_patterns = task_data.fuel_patterns or {}
-    local mineable_names = task_data.mineable_names or nil
-    local mineable_tags = task_data.mineable_tags or nil
+    local mineable_names = task_data.mineable_names or {}
+    local mineable_tags = task_data.mineable_tags or {}
     local stop_time = 9999999999999999999999; -- roughly the year 317 million
     if task_data.timeout ~= nil then
         ---@diagnostic disable-next-line: undefined-field
@@ -750,7 +896,7 @@ local function recursive_miner(config)
 
         -- There is something to mine!
         -- Mine the first thing as usual.
-        local pos_to_mine = to_mine[#to_mine]
+        local pos_to_mine = pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
 
         -- Peek at the top block, are we next to it?
         if not isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
@@ -761,6 +907,9 @@ local function recursive_miner(config)
                 -- earlier.
                 local r, _ = wb:stepBack()
                 task_helpers.assert(r)
+
+                -- Every time we step back, the priorities will change.
+                pos_to_mine = pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
 
                 if isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
                     break
