@@ -326,6 +326,79 @@ function walkback:mark()
     return true
 end
 
+--- Inner helper function to reduce duplication lol
+--- @param walkback WalkbackSelf
+--- @param side MovementDirection
+--- @return boolean
+local function been_direction(walkback, side)
+	-- Deduce the position
+	local pos, facing = walkback.cur_position.position, walkback.cur_position.facing
+	local forward_position = helpers.getAdjacentBlock(pos, facing, side)
+	local key = helpers.keyFromTable(forward_position)
+	return walkback.chain_seen_positions[key] ~= nil
+end
+
+--- Check if the position in front of the turtle is currently in the walkback
+--- chain. If true, moving into this position would cause the walkback to
+--- be trimmed.
+---
+--- Returns true if we've already seen this position.
+--- @return boolean
+function walkback:beenForward()
+	return been_direction(self, "f")
+end
+
+--- Check if the position behind the turtle is currently in the walkback
+--- chain. If true, moving into this position would cause the walkback to
+--- be trimmed.
+---
+--- Returns true if we've already seen this position.
+--- @return boolean
+function walkback:beenBack()
+	return been_direction(self, "b")
+end
+
+--- Check if the position above the turtle is currently in the walkback
+--- chain. If true, moving into this position would cause the walkback to
+--- be trimmed.
+---
+--- Returns true if we've already seen this position.
+--- @return boolean
+function walkback:beenUp()
+	return been_direction(self, "u")
+end
+
+--- Check if the position below the turtle is currently in the walkback
+--- chain. If true, moving into this position would cause the walkback to
+--- be trimmed.
+---
+--- Returns true if we've already seen this position.
+--- @return boolean
+function walkback:beenDown()
+	return been_direction(self, "d")
+end
+
+--- Check if the position to the left of the turtle is currently in the walkback
+--- chain. If true, moving into this position would cause the walkback to
+--- be trimmed.
+---
+--- Returns true if we've already seen this position.
+--- @return boolean
+function walkback:beenLeft()
+	return been_direction(self, "l")
+end
+
+--- Check if the position to the left of the turtle is currently in the walkback
+--- chain. If true, moving into this position would cause the walkback to
+--- be trimmed.
+---
+--- Returns true if we've already seen this position.
+--- @return boolean
+function walkback:beenRight()
+	return been_direction(self, "r")
+end
+
+
 --- Rewind the turtle to the marked position.
 --- You should ensure you have enough fuel for the full walkback first.
 ---
