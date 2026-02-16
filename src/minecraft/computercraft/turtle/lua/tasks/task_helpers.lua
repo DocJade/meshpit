@@ -72,7 +72,7 @@ end
 --- @param reason TaskFailureReason
 function task_helpers.throw(reason)
     ---@diagnostic disable-next-line: undefined-field
-    os.setComputerLabel("task threw! " .. reason)
+    -- os.setComputerLabel("task threw! " .. reason)
     ---@type TaskFailure
     local task_failure = {
         kind = "fail",

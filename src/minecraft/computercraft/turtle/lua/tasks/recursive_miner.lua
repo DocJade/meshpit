@@ -583,7 +583,7 @@ function post_movement_shortcuts(wb, seen_blocks, to_mine)
 
     -- Shortcuts to mine!
     ---@diagnostic disable-next-line: undefined-field
-    os.setComputerLabel("Shortcut!")
+    -- os.setComputerLabel("Shortcut!")
 
     -- There are shortcuts! Mine them and mark them.
     for _, pos in ipairs(go_mine) do
@@ -655,6 +655,11 @@ function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
             local direction = helpers.mostSignificantDirection(pop_pos.pos.x - pop_pos.pos.x, pop_pos.pos.z - pop_pos.pos.z)
             local turns = #(helpers.findFacingRotation(f, direction) or {})
             pop_pos.score = pop_pos.score - turns
+        else
+            -- Going up and down appears to be worse for taking shortcuts.
+            -- But its still way worth it if it reveals a lot of blocks, so it
+            -- isn't penalized too hard.
+            pop_pos.score = pop_pos.score - 2
         end
     end
 
@@ -711,7 +716,7 @@ function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
 
     -- Now sort by score.
     table.sort(popped, function (a, b)
-        return a.score > b.score
+        return a.score < b.score
     end)
 
     -- The items are now sorted where the best position is at the front of the list,
@@ -889,7 +894,7 @@ local function recursive_miner(config)
         if #to_mine == 0 then
             -- Nothing left to mine!
             ---@diagnostic disable-next-line: undefined-field
-            os.setComputerLabel("Out of things to mine!")
+            -- os.setComputerLabel("Out of things to mine!")
             break
         end
 
@@ -901,7 +906,7 @@ local function recursive_miner(config)
         if not isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
             -- Walk back until we are next to it.
             while true do
-                os.setComputerLabel("Moving back...")
+                -- os.setComputerLabel("Moving back...")
                 -- We should have enough fuel to do this if we did our math correct
                 -- earlier.
                 local r, _ = wb:stepBack()
