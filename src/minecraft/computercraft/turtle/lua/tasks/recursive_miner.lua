@@ -304,7 +304,6 @@ end
 --- @return number
 function calculate_turn_cost(starting, directions)
     local total = 0
-    print("Calculating cost of a " .. #directions .. " long sequence...")
     -- Needs to take into account the new facing direction after a turn.
     local current_facing = starting
     for _, d in ipairs(directions) do

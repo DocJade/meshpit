@@ -99,6 +99,7 @@ function task_helpers.taskSleep(seconds)
     -- Queue the event, and yield.
     ---@diagnostic disable-next-line: undefined-field
     os.queueEvent("sleep", wakeup_time)
+    task_helpers.taskYield()
 end
 
 
@@ -151,9 +152,6 @@ function task_helpers.pushInventoryBack(walkback, ignored_slots)
         if walkback:getItemDetail(i) ~= nil then goto continue end
         -- Slot is empty, try moving stuff up.
         for j = i - 1, 1, -1  do
-            -- Might as well yield the task in here
-            task_helpers.taskYield()
-
             -- Skip ignored slots, and check for items in this slot
             if not ignore_map[j] and walkback:getItemDetail(j) ~= nil then
                 -- No need to check the result since we know this slot is empty.

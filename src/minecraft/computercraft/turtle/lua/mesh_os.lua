@@ -39,6 +39,17 @@ require("networking")
 local tree_chop_function = require("tree_chop")
 local recursive_miner_function = require("recursive_miner")
 
+-- Bring globals into scope to make them faster
+---@type function
+---@diagnostic disable-next-line: undefined-field
+local queueEvent = os.queueEvent
+---@type function
+---@diagnostic disable-next-line: undefined-field
+local epochFunction = os.epoch
+
+-- Resume coroutines
+local resume = _G.coroutine.resume
+
 -- =========
 -- Locals
 -- =========
@@ -53,16 +64,44 @@ local task_queue = {}
 ---@type PoppedWalkback[]
 local walkback_queue = {}
 
+--- Track when we want to wake up from sleeping.
+---
+--- Expressed as a UTC timestamp.
+--- @type number|nil
+local wake_up_time = nil
+
 --- Keep track if we are currently sleeping for a task. This is non-nill if
---- we are sleeping, and is set to the timestamp of when the task should be
---- resumed.
+--- we are sleeping, and is set to the id of the timer we are sleeping for.
 ---@type number|nil
-local currently_sleeping = nil
+local sleeping_timer_id = nil
 
 --- This is set when we are in test mode. Used for controlling some behavior
 --- to not trigger in tests.
 --- @type boolean
 local test_mode = false
+
+--- The default timer resolution to use when not sleeping. This can be changed
+--- by the server if it thinks we are idle for too long, or it knows that we
+--- won't get any new tasks / events for a while.
+---
+--- Expressed as seconds, including decimals.
+--- @type number
+local default_event_timer_resolution = 0.10
+
+--- The maximum allowed timer resolution to prevent sleeping from making the
+--- OS too unresponsive.
+---
+--- Do not modify this value. Defaults to 10 seconds.
+--- @type number
+local max_event_timer_resolution = 10
+
+
+--- The current resolution of the task queue timer. This is increased automatically
+--- when we are sleeping, and decreased back to the default when we wake up.
+---
+--- Sleeping will increase this to 1 second, or higher if needed.
+---@type number
+local current_event_timer_resolution = default_event_timer_resolution
 
 -- =========
 -- Types
@@ -195,7 +234,7 @@ local test_mode = false
 --- The provided timestamp is in `utc`, and is unconverted (ie its in milliseconds)
 --- @class CustomEventSleep
 --- @field [1] "sleep"
---- @field [2] number -- Time to wake up. This should be a time offset from utc epoch.
+--- @field [2] number -- Time to wake up. This should be an epoch time that has already been offset but the amount you wish to sleep for.
 
 --- Add a new task to the queue.
 ---
@@ -312,60 +351,110 @@ end
 --- We only sleep for one second at a time, as we still want to wake up and handle
 --- other events regardless if the current task is running. This delay may be
 --- increased in the future if needed.
-local function second_sleep()
+--- @param seconds number -- The number of seconds to sleep for. Can be fractional.
+function os_sleep(seconds)
+
+    -- TODO: This somehow the old timer ID is not being cleaned up properly
+
     -- unlike the usual os.sleep, we are not discarding events.
     -- The normal os.sleep() really strangely just sits in a tight loop, throwing
     -- away timer events until it hits the timer it's looking for??? Very strange.
     -- https://github.com/cc-tweaked/CC-Tweaked/blob/mc-1.20.x/projects/core/src/main/resources/data/computercraft/lua/bios.lua#L49-L56
 
-    ---@diagnostic disable-next-line: undefined-field
-    local timer_id = os.startTimer(1)
+    -- We start our own timer, and put it into the event queue.
+    -- But only if we don't already have a timer.
+    if sleeping_timer_id ~= nil then return end
 
-    -- However, this does mean that if we get a timer that is NOT the one we are
-    -- looking for, we have to put it back into the pile.
-    -- Since this timer only runs for one second and this constantly yields due
-    -- to waiting for events, thats fine...
-    local timer_string = "timer"
-    while true do
-        ---@diagnostic disable-next-line: undefined-field
-        local event = os.pullEvent(timer_string)
-        if event.number == timer_id then break end
-        -- This is not the right timer.
-        ---@diagnostic disable-next-line: undefined-field
-        os.queueEvent(timer_string, event.number)
+    -- print("Creating new sleep timer.")
+
+    -- Reel in the sleep duration if its too short.
+    seconds = math.max(seconds, default_event_timer_resolution)
+
+    ---@diagnostic disable-next-line: undefined-field
+    sleeping_timer_id = os.startTimer(seconds)
+
+    -- Now, the event handler will grab the timer automatically and call
+    -- `timer_cleanup` afterwards to stop sleeping.
+
+    -- But before that, we will also need to increase the event timer resolution
+    -- so we don't wake up more than we need to.
+    current_event_timer_resolution = math.min(math.max(default_event_timer_resolution, seconds / 2), max_event_timer_resolution)
+end
+
+
+--- Handle timer events. This is also used to finish sleeping and reset the
+--- event resolution after sleeping.
+--- @param timer_id number
+local function handle_timer_event(timer_id)
+    -- Are we sleeping? And is this our wake-up call?
+    if sleeping_timer_id ~= nil and timer_id == sleeping_timer_id then
+        -- Our sleep has ended.
+        sleeping_timer_id = nil
+        -- Reset the event timer.
+        current_event_timer_resolution = default_event_timer_resolution
+        return
     end
+    -- This wasn't the sleep timer. Honestly we shouldn't be using timers for
+    -- anything besides OS sleeping, so we will freak out otherwise.
+
+    -- TODO: Old timers are lingering after we have finished a sleep, resulting
+    -- in a timer with an ID one below the current timer going off, causing failure.
+    -- for now, we will just ignore any timer event that is not our sleep timer.
+
+    -- ^^^^^^ This almost looks like its trying to sleep twice per sleep?
+
+    return
+    -- print("timer_id: ", timer_id)
+    -- print("sleeping_timer_id: ", sleeping_timer_id)
+    -- print("current_event_timer_resolution: ", current_event_timer_resolution)
+    -- print("default_event_timer_resolution: ", default_event_timer_resolution)
+    -- while true do end
+    -- panic.panic("Unknown timer!")
 end
 
 -- =========
 -- Event handling
 -- =========
 
+-- Keep track if we've seen the same event several times in a row to prevent
+-- lockups.
+
 --- We only handle one event at a time, as looping would require to always wait
 --- for a timer to complete. The timer is only a backup to prevent being stuck
 --- if the queue is actually empty.
 local function handle_events()
+
+    -- TODO: Make this pull events and put them into buckets based on event name
+    -- so events can be pulled safely later, and we wont have to re-push events
+    -- to the queue causing them to be re-read over and over when sleeping, causing
+    -- wake-ups hundreds of times per second.
+
+
+
+
     -- Create the watchdog timer, just in case.
-    local watchdog = os.startTimer(0.10)
+    -- We use the global timer resolution here.
+    --- @diagnostic disable-next-line: undefined-field
+    local watchdog = os.startTimer(current_event_timer_resolution)
 
     ---@type CCEvent|CustomEvent
     ---@diagnostic disable-next-line: undefined-field
     local event = table.pack(os.pullEvent())
     local event_name = event[1]
+    print("Handling event: ", event_name)
     local handled_event = true
     -- print(event_name)
     if event_name == "turtle_response" then
         -- This is an internal CC:Tweaked event that we are able to see for
         -- some stupid reason, we need to put it back onto the queue now.
-        os.queueEvent(table.unpack(event))
+        queueEvent(table.unpack(event))
     elseif event_name == "yield" then
-        -- Hey! Put that back!
-        os.queueEvent("yield")
+        -- We can eat this immediately, since we can just pass the string back
+        -- to the task again later when it requests it.
     elseif event_name == "sleep" then
         -- The task wants to sleep. Set up the sleeping mode.
         ---@cast event CustomEventSleep
-        currently_sleeping = event[2]
-        -- we still finish checking the rest of the events, the
-        -- sleeping happens on the next iteration of the main loop.
+        wake_up_time = event[2]
     elseif event_name == "spawn_task" then
         -- Add a new task to the queue!
         ---@cast event CustomEventSpawnTask
@@ -379,15 +468,18 @@ local function handle_events()
     elseif event_name == "peripheral" then
         -- TODO: Do something with this event
     elseif event_name == "timer" then
+        local timer_id = event[2]
+        -- This must be a number
+        ---@cast timer_id number
         -- Is this the watchdog?
-        if event[2] == watchdog then
-            -- There were no events at all. :(
+        if timer_id == watchdog then
+                -- There were no events at all. :(
             return
         end
-        -- Not our timer, not our problem.
-        -- TODO: keep track of timers that have gone stale (IE we have re-added)
-        -- them to the queue for more than 10? seconds
-        -- TODO: other timers?
+
+        -- Not the watchdog, handle it normally.
+        handle_timer_event(timer_id)
+
     elseif event_name == "turtle_inventory" then
         -- TODO: Do something with this event
     elseif event_name == "websocket_closed" then
@@ -402,6 +494,7 @@ local function handle_events()
     end
 
     -- Cancel the watchdog.
+    ---@diagnostic disable-next-line: undefined-field
     os.cancelTimer(watchdog)
 end
 
@@ -435,13 +528,10 @@ function mesh_os.main()
     -- Queue event function
     ---@type function
     ---@diagnostic disable-next-line: undefined-field
-    local queue = _G.os.queueEvent
+
 
     -- Yield function, directly yields to the lua engine
     local yield = _G.coroutine.yield
-
-    -- Resume coroutines
-    local resume = _G.coroutine.resume
 
     -- Resume coroutines
     local status = _G.coroutine.status
@@ -469,17 +559,27 @@ function mesh_os.main()
         local bool
 
         -- Are we sleeping?
-        if currently_sleeping then
-            print("eepy")
+        if wake_up_time ~= nil then
+            print("Sleeping...")
+            local now = epochFunction("utc")
             -- Are we done sleeping?
             ---@diagnostic disable-next-line: undefined-field
-            if os.epoch("utc") >= currently_sleeping then
+            if now >= wake_up_time then
                 -- All done!
-                currently_sleeping = nil
+                print("Sleep finished!")
+                wake_up_time = nil
+                -- Cancel the timer if it is still going.
+                if sleeping_timer_id ~= nil then
+                    ---@diagnostic disable-next-line: undefined-field
+                    os.cancelTimer(sleeping_timer_id)
+                    sleeping_timer_id = nil
+                end
             else
-                -- We are still sleeping. Sleep for a second, then skip
-                -- straight to handling events.
-                second_sleep()
+                local time_remaining_seconds = ((wake_up_time - now)/1000.0)
+                print("Time remaining: " .. time_remaining_seconds .. " seconds.")
+                -- We are still sleeping.
+                -- Sleep for half of the remaining time.
+                os_sleep(time_remaining_seconds / 2)
                 goto skip_task
             end
         end
@@ -500,7 +600,17 @@ function mesh_os.main()
         -- Sometimes the resume calls actually are trying to pull for an event,
         -- thus if we get a string we need to pass in the event its asking for.
         if result ~= nil and type(result) == "string" then
-            bool, result = resume(task.task_thread, os.pullEvent(result))
+            -- If its waiting for a yield event, we can just feed it back
+            -- into it immediately, since the yield obviously finished.
+            if result == yield_string then
+                bool, result = resume(task.task_thread, yield_string)
+            else
+                -- TODO: Rewrite this to not pull in-line and use a safer function
+                -- that will not block forever.
+                print("Task is waiting for an event titled: \"", result, "\".")
+                ---@diagnostic disable-next-line: undefined-field -- TODO:
+                bool, result = resume(task.task_thread, os.pullEvent(result))
+            end
         else
             ---@type boolean, TaskCompletion|TaskFailure|any
             bool, result = resume(task.task_thread)
@@ -525,7 +635,6 @@ function mesh_os.main()
             ::task_cleanup_done::
             -- Done running that task, so we remove it from the queue and loop!
             task_queue[#task_queue] = nil
-            break
         end
 
         -- This label is used when we are sleeping, as to not wake up the task
