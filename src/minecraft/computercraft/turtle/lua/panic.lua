@@ -34,7 +34,7 @@ function panic.panic(message, message_only)
     -- mark the panic as started
     CURRENTLY_PANICKING = true
     -- Traceback automatically adds the message to the top.
-    local trace = debug.traceback(message)
+    local trace = debug.traceback(message, 2)
     -- Print that for debugging too
     print(trace)
     -- Only grab the variables if needed.
@@ -87,6 +87,17 @@ function panic.assert(condition, message, message_only)
     end
 end
 
+--- Unwrap a T|nil value, asserting that is is not nil. Panics if it is nil.
+---@generic T
+---@param value T|nil
+---@return T
+function panic.unwrap(value)
+    panic.assert(value ~= nil, "Unwrapped on a nil!")
+    -- Tell linter this must no longer be nil.
+    ---@cast value -nil
+    return value
+end
+
 -- Functions for getting local and global variables
 -- https://stackoverflow.com/questions/2834579/print-all-local-variables-accessible-to-the-current-scope-in-lua
 function panicLocals()
@@ -134,7 +145,9 @@ function panic.force_reboot(message)
     -- Not much we can do here, but to prevent fast boot-looping, we will stall for 30 seconds.
     -- We will also shout out the message on as many outputs as we can.
     ---@diagnostic disable-next-line: undefined-global
-    printError(message)
+    print(message)
+    local trace = debug.traceback(message, 2)
+    print(trace)
     ---@diagnostic disable-next-line: undefined-field
     os.setComputerLabel(message)
 

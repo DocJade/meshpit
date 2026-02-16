@@ -15,162 +15,204 @@ Do note that moving between positions have rotations associated with them, but w
 As walkback is our primary method of movement, it also keeps track of all of our movement for use in the main walkback methods.
 ## New methods
 ### Initialization
-- `walkback.setup(x, y, z, facing)`
+- `walkback:setup(x, y, z, facing)`
 - - sets our initial position. Should only be called once!
 ### Rewind related
-- `walkback.mark()`
+- `walkback:mark()`
 - - This sets the new start of the walkback chain, and clears all previous stored positions. This completely resets walkback to be ready to start tracking again.
 - - Returns true in the base case.
 - - Returns false if marking fails.
-- `walkback.rewind()`
+- `walkback:rewind()`
 - - Calling this will start rewinding to the marked position.
 - - Returns true in the base case.
 - - Returns false if rewinding to the marked position fails. This does not clear the remaining steps that need to be taken to get back to the marked point, but chances are, there is some obstacle preventing the rewind.
-- `walkback.stepBack()`
+- `walkback:stepBack()`
 - - Rewinds the position of the turtle back a single time to move to its previous position.
 - - Returns true in the base case, or false if the rewinding fails.
-- `walkback.previousPosition()`
+- `walkback:previousPosition()`
 - - Returns the previous position the turtle occupied, if one exists.
 - - Returns nil if there is no previous position. Otherwise returns a `position`
 - - This does not remove the previous position from the walkback list, and making a movement to the previous position manually is safe, however you should prefer to use `step_back()`.
-- `walkback.cost()`
+- `walkback:cost()`
 - - How much fuel it would cost to run the rewind from our current position.
 - - Returns a number, or if there is no cost to rewind, zero.
-- `walkback.pop()`
+- `walkback:pop()`
 - - Pops the current walkback movement state. Do note that this returns ALL movement, not just the previous movement.
 - - This can be used to store walkbacks for use later. For example, after finding a position to start strip mining from, you can pop the walkback stack to store how we got in the mine, then mark a new inital position to allow walking back to this position after a mining trip, then after rewinding, push the old walkback and rewind that to get out of the mine entirely.
-- - Returns a `walkback_state` or `nil` if there is no current walkback.
-- `walkback.push(walkback_state)`
+- - Returns a `walkback_state` or `nil` if there is no current walkback:
+- `walkback:push(walkback_state)`
 - - Pushes a walkback state into the walkback runner.
 - - Returns true, unless a walkback state is already stored within the turtle, in which case it returns `false`
-- `walkback.posQuery(position, all)`
+- `walkback:posQuery(position, all)`
 - - Checks if a given position is already within the walkback state.
 - - If all is set, all positions within the buffer, even ones that are not in the current walkback, are checked against.
 - - - This can be used to see if a turtle has (within reason, the previous position buffer does eventually discard old values) _ever_ been at a position.
 - - Returns a boolean.
-- `walkback.hardReset()`
+- `walkback:hardReset()`
 - - This COMPLETELY resets the state of walkback, including ALL data, such as previously seen blocks. ONLY DO THIS AFTER UPLOADING THIS INFORMATION TO THE CONTROL COMPUTER!
 - - Returns nothing.
-- `walkback.dataJson()`
+- `walkback:dataJson()`
 - - This will json-ify all of the walkback data into a string. Do note that this does not clear data, so calling this is safe to do so in any situation, although possibly slow.
 
 ### Block data related
-- `walkback.blockQuery(position, and_air)`
+- `walkback:blockQuery(position, and_air)`
 - - This function checks if the walkback data contains information about what block exists at a position.
 - - If the requested target block is directly next to the turtle, regardless if we have stored it or not, the turtle will rotate to face the block if needed, document the block, then rotate back to its original position. Such that we can return the most up-to-date information on that block.
 - - Returns `nil` if block is not documented, or a `Block` if a block has been logged at that position, unless the block is air, in which case this will still return `nil`, UNLESS and_air is true.
 
+### Position related
+- `walkback:getAdjacentBlock(direction)`
+- - Takes in a coordinate and returns the position adjacent to a turtle in the given direction.
+- `walkback:clonePosition(CoordPosition)`
+- - Makes a copy of a position, cheaply.
+- `walkback:isPositionAdjacent(CoordPosition, CoordPosition)`
+- - Check if two positions are adjacent. Adjacent positions share a block face.
+
 ## Movement functions
 All of the base movement functions internally call the `turtle` equivilant function, thus the return types are the same as they are listed on the cc:tweaked wiki.
 As the turtle travels, it will automatically scan the block forwards, up, and down to document them. However, there are additional scanning movement options for if you want to scan left and right as well.
-- `walkback.forward()`
-- `walkback.back()`
-- `walkback.up()`
-- `walkback.down()`
-- `walkback.turnLeft()`
-- `walkback.turnRight()`
+- `walkback:forward()`
+- `walkback:back()`
+- `walkback:up()`
+- `walkback:down()`
+- `walkback:turnLeft()`
+- `walkback:turnRight()`
 
 ### New methods
 These methods also scan left and right on movement.
-- `walkback.forwardScan()`
-- `walkback.backScan()`
+- `walkback:forwardScan()`
+- `walkback:backScan()`
 
 Up and down scans do a full rotation of the turtle to get every side.
-- `walkback.upScan()`
-- `walkback.downScan()`
+- `walkback:upScan()`
+- `walkback:downScan()`
 
-And a generic scan that does a full 360. Returns nothing and does not move the turtle, and maintains facing angle.
-- `walkback.spinScan()`
+A generic scan that does a full 360. Returns nothing and does not move the turtle, and maintains facing angle.
+- `walkback:spinScan()`
+
+Turn to face a specific cardinal direction.
+- `walkback:turnToFace()`
+
+Turns the turtle to face towards an adjacent block.
+- `walkback:faceAdjacentBlock(CoordPosition)`
+
+Moves the turtle into an adjacent position
+- `walkback:moveAdjacent(CoordPosition)`
 
 ## Inventory functions
 None of these have been altered from the normal `turtle` call. This is simply a layer of indirection.
-- `walkback.drop([count])`
-- `walkback.dropUp([count])`
-- `walkback.dropDown([count])`
-- `walkback.select(slot)`
-- `walkback.getItemCount([slot])`
-- `walkback.getItemSpace([slot])`
-- `walkback.suck([count])`
-- `walkback.suckUp([count])`
-- `walkback.suckDown([count])`
-- `walkback.compareTo(slot)`
-- `walkback.transferTo(slot [, count])`
-- `walkback.getSelectedSlot()`
-- `walkback.getItemDetail([slot [, detailed]])`
+- `walkback:drop([count])`
+- `walkback:dropUp([count])`
+- `walkback:dropDown([count])`
+- `walkback:select(slot)`
+- `walkback:getItemCount([slot])`
+- `walkback:getItemSpace([slot])`
+- `walkback:suck([count])`
+- `walkback:suckUp([count])`
+- `walkback:suckDown([count])`
+- `walkback:compareTo(slot)`
+- `walkback:transferTo(slot [, count])`
+- `walkback:getSelectedSlot()`
+- `walkback:getItemDetail([slot [, detailed]])`
 
 ### New methods
-- `walkback.transferFromSlotTo(slot, slot, [count])
+- `walkback:transferFromSlotTo(slot, slot, [count])`
 - - Transfers items between two arbitrary slots.
-- `walkback.compareTwoSlots(slot, slot, [count])
+- `walkback:compareTwoSlots(slot, slot, [count])`
 - - Runs the comparison check against 2 arbitrary slots.
+- `walkback:inventoryCountPattern(string)`
+- - Counts how many items in the inventory match a string pattern.
+- `walkback:inventoryCountTag(string)`
+- - Counts how many items in the inventory have a certain tag.
+- `walkback:inventoryFindPattern(string, boolean)`
+- - finds a slot that contains an item who's name matches a pattern, if any.
+- `walkback:inventoryFindTag(string, boolean)`
+- - finds a slot that contains an item with a matching tag, if any.
+- `walkback:swapSlots(number, number)`
+- - Swaps the contents of two slots within the inventory, as long as there is a third, empty slot.
+- `walkback:FindEmptySlot()`
+- - Finds an empty slot in the inventory, if one exists.
+- `walkback:haveEmptySlot()`
+- - Returns true if there is at least one empty slot.
+- `walkback:countEmptySlots()`
+- - Returns how many empty slots there are, or nil.
+
 
 ## Environment detection
 These methods are slightly altered to also return `false` on fluids, as detect should be used for movement checks. Secretly calls inspect() under the hood to update our block list.
-- `walkback.detect()`
-- `walkback.detectUp()`
-- `walkback.detectDown()`
+- `walkback:detect()`
+- `walkback:detectUp()`
+- `walkback:detectDown()`
 
 ### New methods
-- `walkback.detectAt(pos)`
+- `walkback:detectAt(pos)`
 - - Check if a block at a position is solid.
 - - Returns `nil` if we have not seen that block.
 
 ## Block comparison
 None of these have been altered from the normal `turtle` call.
-- `walkback.compare()`
-- `walkback.compareUp()`
-- `walkback.compareDown()`
+- `walkback:compare()`
+- `walkback:compareUp()`
+- `walkback:compareDown()`
 
 ### New methods
-- `walkback.compareAt(pos)`
+- `walkback:compareAt(pos)`
 - - Same as the other compare methods, but checking a position instead of a side.
 - - Returns `nil` if we have not seen that block.
 
 ## Block inspection
 None of these have been altered from the normal `turtle` call.
-- `walkback.inspect()`
-- `walkback.inspectUp()`
-- `walkback.inspectDown()`
+- `walkback:inspect()`
+- `walkback:inspectUp()`
+- `walkback:inspectDown()`
 
 ### New methods
-- `walkback.inspectAt(pos1)`
+- `walkback:inspectAt(pos1)`
 - - Same as the other inspect methods, but checking a position instead of a side.
 - - The first returned boolean will be `nil` if we have not seen that position.
 
 ## Mining
 None of these have been altered from the normal `turtle` call.
-- `walkback.dig([side])`
-- `walkback.digUp([side])`
-- `walkback.digDown([side])`
+- `walkback:dig([side])`
+- `walkback:digUp([side])`
+- `walkback:digDown([side])`
+
+### New methods
+- `walkback:digAdjacent([side])`
+- - Digs an adjacent block.
 
 ## Placing
 None of these have been altered from the normal `turtle` call.
-- `walkback.place([text])`
-- `walkback.placeUp([text])`
-- `walkback.placeDown([text])`
+- `walkback:place([text])`
+- `walkback:placeUp([text])`
+- `walkback:placeDown([text])`
+
+### New methods
+- `walkback:placeAdjacent([side])`
+- - Place a block at an adjacent position.
 
 ## Equipment
 None of these have been altered from the normal `turtle` call.
-- `walkback.equipLeft()`
-- `walkback.equipRight()`
-- `walkback.getEquippedLeft()`
-- `walkback.getEquippedRight()`
+- `walkback:equipLeft()`
+- `walkback:equipRight()`
+- `walkback:getEquippedLeft()`
+- `walkback:getEquippedRight()`
 
 ## Crafting
 None of these have been altered from the normal `turtle` call.
-- `walkback.craft([limit=64])`
+- `walkback:craft([limit=64])`
 
 ## Attacking
 None of these have been altered from the normal `turtle` call.
-- `walkback.attack([side])`
-- `walkback.attackUp([side])`
-- `walkback.attackDown([side])`
+- `walkback:attack([side])`
+- `walkback:attackUp([side])`
+- `walkback:attackDown([side])`
 
 ## Fuel
 None of these have been altered from the normal `turtle` call.
-- `walkback.getFuelLevel()`
-- `walkback.refuel([count])`
-- `walkback.getFuelLimit()`
+- `walkback:getFuelLevel()`
+- `walkback:refuel([count])`
+- `walkback:getFuelLimit()`
 
 
 # Walkback pruning

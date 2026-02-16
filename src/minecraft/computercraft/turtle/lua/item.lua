@@ -14,9 +14,6 @@ local item_helper = {}
 --- - enchantments: This might sound weird, but we don't care, as we can't enchant anything anyways.
 --- - Potion effects: We have no use for potions.
 --- - mapColor: ...what? why is this even here?
---- - Tags: This one sounds absolutely crazy, but the item tag list really
---- doesn't contain anything useful to us. There isn't any generic `fuel` or
---- `placeable` tag, so really theres nothing for us there.
 ---
 --- Definition based off of:
 --- https://tweaked.cc/reference/item_details.html
@@ -26,6 +23,7 @@ local item_helper = {}
 ---@field maxCount number|nil
 ---@field damage number|nil -- How many durability points have been used on this item
 ---@field maxDamage number|nil -- How many total durability points this item has when new.
+---@field tags string[]|nil -- The tags on this item
 local linter_oh_linter_lint_for_thee = {}
 
 --- Convert the result from getItemDetail to an Item type.
@@ -36,6 +34,12 @@ function item_helper.detailsToItem(incoming)
         -- empty
         return nil
     end
+
+    local tag_array = {}
+    for tag, _ in pairs(incoming.tags) do
+        tag_array[#tag_array+1] = tag
+    end
+
     ---@type Item
     return {
         name = incoming.name,
@@ -43,9 +47,9 @@ function item_helper.detailsToItem(incoming)
         maxCount = incoming.maxCount, -- if not present, its nil.
         damage = incoming.damage,
         maxDamage = incoming.maxDamage,
+        tags = tag_array
     }
 end
-
 
 
 

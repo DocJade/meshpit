@@ -40,6 +40,10 @@ pub struct MeshpitLibraries {
     pub block: Option<bool>,
     /// Item
     pub item: Option<bool>,
+    /// Mesh OS
+    ///
+    /// This also comes with all of the tasks.
+    pub mesh_os: Option<bool>,
 }
 
 impl MeshpitLibraries {
@@ -47,8 +51,11 @@ impl MeshpitLibraries {
     pub fn to_files(self) -> Vec<PathBuf> {
         let mut paths: Vec<PathBuf> = vec![];
 
-        let lua_folder = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("src/minecraft/computercraft/turtle/lua");
+        let lua_folder = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/minecraft/computercraft/turtle/lua");
+
+        // Turtles always get the constants, as the file is quite small anyways.
+        paths.push(lua_folder.join("constants.lua"));
+
         if self.networking.unwrap_or(false) {
             paths.push(lua_folder.join("networking.lua"));
         };
@@ -67,8 +74,21 @@ impl MeshpitLibraries {
         if self.item.unwrap_or(false) {
             paths.push(lua_folder.join("item.lua"));
         };
+        if self.mesh_os.unwrap_or(false) {
+            paths.push(lua_folder.join("mesh_os.lua"));
+            // Need to also grab all of the tasks.
+            // Yes this flattens the directory structure but thats fine, we don't
+            // rely on it anyways.
+            let task_folder = lua_folder.join("tasks");
+            for task in task_folder.as_path().read_dir().unwrap() {
+                let task = task.unwrap();
+                // Blindly copy
+                paths.push(task.path())
+            }
+        };
         paths
     }
+
     pub fn new() -> Self {
         Self {
             networking: None,
@@ -77,6 +97,7 @@ impl MeshpitLibraries {
             helpers: None,
             block: None,
             item: None,
+            mesh_os: None
         }
     }
 }
@@ -157,7 +178,7 @@ impl TestComputer {
         );
 
         // This takes a moment, so we must wait.
-        std::thread::sleep(COMPUTER_STATE_CHANGE_TIME);
+        tokio::time::sleep(COMPUTER_STATE_CHANGE_TIME).await;
     }
 
     /// Get the ID of the computer. You should avoid doing this unless you need it to keep tests agnostic.
@@ -179,6 +200,6 @@ impl TestComputer {
             result.contains("Shutdown"),
             "Missing shutdown message! {result}"
         );
-        std::thread::sleep(COMPUTER_STATE_CHANGE_TIME);
+        tokio::time::sleep(COMPUTER_STATE_CHANGE_TIME).await;
     }
 }

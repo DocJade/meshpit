@@ -11,7 +11,7 @@ use crate::{
             walkback_type::Walkback,
         },
         peripherals::inventory::GenericInventory,
-        vanilla::block_type::{HasMinecraftBlock, LuaBlock, PositionedMinecraftBlock},
+        vanilla::block_type::{HasMinecraftBlock, PositionedMinecraftBlock},
     },
     tests::prelude::*,
 };
@@ -52,26 +52,26 @@ async fn basic_movement_test() {
         os.setComputerLabel("step failure")
     end
 
-    walkback.setup(2,1,2,"n")
+    walkback:setup(2,1,2,"n")
     wait_step()
-    panic.assert(walkback.forward())
+    panic.assert(walkback:forward())
     wait_step()
-    panic.assert(walkback.back())
-    panic.assert(walkback.back())
+    panic.assert(walkback:back())
+    panic.assert(walkback:back())
     wait_step()
-    panic.assert(walkback.forward())
-    panic.assert(walkback.turnLeft())
-    panic.assert(walkback.forward())
+    panic.assert(walkback:forward())
+    panic.assert(walkback:turnLeft())
+    panic.assert(walkback:forward())
     wait_step()
-    panic.assert(walkback.turnRight())
-    panic.assert(walkback.turnRight())
-    panic.assert(walkback.forward())
-    panic.assert(walkback.forward())
+    panic.assert(walkback:turnRight())
+    panic.assert(walkback:turnRight())
+    panic.assert(walkback:forward())
+    panic.assert(walkback:forward())
     wait_step()
-    panic.assert(walkback.back())
-    panic.assert(walkback.up())
+    panic.assert(walkback:back())
+    panic.assert(walkback:up())
     wait_step()
-    panic.assert(walkback.down())
+    panic.assert(walkback:down())
     wait_step()
     "#;
 
@@ -82,6 +82,7 @@ async fn basic_movement_test() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -208,18 +209,18 @@ async fn basic_walkback_tests() {
         os.setComputerLabel("step failure")
     end
 
-    walkback.setup(2,1,2,"n")
+    walkback:setup(2,1,2,"n")
 
     wait_step()
-    panic.assert(walkback.forward())
-    panic.assert(walkback.forward())
-    panic.assert(walkback.up())
-    panic.assert(walkback.up())
-    panic.assert(walkback.turnRight())
-    panic.assert(walkback.turnRight())
-    panic.assert(walkback.forward())
+    panic.assert(walkback:forward())
+    panic.assert(walkback:forward())
+    panic.assert(walkback:up())
+    panic.assert(walkback:up())
+    panic.assert(walkback:turnRight())
+    panic.assert(walkback:turnRight())
+    panic.assert(walkback:forward())
     wait_step()
-    panic.assert(walkback.rewind())
+    panic.assert(walkback:rewind())
     wait_step()
     "#;
 
@@ -230,6 +231,7 @@ async fn basic_walkback_tests() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -239,8 +241,6 @@ async fn basic_walkback_tests() {
     let mut socket = TestWebsocket::new(computer.id())
         .await
         .expect("Should be able to open websocket.");
-
-    let air = MinecraftBlock::from_string("minecraft:air").unwrap();
 
     computer.turn_on(&mut test).await;
 
@@ -323,20 +323,20 @@ async fn basic_block_memorization() {
         NETWORKING.debugSend("fail, no response from harness.")
         os.setComputerLabel("step failure")
     end
-    walkback.setup(1,1,1,"n")
+    walkback:setup(1,1,1,"n")
     -- handshake
     wait_step()
 
     -- inspect
-    local _ = walkback.inspect()
-    local _ = walkback.inspectUp()
+    local _ = walkback:inspect()
+    local _ = walkback:inspectUp()
 
     -- move away to ensure we aren't just re-reading it.
-    panic.assert(walkback.back())
+    panic.assert(walkback:back())
 
     -- check em
-    local mem_front = walkback.blockQuery({x=1, y=1, z=0})
-    local mem_up = walkback.blockQuery({x=1, y=2, z=1})
+    local mem_front = walkback:blockQuery({x=1, y=1, z=0})
+    local mem_up = walkback:blockQuery({x=1, y=2, z=1})
 
     -- report back
     NETWORKING.debugSend(mem_front)
@@ -350,6 +350,7 @@ async fn basic_block_memorization() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -445,10 +446,10 @@ async fn walkback_serialization() {
         os.setComputerLabel("step failure")
     end
 
-    walkback.setup(1,1,1,"n")
+    walkback:setup(1,1,1,"n")
 
     wait_step()
-    NETWORKING.debugSend(walkback.dataJson())
+    NETWORKING.debugSend(walkback:dataJson())
     "#;
 
     let libraries = MeshpitLibraries {
@@ -458,6 +459,7 @@ async fn walkback_serialization() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -521,10 +523,10 @@ async fn empty_inventory_serialization() {
         os.setComputerLabel("step failure")
     end
 
-    walkback.setup(1,1,1,"n")
+    walkback:setup(1,1,1,"n")
 
     wait_step()
-    NETWORKING.debugSend(walkback.inventoryJSON())
+    NETWORKING.debugSend(walkback:inventoryJSON())
     "#;
 
     let libraries = MeshpitLibraries {
@@ -534,6 +536,7 @@ async fn empty_inventory_serialization() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -643,16 +646,16 @@ async fn recognize_all_blocks() {
         y = 1,
         z = 2,
     }
-    walkback.setup(2,1,2,"n")
-    panic.assert(walkback.back())
+    walkback:setup(2,1,2,"n")
+    panic.assert(walkback:back())
     local keep_going = true
 
     wait_step()
     while keep_going do
         wait_step()
-        local _ = walkback.inspect() -- Load the block
+        local _ = walkback:inspect() -- Load the block
         -- Then actually get the full block info
-        local block = walkback.blockQuery(block_pos, true)
+        local block = walkback:blockQuery(block_pos, true)
         NETWORKING.debugSend(block)
     end
     "#;
@@ -664,6 +667,7 @@ async fn recognize_all_blocks() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -693,6 +697,27 @@ async fn recognize_all_blocks() {
     let mut failed: bool = false;
     let mut failed_block: String = "".to_string();
     for block in data.blocks_by_name.keys() {
+
+        // Some blocks when placed have a different name than their setblock name,
+        // or straight-up just do not want to exist. (or cannot be placed on
+        // concrete.)
+        // We skip those.
+        if block.ends_with("_plant")
+        || block == "fire"
+        || block == "soul_fire"
+        || block.contains("flower")
+        || block.contains("vines")
+        || block.contains("sugar_cane")
+        || block.contains("cactus")
+        || block.contains("dripleaf")
+        || block.contains("bamboo")
+        || block.contains("_bed") // half bed doesn't place
+        || block.contains("concrete") // water flowing solidified powder lol
+        || block.ends_with("air") { // void air, etc
+            info!("Skipped {block}");
+            continue;
+        }
+
         info!("Placing {block}");
         assert!(
             test.command(TestCommand::SetBlock(
@@ -728,9 +753,10 @@ async fn recognize_all_blocks() {
             PositionedMinecraftBlock::deserialize(&debug_packet.inner_data)
                 .expect("This should be a block");
         info!("Turtle saw: {}", returned_block.get_full_name());
+        info!("Should see: {block}");
 
         // Check that the block names are the same
-        if returned_block.get_full_name() != block.into() {
+        if returned_block.get_name() != block {
             // Bad!
             failed = true;
             failed_block = block.to_string();
@@ -795,7 +821,7 @@ async fn query_previous_positions() {
     local helpers = require("helpers")
     require("networking")
 
-    walkback.setup(1,1,1,"n")
+    walkback:setup(1,1,1,"n")
 
     -- The positions to look at
     local pos1 = {x=1, y=1, z=1}
@@ -812,44 +838,44 @@ async fn query_previous_positions() {
     local zeros = helpers.keyFromTable(nowhere)
 
     -- Up 3 times, thus 4 visited positions
-    panic.assert(walkback.up())
-    panic.assert(walkback.up())
-    panic.assert(walkback.up())
+    panic.assert(walkback:up())
+    panic.assert(walkback:up())
+    panic.assert(walkback:up())
 
     -- Current chain should have all of the positions
-    panic.assert(walkback.posQuery(key1, false))
-    panic.assert(walkback.posQuery(key2, false))
-    panic.assert(walkback.posQuery(key3, false))
-    panic.assert(walkback.posQuery(key4, false))
+    panic.assert(walkback:posQuery(key1, false))
+    panic.assert(walkback:posQuery(key2, false))
+    panic.assert(walkback:posQuery(key3, false))
+    panic.assert(walkback:posQuery(key4, false))
 
     -- Go back down, which should trim old positions, and the only good one
     -- should be our current spot.
-    panic.assert(walkback.down())
-    panic.assert(walkback.down())
-    panic.assert(walkback.down())
+    panic.assert(walkback:down())
+    panic.assert(walkback:down())
+    panic.assert(walkback:down())
 
     -- current pos is good
-    panic.assert(walkback.posQuery(key1, false))
+    panic.assert(walkback:posQuery(key1, false))
     -- these shouldn't be there
-    panic.assert(not walkback.posQuery(key2, false))
-    panic.assert(not walkback.posQuery(key3, false))
-    panic.assert(not walkback.posQuery(key4, false))
+    panic.assert(not walkback:posQuery(key2, false))
+    panic.assert(not walkback:posQuery(key3, false))
+    panic.assert(not walkback:posQuery(key4, false))
 
     -- with the full flag on, we should still be able to see those positions.
-    panic.assert(walkback.posQuery(key1, true))
-    panic.assert(walkback.posQuery(key2, true))
-    panic.assert(walkback.posQuery(key3, true))
-    panic.assert(walkback.posQuery(key4, true))
+    panic.assert(walkback:posQuery(key1, true))
+    panic.assert(walkback:posQuery(key2, true))
+    panic.assert(walkback:posQuery(key3, true))
+    panic.assert(walkback:posQuery(key4, true))
 
     -- we've never seen 0,0,0
-    panic.assert(not walkback.posQuery(zeros, false))
-    panic.assert(not walkback.posQuery(zeros, true))
+    panic.assert(not walkback:posQuery(zeros, false))
+    panic.assert(not walkback:posQuery(zeros, true))
 
     -- hard reset the walkback, now we shouldn't be able to see the old positions anymore.
-    walkback.hardReset()
-    panic.assert(not walkback.posQuery(key2, true))
-    panic.assert(not walkback.posQuery(key3, true))
-    panic.assert(not walkback.posQuery(key4, true))
+    walkback:hardReset()
+    panic.assert(not walkback:posQuery(key2, true))
+    panic.assert(not walkback:posQuery(key3, true))
+    panic.assert(not walkback:posQuery(key4, true))
 
     -- yell that everything worked
     NETWORKING.debugSend("all good mate")
@@ -862,6 +888,7 @@ async fn query_previous_positions() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        ..Default::default()
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -881,4 +908,169 @@ async fn query_previous_positions() {
         .contains("all good mate");
     test.stop(worked).await;
     assert!(worked)
+}
+
+#[tokio::test]
+/// It seems that computercraft sometimes likes to yield mid-rotations even though
+/// it shouldn't, allowing you to break blocks while still rotating, thus a 180
+/// rotation, then a break, can break a block at 90 degrees instead of the final
+/// block at the end of the 180.
+async fn rotation_breaking() {
+    // If we place blocks on the left and right side of the turtle, when we can
+    // break, turn 180, and repeat endlessly. This should never break the blocks
+    // to the side of the turtle.
+
+    let area = TestArea {
+        size_x: 5,
+        size_z: 5,
+    };
+    let mut test = MinecraftTestHandle::new(area, "180 break sanity check").await;
+    // create a computer
+    let turtle_position = MinecraftPosition {
+        position: CoordinatePosition { x: 2, y: 1, z: 2 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    // Simple as hell this time, just turn back and forth over and over.
+
+    let test_script = r#"
+    local walkback = require("walkback")
+    local panic = require("panic")
+    require("networking")
+    local function wait_step()
+        NETWORKING.debugSend("wait")
+        if NETWORKING.waitForPacket(5) then
+            return
+        end
+        NETWORKING.debugSend("fail, no response from harness.")
+        os.setComputerLabel("step failure")
+    end
+
+    walkback:setup(0,0,0,"n")
+    wait_step()
+
+    -- Spins and forwards, walkbacks
+    turtle.equipRight()
+    for i = 1, 20 do
+        walkback:dig()
+        walkback:forward()
+        walkback:stepBack()
+        walkback:turnLeft()
+        walkback:turnLeft()
+    end
+
+    -- Mine adjacent
+    -- These are adjacent because the turtle thinks its at 0,0,0
+    n = {
+        x = 0,
+        y = 0,
+        z = -1
+    }
+
+    s = {
+        x = 0,
+        y = 0,
+        z = 1
+    }
+
+    home = {
+        x = 0,
+        y = 0,
+        z = 0
+    }
+
+    for i = 1, 20 do
+        walkback:digAdjacent(n)
+        panic.assert(walkback:moveAdjacent(n))
+        panic.assert(walkback:moveAdjacent(home))
+        walkback:digAdjacent(s)
+        panic.assert(walkback:moveAdjacent(s))
+        panic.assert(walkback:moveAdjacent(home))
+    end
+
+    -- Maybe a lot of spins
+    for i = 1, 20 do
+        walkback:turnLeft()
+        walkback:turnLeft()
+        walkback:turnRight()
+        walkback:turnLeft()
+        walkback:turnLeft()
+        walkback:turnLeft()
+        walkback:digAdjacent(n)
+        panic.assert(walkback:moveAdjacent(n))
+        walkback:turnLeft()
+        walkback:turnLeft()
+        panic.assert(walkback:moveAdjacent(home))
+        walkback:digAdjacent(s)
+        panic.assert(walkback:moveAdjacent(s))
+        panic.assert(walkback:moveAdjacent(home))
+    end
+
+    wait_step()
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        ..Default::default()
+    };
+
+    // Place blocks around where the turtle will go, placing the turtle will replace
+    // the center block.
+
+    let c1 = CoordinatePosition { x: 1, y: 1, z: 1 };
+
+    let c2 = CoordinatePosition { x: 3, y: 1, z: 3 };
+    let cobblestone = MinecraftBlock::from_string("cobblestone").unwrap();
+
+    assert!(test.command(TestCommand::Fill(c1, c2, &cobblestone)).await.success());
+
+    // The two blocks that should not be broken
+    let mut dont_touch_1 = turtle_position;
+    dont_touch_1.move_direction(MinecraftCardinalDirection::West);
+    let dont_touch_1 = dont_touch_1.position;
+    let mut dont_touch_2 = turtle_position;
+    dont_touch_2.move_direction(MinecraftCardinalDirection::East);
+    let dont_touch_2 = dont_touch_2.position;
+
+    // Build the computer
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+
+    let setup = ComputerSetup::new(ComputerKind::Turtle(Some(50)), config);
+    let computer = test.build_computer(&turtle_position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to open websocket.");
+
+    // vro needs a pickaxe
+    let gave_axe = test.command(TestCommand::InsertItem(turtle_position.position, &MinecraftItem::from_string("diamond_pickaxe").unwrap(), 1, 0)).await;
+    assert!(gave_axe.success());
+
+
+    computer.turn_on(&mut test).await;
+
+    // Let it do it's thing. This should take at most 5 minutes
+    let str = String::from("go");
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
+
+    // Wait for the turtle to finish spinning
+    socket.receive(5 * 60).await.expect("Should receive");
+
+    // Did either of the 2 blocks get removed?
+    let lived_1 = test.command(TestCommand::TestForBlock(dont_touch_1, &cobblestone)).await.success();
+    let lived_2 = test.command(TestCommand::TestForBlock(dont_touch_2, &cobblestone)).await.success();
+
+    let all_good =  lived_1 && lived_2;
+
+    // Be nice and stop the test before possibly panicking.
+    test.stop(all_good).await;
+
+    // Actually worked?
+    assert!(all_good)
 }

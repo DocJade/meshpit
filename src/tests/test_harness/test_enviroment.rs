@@ -238,7 +238,7 @@ impl MinecraftTestHandle {
         );
 
         // wait for that to turn on, it can take a bit.
-        std::thread::sleep(COMPUTER_STATE_CHANGE_TIME);
+        tokio::time::sleep(COMPUTER_STATE_CHANGE_TIME).await;
 
         // Now that the computer is on, we can get it's ID.
         // /data get block -2 -60 10 ComputerId
@@ -391,13 +391,13 @@ impl MinecraftTestEnvironment {
         let test_gap: i64 = 4;
 
         // Set the corner of where the next plot will be
-        // If the last test was over 32 blocks away from 0,0 on the x axis, we will
+        // If the last test was over 200 blocks away from 0,0 on the x axis, we will
         // move to a new row of tests. since we wanna look at em :D
 
         let mut next_x: i64 = give_me.x;
         let mut next_z: i64 = give_me.z;
 
-        if next_x >= 32 {
+        if next_x >= 200 {
             // Shift down by the highest width seen, plus the gap
             next_z += self.highest_z + test_gap;
 

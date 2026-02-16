@@ -1,7 +1,359 @@
 -- Weirdly, lua doesn't have some methods it really should.
 local helpers = {}
 local panic = require("panic")
+local constants = require("constants")
 print("Setting up helpers...")
+
+
+-- == == ==
+-- Import constants that we need
+local dir_to_num = constants.dir_to_num
+local dirs = constants.dirs
+local movement_vectors = constants.movement_vectors
+-- == == ==
+
+
+-- === === ===
+-- === === ===
+-- Yield helpers
+-- === === ===
+-- === === ===
+
+--- Yield, does not yield from a coroutine.
+function helpers.quick_yield()
+    ---@diagnostic disable-next-line: undefined-field
+    os.queueEvent("yield")
+    ---@diagnostic disable-next-line: undefined-field
+    os.pullEvent("yield")
+end
+
+-- === === ===
+-- === === ===
+-- String helpers
+-- === === ===
+-- === === ===
+
+--- Find a pattern within a substring.
+---
+--- Returns true if the pattern is contained within the other string.
+--- @param checked_string string
+--- @param pattern string
+--- @return boolean
+function helpers.findString(checked_string, pattern)
+    -- is just a wrapper around the normal pattern matching. Why? IDK.
+    -- used to have a custom method, then i realized I'm an idiot and shouldn't
+    -- do that, since the core implementation is better than anything I could
+    -- ever write.
+
+    local start_index, _ = string.find(checked_string, pattern)
+    -- If there is a starting index, the string was in there.
+    return start_index ~= nil
+end
+
+
+-- === === ===
+-- === === ===
+-- Array helpers
+-- === === ===
+-- === === ===
+
+--- Get a sub-slice of a array. This slice is inclusive on both ends.
+---
+--- Do note that this will NOT work on tables that have keyed values.
+---
+--- If the slice contains tables, they are by reference, and NOT copied, so
+--- be aware of that.
+---@generic T
+---@param input_table T[]
+---@param slice_start number? Defaults to 1
+---@param slice_end number? Defaults to the end of the table
+---@return T[]
+function helpers.slice_array(input_table, slice_start, slice_end)
+    local slice = {}
+    local slice_start = slice_start or 1
+    for i= slice_start, slice_end do
+        slice[#slice+1] = input_table[i]
+    end
+    return slice
+end
+
+--- Check if an array contains a matching item.
+--- @generic T
+--- @param array T[]
+--- @param to_find T
+--- @return boolean
+function helpers.arrayContains(array, to_find)
+    local to_find_type = type(to_find)
+    for _, v in ipairs(array) do
+        -- skip incorrect types
+        if to_find_type == type(v) then
+            if v == to_find then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- === === ===
+-- === === ===
+-- JSON related helpers
+-- === === ===
+-- === === ===
+
+-- Table types for linting to prevent returning the wrong things.
+
+--- @class SeenCleaned table
+--- @class Seen table
+
+
+--- Clean up a type for JSON export. Will panic if the type or any sub-tables
+--- contain mixed table types (ie a table that is both an array and kv pairs) and
+--- will also panic if any of the keys used are not strings.
+---
+--- Since mixed table types panic, you make opt-in to completely discarding these
+--- tables instead of panicking, but this WILL lose data.
+---
+--- The second returned value is a table of tables. Ignore it if you do not need it.
+---
+--- Is meant to be called recursively,
+---@param value any
+---@param seen Seen? an empty table please
+---@param seen_cleaned SeenCleaned? an empty table please
+---@param skip_invalid_tables boolean?
+---@return any, SeenCleaned
+function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
+    local skip_invalid_tables = skip_invalid_tables or false
+    -- This can take a long time, so we yield a lot.
+    helpers.quick_yield()
+
+    ---@diagnostic disable-next-line: undefined-global
+    local json_null = textutils.json_null
+
+    ---@type Seen
+    local seen = seen or {}
+    -- We pass in and back out tables we've already seen to prevent needing to re-do work
+    -- on tables that contain multiple duplicate table values under different keys.
+    ---@type SeenCleaned
+    local seen_cleaned = seen_cleaned or {}
+
+    -- Skip values that don't need extra work.
+    local t = type(value)
+
+    -- We can directly pass back primitive types.
+    if t == "number" or t == "string" or t == "boolean" then
+        return value, seen_cleaned
+    end
+
+    -- If this is a nil, we need to use the special nil type.
+    if t == "nil" or t == nil then
+        return json_null, seen_cleaned
+    end
+
+    -- If it's a function, unfortunately we cannot get the name
+    -- of it, but at least we can get the function ID... We can also tack on
+    -- the definition line in case that helps.
+    if t == "function" then
+        return tostring(value) .. " defined on line " .. tostring(debug.getinfo(value, "S").linedefined), seen_cleaned
+    end
+
+    -- We don't care at all about threads or userdata, discard them entirely.
+    -- Note on userdata: Its just a type that lets you store C/C++ values in
+    -- ...somewhere? But AFAIK we do not use them.
+    if t == "thread" or t == "userdata" then
+        -- We can't blindly return nil here as that could cause gaps in the final
+        -- array (if we're constructing an array). Since we shouldn't be seeing
+        -- these anyways, we just use strings
+        return t, seen_cleaned
+    end
+
+    -- Is this a json null?
+    if value == json_null then
+        -- It's just a null.
+        return json_null, seen_cleaned
+    end
+
+    -- Must be a table. Have we already seen it?
+    if seen[value] then
+        -- Already seen this table.
+        -- Did we already finish this?
+        local maybe_cleaned = seen_cleaned[value]
+        if maybe_cleaned then
+            -- Already processed this table!
+            return maybe_cleaned, seen_cleaned
+        end
+
+        -- If we end up here, that means we've hit a circular dependency. We need
+        -- to break the cycle. Currently cant think of a clean way to resolve
+        -- this situation so we just explode. Don't make self referencing tables!
+        local printable_version = forceStringTable(value)
+        panic.panic("Self referential table! " .. printable_version)
+    end
+
+    -- Mark it as seen. We will store the cleaned version once we're done.
+    seen[value] = true
+
+    -- Now we have to be careful to not try and store tables with mixed contents,
+    -- as this would silently discard data in textutils.
+
+    local array_item_count = 0
+    -- cant count the hashmap alone, this will also count the array side.
+    local combined_item_count = 0
+
+    helpers.quick_yield()
+    for _, _ in ipairs(value) do
+        array_item_count = array_item_count + 1
+    end
+
+    for _, _ in pairs(value) do
+        combined_item_count = combined_item_count + 1
+    end
+    helpers.quick_yield()
+
+    -- Check if table is completely empty, we can skip if so!
+    if (array_item_count == 0) and (combined_item_count == 0) then
+        -- Empty table, return a null since it has `None` value.
+        -- Thus the rust side can also interpret it as an array(?)
+        seen_cleaned[value] = json_null
+        return json_null, seen_cleaned
+    end
+
+    -- There is content, make sure that the table is not mixed.
+    if (array_item_count < combined_item_count) and array_item_count ~= 0 then
+        -- Table is mixed. Can't work with that.
+        if CURRENTLY_PANICKING or false or skip_invalid_tables then
+            print("Invalid table in cleanForJSON! (Mixed table) Opted to skip.")
+            local xkcd_idk = "Invalid mixed table, skipped"
+            seen_cleaned[value] = xkcd_idk
+            return xkcd_idk, seen_cleaned
+        end
+        -- I want to at least see what was in the table still
+        local printable_version = forceStringTable(value)
+        panic.panic("Mixed table! Not allowed! table: " .. printable_version)
+    end
+
+    -- Table is not mixed. It must be an array if the array item count is greater
+    -- than zero.
+    local is_array = array_item_count ~= 0
+
+    local cleaned_table = {}
+
+    -- If this is an array, we also need to make sure there are no gaps
+    -- > a = {}
+    -- > a[1] = "test"
+    -- > a[100] = "test"
+    -- > print(#a)
+    -- 1
+    -- So we keep track of how many elements we see, and check at the end that
+    -- the length matches
+    local total_items = 0
+
+    for k, v in pairs(value) do
+        helpers.quick_yield()
+        total_items = total_items + 1
+        if is_array then
+            -- Array handling
+            -- Don't need to check the value of the key, since we know what type of
+            -- table this is already.
+            -- Recurse into the value
+            -- Putting values in like this is safe in `pairs()` even though its
+            -- not ipairs, since we are directly using the key number instead of
+            -- assuming its sequential.
+            local cleaned
+            cleaned, seen_cleaned = cleanForJSON(v, seen, seen_cleaned, skip_invalid_tables)
+            cleaned_table[k] = cleaned
+        else
+            -- Object/hashmap handling
+            -- Make sure that the key is a string, since that's the only allowed
+            -- type, unless we're panicking then we just need to get _SOMETHING_ out the door.
+            local is_string = type(k) == "string"
+            if (CURRENTLY_PANICKING or false) and not is_string then
+                print("Invalid table in cleanForJSON! (Non string key) Opted to skip.")
+                -- Just toss the whole table.
+                local failure_message = "Invalid mixed table, skipped"
+                return failure_message, seen_cleaned
+            end
+            panic.assert(is_string, "Non string key used in table! Not allowed!")
+
+            local cleaned
+            cleaned, seen_cleaned = cleanForJSON(v, seen, seen_cleaned, skip_invalid_tables)
+            cleaned_table[k] = cleaned
+        end
+    end
+
+
+    -- Post-array handling
+    if is_array then
+        -- Check for holes.
+        panic.assert(array_item_count == total_items, "Array has holes! Not allowed!")
+        -- Theoretically we can get back an empty array, so we will fix that as well
+        if #cleaned_table == 0 then
+            -- Return an empty array json thing instead
+            seen_cleaned[value] = json_null
+            return json_null, seen_cleaned
+        end
+    end
+
+
+    seen_cleaned[value] = value
+    return cleaned_table, seen_cleaned
+end
+
+
+--- The built-in json serializer is not good enough.
+---
+--- The textutils.serialiseJSON() method does not work with:
+--- - Mixed tables
+--- - Non-integer keys into tables
+--- - Recursion within tables
+---
+--- Thus we have our own that pre-cleans the data.
+---@param input any
+---@return string json the outgoing json string.
+function helpers.serializeJSON(input)
+    -- Make a deep copy of the input as to not alter the incoming table, and
+    -- clean it up for export.
+    local copy = helpers.deepCopy(input)
+    copy = cleanForJSON(input)
+
+    -- Serialize that with the standard serializer, now that it's in a
+    -- format that it likes.
+    ---@diagnostic disable-next-line: undefined-global
+    local ok, result = pcall(textutils.serializeJSON, copy)
+    if not ok then
+        -- Well crap!
+        panic.panic(tostring(result))
+    end
+
+    return result
+end
+
+--- Deserialize our custom json format back into tables.
+---
+--- This assumes the incoming type is proper json! If it is not, the deserialization will throw an error.
+--- It is the Rust-side's job to ensure we never send malformed json.
+---
+--- Returns a true, any pair when successful.
+--- Returns a false, string with an error message from unserializeJSON on failure.
+---@param json string
+---@return boolean, any -- A success / fail, and the result of deserialization. You should hopefully know the type.
+function helpers.deserializeJSON(json)
+    -- careful! its deserialize instead of deserialize for some stupid reason
+    ---@diagnostic disable-next-line: undefined-global
+    local ok, result_or_error = pcall(textutils.unserializeJSON, json)
+    if not ok then
+        -- Well crap!
+        return false, result_or_error
+    end
+    -- Worked!
+    return true, result_or_error
+end
+
+-- === === ===
+-- === === ===
+-- Generic table helpers
+-- === === ===
+-- === === ===
 
 --- Deep-copy a table (or anything), a lot of the time we do NOT want to take tables
 --- by reference. So we need to copy it.
@@ -9,9 +361,9 @@ print("Setting up helpers...")
 ---@param seen nil
 ---@return table any a deep copy of the input
 function helpers.deepCopy(input, seen)
-    -- YIELD TEST TODO:
-    os.queueEvent("yield")
-    os.pullEvent("yield")
+    -- Each iteration of the loop yields, as this is an intensive function.
+    helpers.quick_yield()
+
     -- No need to deep copy if this is not a table.
     if type(input) ~= "table" then
         return input
@@ -105,6 +457,18 @@ function helpers.keyFromTable(input_table)
     return table.concat(ordered_pairs, "|")
 end
 
+--- Cast a table into a string, no matter the internal data. Will NOT recurse into
+--- sub tables. Meant for debugging only, as the ordering here is not stable.
+---@param table table
+---@return string
+function forceStringTable(table)
+    local final_string = "Data of table (" .. tostring(table) .. "): "
+    for key, value in pairs(table) do
+        final_string = final_string .. "[key: (" .. tostring(key) .. "), value: (" .. tostring(value) .. ")]"
+    end
+    return final_string
+end
+
 --- Check if two values are exactly the same by value. Also checks if they are
 --- the same type. This will be very slow on large tables or tables that use
 --- other tables as keys.
@@ -123,6 +487,9 @@ end
 ---@param seen table|nil? Internal for recursion, not required.
 ---@return boolean
 function helpers.deepEquals(a, b, seen)
+    -- This is an expensive function.
+    helpers.quick_yield()
+
     -- types are the same
     local t_a = type(a)
     if t_a ~= type(b) then
@@ -234,293 +601,349 @@ function helpers.deepEquals(a, b, seen)
     return count_a == count_b
 end
 
---- Get a sub-slice of a array. This slice is inclusive on both ends.
+-- === === ===
+-- === === ===
+-- Position based helpers
+-- === === ===
+-- === === ===
+
+--- Clone a CoordPosition.
 ---
---- Do note that this will NOT work on tables that have keyed values.
----
---- If the slice contains tables, they are by reference, and NOT copied, so
---- be aware of that.
----@generic T
----@param input_table T[]
----@param slice_start number? Defaults to 1
----@param slice_end number? Defaults to the end of the table
----@return T[]
-function helpers.slice_array(input_table, slice_start, slice_end)
-    local slice = {}
-    local slice_start = slice_start or 1
-    for i= slice_start, slice_end do
-        slice[#slice+1] = input_table[i]
-    end
-    return slice
+--- Does not modify the incoming table, or copy meta.
+---@param position CoordPosition
+---@return CoordPosition
+function helpers.clonePosition(position)
+    local new = {
+        x = position.x,
+        y = position.y,
+        z = position.z,
+    }
+    return new
 end
 
---- Unwrap a T|nil value, asserting that is is not nil.
----@generic T
----@param value T|nil
----@return T
-function helpers.unwrap(value)
-    assert(value ~= nil, "Unwrapped on a nil!")
-    -- Tell linter this must no longer be nil.
-    ---@cast value -nil
-    return value
+--- Check if two coordinate positions are the same position.
+---@param pos1 CoordPosition
+---@param pos2 CoordPosition
+---@return boolean
+function helpers.coordinatesAreEqual(pos1, pos2)
+    return pos1.x == pos2.x and pos1.y == pos2.y and pos1.z == pos2.z
 end
 
---- Cast a table into a string, no matter the internal data. Will NOT recurse into
---- sub tables. Meant for debugging only, as the ordering here is not stable.
----@param table table
----@return string
-function forceStringTable(table)
-    local final_string = "Data of table (" .. tostring(table) .. "): "
-    for key, value in pairs(table) do
-        final_string = final_string .. "[key: (" .. tostring(key) .. "), value: (" .. tostring(value) .. ")]"
-    end
-    return final_string
+--- Cast a x,z delta to a direction. Clamps values and picks the most significant
+--- direction. Does not do diagonal directions.
+---
+--- If both axis are of equal length, it will prefer North.
+---@param x number
+---@param z number
+---@return CardinalDirection
+function helpers.mostSignificantDirection(x,z)
+	-- absolutes to get the most significant distance on an axis
+	local abs_x = math.abs(x)
+    local abs_z = math.abs(z)
+	-- If z is greater than x, the more significant direction is either north or south.
+	-- if the numbers are equal, there is no
+	if abs_z >= abs_x then
+		return z > 0 and "s" or "n"
+	else
+		return x > 0 and "e" or "w"
+	end
 end
 
---Table types for linting to prevent returning the wrong things.
-
----@class SeenCleaned table
----@class Seen table
-
---- Clean up a type for JSON export. Will panic if the type or any sub-tables
---- contain mixed table types (ie a table that is both an array and kv pairs) and
---- will also panic if any of the keys used are not strings.
+--- Apply a transformation to a position.
 ---
---- Since mixed table types panic, you make opt-in to completely discarding these
---- tables instead of panicking, but this WILL lose data.
----
---- The second returned value is a table of tables. Ignore it if you do not need it.
----
---- Is meant to be called recursively,
----@param value any
----@param seen Seen? an empty table please
----@param seen_cleaned SeenCleaned? an empty table please
----@param skip_invalid_tables boolean?
----@return any, SeenCleaned
-function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
-    local skip_invalid_tables = skip_invalid_tables or false
-    -- TODO: some kind of yield in case this takes too long.
-    os.queueEvent("yield")
-    os.pullEvent("yield")
-
-    ---@diagnostic disable-next-line: undefined-global
-    local json_null = textutils.json_null
-
-    ---@type Seen
-    local seen = seen or {}
-    -- We pass in and back out tables we've already seen to prevent needing to re-do work
-    -- on tables that contain multiple duplicate table values under different keys.
-    ---@type SeenCleaned
-    local seen_cleaned = seen_cleaned or {}
-
-    -- Skip values that don't need extra work.
-    local t = type(value)
-
-    -- We can directly pass back primitive types.
-    if t == "number" or t == "string" or t == "boolean" then
-        return value, seen_cleaned
-    end
-
-    -- If this is a nil, we need to use the special nil type.
-    if t == "nil" or t == nil then
-        return json_null, seen_cleaned
-    end
-
-    -- If it's a function, unfortunately we cannot get the name
-    -- of it, but at least we can get the function ID... We can also tack on
-    -- the definition line in case that helps.
-    if t == "function" then
-        return tostring(value) .. " defined on line " .. tostring(debug.getinfo(value, "S").linedefined), seen_cleaned
-    end
-
-    -- We don't care at all about threads or userdata, discard them entirely.
-    -- Note on userdata: Its just a type that lets you store C/C++ values in
-    -- ...somewhere? But AFAIK we do not use them.
-    if t == "thread" or t == "userdata" then
-        -- We can't blindly return nil here as that could cause gaps in the final
-        -- array (if we're constructing an array). Since we shouldn't be seeing
-        -- these anyways, we just use strings
-        return t, seen_cleaned
-    end
-
-    -- Is this a json null?
-    if value == json_null then
-        -- It's just a null.
-        return json_null, seen_cleaned
-    end
-
-    -- Must be a table. Have we already seen it?
-    if seen[value] then
-        -- Already seen this table.
-        -- Did we already finish this?
-        local maybe_cleaned = seen_cleaned[value]
-        if maybe_cleaned then
-            -- Already processed this table!
-            return maybe_cleaned, seen_cleaned
-        end
-
-        -- If we end up here, that means we've hit a circular dependency. We need
-        -- to break the cycle. Currently cant think of a clean way to resolve
-        -- this situation so we just explode. Don't make self referencing tables!
-        local printable_version = forceStringTable(value)
-        panic.panic("Self referential table! " .. printable_version)
-    end
-
-    -- Mark it as seen. We will store the cleaned version once we're done.
-    seen[value] = true
-
-    -- Now we have to be careful to not try and store tables with mixed contents,
-    -- as this would silently discard data in textutils.
-
-    local array_item_count = 0
-    -- cant count the hashmap alone, this will also count the array side.
-    local combined_item_count = 0
-
-    for _, _ in ipairs(value) do
-        array_item_count = array_item_count + 1
-    end
-
-    for _, _ in pairs(value) do
-        combined_item_count = combined_item_count + 1
-    end
-
-    -- Check if table is completely empty, we can skip if so!
-    if (array_item_count == 0) and (combined_item_count == 0) then
-        -- Empty table, return a null since it has `None` value.
-        -- Thus the rust side can also interpret it as an array(?)
-        seen_cleaned[value] = json_null
-        return json_null, seen_cleaned
-    end
-
-    -- There is content, make sure that the table is not mixed.
-    if (array_item_count < combined_item_count) and array_item_count ~= 0 then
-        -- Table is mixed. Can't work with that.
-        if CURRENTLY_PANICKING or false or skip_invalid_tables then
-            print("Invalid table in cleanForJSON! (Mixed table) Opted to skip.")
-            local xkcd_idk = "Invalid mixed table, skipped"
-            seen_cleaned[value] = xkcd_idk
-            return xkcd_idk, seen_cleaned
-        end
-        -- I want to at least see what was in the table still
-        local printable_version = forceStringTable(value)
-        panic.panic("Mixed table! Not allowed! table: " .. printable_version)
-    end
-
-    -- Table is not mixed. It must be an array if the array item count is greater
-    -- than zero.
-    local is_array = array_item_count ~= 0
-
-    local cleaned_table = {}
-
-    -- If this is an array, we also need to make sure there are no gaps
-    -- > a = {}
-    -- > a[1] = "test"
-    -- > a[100] = "test"
-    -- > print(#a)
-    -- 1
-    -- So we keep track of how many elements we see, and check at the end that
-    -- the length matches
-    local total_items = 0
-
-    for k, v in pairs(value) do
-        total_items = total_items + 1
-        if is_array then
-            -- Array handling
-            -- Don't need to check the value of the key, since we know what type of
-            -- table this is already.
-            -- Recurse into the value
-            -- Putting values in like this is safe in `pairs()` even though its
-            -- not ipairs, since we are directly using the key number instead of
-            -- assuming its sequential.
-            local cleaned
-            cleaned, seen_cleaned = cleanForJSON(v, seen, seen_cleaned, skip_invalid_tables)
-            cleaned_table[k] = cleaned
-        else
-            -- Object/hashmap handling
-            -- Make sure that the key is a string, since that's the only allowed
-            -- type, unless we're panicking then we just need to get _SOMETHING_ out the door.
-            local is_string = type(k) == "string"
-            if (CURRENTLY_PANICKING or false) and not is_string then
-                print("Invalid table in cleanForJSON! (Non string key) Opted to skip.")
-                -- Just toss the whole table.
-                local failure_message = "Invalid mixed table, skipped"
-                return failure_message, seen_cleaned
-            end
-            panic.assert(is_string, "Non string key used in table! Not allowed!")
-
-            local cleaned
-            cleaned, seen_cleaned = cleanForJSON(v, seen, seen_cleaned, skip_invalid_tables)
-            cleaned_table[k] = cleaned
-        end
-    end
-
-
-    -- Post-array handling
-    if is_array then
-        -- Check for holes.
-        panic.assert(array_item_count == total_items, "Array has holes! Not allowed!")
-        -- Theoretically we can get back an empty array, so we will fix that as well
-        if #cleaned_table == 0 then
-            -- Return an empty array json thing instead
-            seen_cleaned[value] = json_null
-            return json_null, seen_cleaned
-        end
-    end
-
-
-    seen_cleaned[value] = value
-    return cleaned_table, seen_cleaned
+--- Modifies the incoming origin table! Be careful!
+---@param origin CoordPosition The position to transform
+---@param delta CoordPosition The transformation to apply
+function helpers.offsetPosition(origin, delta)
+    origin.x = origin.x + delta.x
+    origin.y = origin.y + delta.y
+    origin.z = origin.z + delta.z
 end
 
-
---- The built-in json serializer is not good enough.
+--- Invert a position by negating all of its values.
 ---
---- The textutils.serialiseJSON() method does not work with:
---- - Mixed tables
---- - Non-integer keys into tables
---- - Recursion within tables
----
---- Thus we have our own that pre-cleans the data.
----@param input any
----@return string json the outgoing json string.
-function helpers.serializeJSON(input)
-    -- Make a deep copy of the input as to not alter the incoming table, and
-    -- clean it up for export.
-    local copy = helpers.deepCopy(input)
-    copy = cleanForJSON(input)
-
-    -- Serialize that with the standard serializer, now that it's in a
-    -- format that it likes.
-    ---@diagnostic disable-next-line: undefined-global
-    local ok, result = pcall(textutils.serializeJSON, copy)
-    if not ok then
-        -- Well crap!
-        panic.panic(tostring(result))
-    end
-
-    return result
+--- Modifies the incoming table, be careful with vector tables!
+---@param position CoordPosition
+function helpers.invertPosition(position)
+    position.x = position.x * -1
+    position.y = position.y * -1
+    position.z = position.z * -1
 end
 
---- Deserialize our custom json format back into tables.
----
---- This assumes the incoming type is proper json! If it is not, the deserialization will throw an error.
---- It is the Rust-side's job to ensure we never send malformed json.
----
---- Returns a true, any pair when successful.
---- Returns a false, string with an error message from unserializeJSON on failure.
----@param json string
----@return boolean, any -- A success / fail, and the result of deserialization. You should hopefully know the type.
-function helpers.deserializeJSON(json)
-    -- careful! its deserialize instead of deserialize for some stupid reason
-    ---@diagnostic disable-next-line: undefined-global
-    local ok, result_or_error = pcall(textutils.unserializeJSON, json)
-    if not ok then
-        -- Well crap!
-        return false, result_or_error
-    end
-    -- Worked!
-    return true, result_or_error
+--- Get the taxicab distance between two positions. Will always be a positive,
+--- whole integer.
+---@param pos1 CoordPosition
+---@param pos2 CoordPosition
+---@return number
+function helpers.taxicabDistance(pos1, pos2)
+	-- local x = math.abs(pos1.x - pos2.x)
+	-- local y = math.abs(pos1.y - pos2.y)
+	-- local z = math.abs(pos1.z - pos2.z)
+	-- return x + y + z
+	return math.abs(pos1.x - pos2.x) + math.abs(pos1.y - pos2.y) + math.abs(pos1.z - pos2.z)
 end
+
+--- Get a new position based on a movement direction and facing direction.
+---
+--- Does not modify the incoming position, as it is immediately cloned.
+---
+--- Returns a new position with the transformation applied. This new position is
+--- always a new table, regardless if the incoming table needed to be modified.
+---
+--- Ignores rotation movements, as they do not move in coordinate space.
+--- @param direction MovementDirection The way in which the turtle moved.
+--- @param facing CardinalDirection Our current facing direction, this is not updated.
+--- @param start_position CoordPosition Position to offset from.
+--- @return CoordPosition
+function helpers.getTransformedPosition(direction, facing, start_position)
+
+	-- Clone the incoming table
+	local working_position = helpers.clonePosition(start_position)
+
+    -- North -z
+    -- East: +x
+    -- South +z
+    -- West: -x
+    -- Up: +y
+    -- Down: +y
+
+    -- Skip rotations
+    if string.match(direction, "^[lr]") then
+        -- no change
+        return working_position
+    end
+    -- Up down
+    if direction == "u" or direction == "d" then
+        working_position.y = working_position.y + (direction == "u" and 1 or -1)
+        return working_position
+    end
+    -- Forward back is hard, since its based on facing direction
+    -- this is why we have the lookup table
+    local delta = movement_vectors[facing]
+    -- Invert if we're moving backwards
+    if direction == "b" then
+		-- This is a reference to the vectors table, so we must clone it.
+        delta = helpers.clonePosition(delta)
+        helpers.invertPosition(delta)
+    end
+    -- Offset. We are okay to modify this table as we made a copy.
+    helpers.offsetPosition(working_position, delta)
+
+	-- Return the finished table
+	return working_position
+end
+
+-- === === ===
+-- === === ===
+-- Rotation helpers
+-- === === ===
+-- === === ===
+
+--- Rotate a direction based on a movement direction. Does nothing if
+--- the movement does not effect rotation.
+---
+--- Does not modify the original direction (as its a string),
+--- returns a new direction.
+---
+---@param move_direction MovementDirection The way in which the turtle moved.
+---@param original_facing CardinalDirection The facing direction to transform.
+---@return CardinalDirection
+function helpers.rotateDirection(move_direction, original_facing)
+    -- This checks for for non-rotation,
+    -- since the directional movements wont be found.
+    if string.match(move_direction, "^[fbud]") then
+        -- no change
+        return original_facing
+    end
+
+    -- Index into an array based on the direction.
+    local found = dir_to_num[original_facing]
+
+    -- This should always give us a direction. If you pass it undefined values,
+    -- you get undefined behavior!
+    ---@cast found number
+
+    -- Rotate the direction by offsetting into the dir table
+    local change = (move_direction == "l") and -1 or 1
+    return dirs[((found - 1 + change + 4) % 4) + 1]
+end
+
+--- Get the opposite facing direction from a direction.
+---
+--- Does not modify the incoming direction, as it is a string.
+---@param direction CardinalDirection
+---@return CardinalDirection opposite
+function helpers.invertDirection(direction)
+	local found = dir_to_num[direction]
+
+	-- 2 rotates us 180
+	return dirs[((found - 1 + 2 + 4) % 4) + 1]
+end
+
+--- Find what moves are required to face in a direction from a starting direction.
+---
+--- May return no movements in the form of an empty table if already facing
+--- the correct direction.
+---@param start_direction CardinalDirection
+---@param end_direction CardinalDirection
+---@return MovementDirection[]?
+function helpers.findFacingRotation(start_direction, end_direction)
+	local moves = {}
+	if start_direction == end_direction then
+		return moves
+	end
+
+	local start_num = dir_to_num[start_direction]
+	local end_num = dir_to_num[end_direction]
+
+	-- Clockwise
+	local right_distance = (end_num - start_num + 4) % 4
+	-- Counter
+	local left_distance = (start_num - end_num + 4) % 4
+	local times = math.min(right_distance, left_distance)
+
+	-- Prefer right turns
+	local turn_direction = "r"
+	if left_distance < right_distance then
+		turn_direction = "l"
+	end
+
+	for i = 1, times do
+		moves[i] = turn_direction
+	end
+	return moves
+end
+
+-- === === ===
+-- === === ===
+-- Adjacency helpers
+-- === === ===
+-- === === ===
+
+--- Check is a position is directly adjacent to another position.
+---
+--- Does not consider diagonals to be adjacent, positions must share a block
+--- face, and positions are not adjacent to themselves.
+---@param pos1 CoordPosition
+---@param pos2 CoordPosition
+---@return boolean
+function helpers.isPositionAdjacent(pos1, pos2)
+	-- Same position?
+	-- Too far away?
+	-- And adjacent, all in one check!
+	return helpers.taxicabDistance(pos1, pos2) == 1
+end
+
+--- From a starting position, deduce what actions need to be taken to move to
+--- an adjacent position.
+---
+--- Takes in a MinecraftPosition to deduce based off of. Does not modify the starting
+--- position.
+---
+--- Will return either one or two movement directions, as the move will always
+--- require a transformation, but will not always require a rotation.
+---
+--- returns `nil` if the destination position is not adjacent to the turtle.
+--- Attempting to move into the current position of the turtle will also return
+--- nil, as that is not an adjacent position, and moreover, no move is required.
+--- @param starting_position MinecraftPosition
+--- @param destination CoordPosition
+--- @return nil|MovementDirection[]
+function helpers.deduceAdjacentMove(starting_position, destination)
+	-- Make sure the position is adjacent to our current position, else
+	-- this would cause us to move forwards for no reason.
+	if not helpers.isPositionAdjacent(starting_position.position, destination) then
+		return nil
+	end
+
+	-- Only one of the 3 directions can have a value of +-1.
+	local x_delta = destination.x - starting_position.position.x
+	local y_delta = destination.y - starting_position.position.y
+	local z_delta = destination.z - starting_position.position.z
+
+	-- If the movement is vertical, the facing direction does not matter
+	if y_delta ~= 0 then
+		return {y_delta == -1 and "d" or "u"}
+	end
+
+	-- Determine the cardinal direction of the move
+	local move_direction = helpers.mostSignificantDirection(x_delta, z_delta)
+
+	-- Skip rotation if we're directly facing the target position, or
+	-- if we can move backwards into the position.
+	local cur_facing = starting_position.facing
+	if move_direction == cur_facing then
+		return {"f"}
+	elseif move_direction == helpers.invertDirection(cur_facing) then
+		return {"b"}
+	end
+
+	-- Rotation is required before movement.
+	-- Create a move set.
+	---@type MovementDirection[]
+	local movements = {}
+
+	-- This will always be one rotation, since we know we weren't able to move
+	-- directly forwards or backwards into the position we want to get into.
+	-- We will turn to face the position, since there is no cost difference to
+	-- turning left vs right.
+
+	-- Find the rotation. This will always be one turn.
+	movements[1] = helpers.findFacingRotation(cur_facing, move_direction)[1]
+
+	-- Add the move forwards into the position
+	movements[2] = "f"
+
+	return movements
+end
+
+--- Get the position of the block to a side of the incoming block relative to a
+--- movement direction from the starting position, accounting for some
+--- CardinalDirection.
+---
+--- Re-purposes the MovementDirection type, left and right are interpreted as
+--- the block to the left or right side of the incoming position instead of a rotation.
+---
+--- Does not modify incoming values.
+--- @param position CoordPosition -- The position to check the sides of
+--- @param facing CardinalDirection -- The direction we are facing from the perspective of the position.
+--- @param side MovementDirection -- Which side of the block from the original position to look at.
+--- @return CoordPosition
+function helpers.getAdjacentBlock(position, facing, side)
+	local delta
+
+	-- Implemented as an if-else chain since we need to add the incoming position
+	-- to the delta before returning.
+
+	if side == "u" or side == "d" then
+		-- Up and down are constant
+		delta = movement_vectors[side]
+	elseif side == "f" then
+		-- Forward is our current facing direction's vector
+		delta = movement_vectors[facing]
+	elseif side == "b" then
+		-- Flip that around
+		local f = helpers.invertDirection(facing)
+		delta = movement_vectors[f]
+	else
+		-- is either left or right, thus we can rotate to that side and
+		-- then use a movement vector from that, since we would now be facing that side.
+		local rotated_facing = helpers.rotateDirection(side, facing)
+		delta = movement_vectors[rotated_facing]
+	end
+
+	return {
+		x = position.x + delta.x,
+		y = position.y + delta.y,
+		z = position.z + delta.z,
+	}
+end
+
+-- === === ===
+-- === === ===
+-- Sanity checks.
+-- === === ===
+-- === === ===
 
 print("Sanity checks...")
 _ = helpers.serializeJSON("test")
@@ -543,5 +966,6 @@ _ = helpers.serializeJSON(temp)
 -- circle["wow"] = circle
 -- _ = helpers.serializeJSON(circle)
 print("Done setting up helpers!")
+
 
 return helpers

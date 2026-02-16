@@ -3,7 +3,7 @@
 // Global minecraft types
 pub use crate::minecraft::{
     types::*,
-    vanilla::{block_type::MinecraftBlock, data_globals::get_mc_data},
+    vanilla::{block_type::MinecraftBlock, data_globals::get_mc_data, item_type::MinecraftItem},
 };
 
 // Test types
