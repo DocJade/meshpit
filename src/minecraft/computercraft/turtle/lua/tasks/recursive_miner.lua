@@ -72,7 +72,7 @@ local isPositionAdjacent = helpers.isPositionAdjacent
 --- @param wanted_names string[]?
 --- @param wanted_tags string[]?
 --- @return boolean
-function block_wanted(block, wanted_names, wanted_tags)
+local function block_wanted(block, wanted_names, wanted_tags)
     -- If the block is air, we do not care.
     if block == nil then return false end
 
@@ -117,6 +117,22 @@ local function get_true_neighbor_blocks(position, facing)
     return neighbors
 end
 
+--- Helper function to check if a position has been seen within the list of seen
+--- positions.
+--- @param position_to_check CoordPosition
+--- @param seen_blocks {[string]: true}
+--- @return boolean
+local function have_seen_position(position_to_check, seen_blocks)
+    -- Key the position we're at
+    local key = keyFromTable(position_to_check)
+
+    -- This is never nil
+    ---@cast key string
+
+    -- Return if we have seen it.
+    return seen_blocks[key]
+end
+
 --- Get all of the coordinate positions of neighboring blocks that we have
 --- not yet examined.
 --- @param position CoordPosition
@@ -138,22 +154,6 @@ local function get_unseen_neighbor_blocks(position, facing, seen_blocks)
     return kept_neighbors
 end
 
---- Helper function to check if a position has been seen within the list of seen
---- positions.
---- @param position_to_check CoordPosition
---- @param seen_blocks {[string]: true}
---- @return boolean
-function have_seen_position(position_to_check, seen_blocks)
-    -- Key the position we're at
-    local key = keyFromTable(position_to_check)
-
-    -- This is never nil
-    ---@cast key string
-
-    -- Return if we have seen it.
-    return seen_blocks[key]
-end
-
 --- This is a pre-check we can run before moving into a block to see if its worth
 --- doing. IE, if we have already seen all of the neighbors of a block we would be
 --- moving into, then there is no reason to move in there.
@@ -165,7 +165,7 @@ end
 --- @param maybe_move_here CoordPosition
 --- @param seen_blocks {[string]: true}
 --- @return boolean
-function moving_would_give_info(maybe_move_here, seen_blocks)
+local function moving_would_give_info(maybe_move_here, seen_blocks)
     -- If there is at least one block that has not been seen that you would be
     -- able to see from that maybe position, then its worth moving into.
     -- No need to provide accurate facing info.
@@ -174,6 +174,32 @@ function moving_would_give_info(maybe_move_here, seen_blocks)
     -- positions that have no new info, but would allow for taking a shortcut.
 
     return #(get_unseen_neighbor_blocks(maybe_move_here, "n", seen_blocks) or {}) > 0
+end
+
+--- Check if a position wants to be mined.
+---
+--- This is slow, as it can iterate over all of the positions.
+---
+--- Returns a boolean, and the index into the array that the position is found
+--- at, if any.
+--- @param check_position CoordPosition
+--- @param to_mine CoordPosition[]
+--- @return boolean, number|nil
+local function position_wants_to_be_mined(check_position, to_mine)
+    local saw_position = false
+    local index_seen = nil
+
+    -- We expect that almost all of the time, the block we are checking will be
+    -- near the top of the list, thus we iterate backwards.
+
+    for i = #to_mine, 1, -1 do
+        if coordinatesAreEqual(to_mine[i], check_position) then
+            saw_position = true
+            index_seen = i
+            break
+        end
+    end
+    return saw_position, index_seen
 end
 
 --- This is a post-check on movement. Call this after scanning!
@@ -209,7 +235,7 @@ end
 --- @param seen_blocks {[string]: true}
 --- @param to_mine CoordPosition[]
 --- @return boolean, CoordPosition[]
-function already_facing_shortcut(cur_position, seen_blocks, to_mine)
+local function already_facing_shortcut(cur_position, seen_blocks, to_mine)
     local our_pos, our_facing = cur_position.position, cur_position.facing
 
     -- We only need to check forwards, up and down. However, the order here
@@ -274,39 +300,13 @@ function already_facing_shortcut(cur_position, seen_blocks, to_mine)
     return #good_shortcuts > 0, good_shortcuts
 end
 
---- Check if a position wants to be mined.
----
---- This is slow, as it can iterate over all of the positions.
----
---- Returns a boolean, and the index into the array that the position is found
---- at, if any.
---- @param check_position CoordPosition
---- @param to_mine CoordPosition[]
---- @return boolean, number|nil
-function position_wants_to_be_mined(check_position, to_mine)
-    local saw_position = false
-    local index_seen = nil
-
-    -- We expect that almost all of the time, the block we are checking will be
-    -- near the top of the list, thus we iterate backwards.
-
-    for i = #to_mine, 1, -1 do
-        if coordinatesAreEqual(to_mine[i], check_position) then
-            saw_position = true
-            index_seen = i
-            break
-        end
-    end
-    return saw_position, index_seen
-end
-
 --- Mark a position as mined in our wanted list. If the incoming position was not
 --- marked as wanted, this will panic, as we mined some random block.
 ---
 --- Modifies `to_mine`, does not modify the incoming position.
 --- @param mined_position CoordPosition
 --- @param to_mine CoordPosition[]
-function mark_mined(mined_position, to_mine)
+local function mark_mined(mined_position, to_mine)
 
     -- Check if we actually needed to mine that position
     local wanted, index = position_wants_to_be_mined(mined_position, to_mine)
@@ -327,7 +327,7 @@ end
 --- @param starting CardinalDirection
 --- @param directions table<CoordPosition, CardinalDirection>[]
 --- @return number
-function calculate_turn_cost(starting, directions)
+local function calculate_turn_cost(starting, directions)
     local total = 0
     -- Needs to take into account the new facing direction after a turn.
     local current_facing = starting
@@ -349,7 +349,7 @@ end
 --- @param wb WalkbackSelf
 --- @param seen_blocks {[string]: true}
 --- @return Block[], CoordPosition[]
-function smart_scan(wb, seen_blocks)
+local function smart_scan(wb, seen_blocks)
     local p, f = wb.cur_position.position, wb.cur_position.facing
     -- Find the directions that need to be scanned.
     local to_see = get_unseen_neighbor_blocks(p, f, seen_blocks)
@@ -564,7 +564,7 @@ end
 --- Dig an adjacent position, and if that fails, die.
 --- @param wb WalkbackSelf
 --- @param pos CoordPosition
-function mine_or_die(wb, pos)
+local function mine_or_die(wb, pos)
     local mine_result, mine_reason = wb:digAdjacent(pos)
 
     -- Check for actually failures, ignore "Nothing to dig here"
@@ -576,7 +576,7 @@ end
 --- Move into an adjacent position, and if that fails, die.
 --- @param wb WalkbackSelf
 --- @param pos CoordPosition
-function move_or_die(wb, pos)
+local function move_or_die(wb, pos)
     local move_result, move_reason = wb:moveAdjacent(pos)
 
     -- Check for actually failures, ignore "Nothing to dig here"
@@ -598,7 +598,7 @@ end
 --- @param wb WalkbackSelf
 --- @param seen_blocks {[string]: true}
 --- @param to_mine CoordPosition[]
-function post_movement_shortcuts(wb, seen_blocks, to_mine)
+local function post_movement_shortcuts(wb, seen_blocks, to_mine)
     -- Check the shortcut
     local have_shortcut, go_mine = already_facing_shortcut(wb.cur_position, seen_blocks, to_mine)
     if not have_shortcut then
@@ -634,7 +634,7 @@ end
 --- @param mineable_names string[]
 --- @param mineable_tags string[]
 --- @return CoordPosition
-function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
+local function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
     local p, f = wb.cur_position.position, wb.cur_position.facing
 
     -- Bail if there is nothing to do, or only one thing to do. As re-ordering
