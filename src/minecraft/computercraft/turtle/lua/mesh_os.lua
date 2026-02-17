@@ -107,10 +107,6 @@ local current_event_timer_resolution = default_event_timer_resolution
 -- Types
 -- =========
 
---- This is the type used to store the state of a task.
---- @class TurtleTask
---- @field task_thread thread
-
 
 --- The allowed strings to send from yielding.
 --- @alias YieldStrings
@@ -281,6 +277,9 @@ local function setupNewTask(task_definition, is_sub_task)
     local popped = walkback:pop()
     if popped ~= nil then
         walkback_queue[#walkback_queue+1] = popped
+    else
+        -- We didn't have a walkback to pop, which is fine. We don't need to do
+        -- anything.
     end
 
     -- The rest of the owl.
@@ -302,7 +301,7 @@ local function setupNewTask(task_definition, is_sub_task)
     local task_function = getTaskFunction(task_definition.task_data)
     -- Wrap it in ANOTHER function which passes its arguments
     local the_cooler_function = function ()
-        task_function(new_task)
+        return task_function(new_task)
     end
 
     local new_thread = coroutine.create(the_cooler_function)
@@ -315,6 +314,135 @@ local function setupNewTask(task_definition, is_sub_task)
     -- Add task to the end of the task queue.
     task_queue[#task_queue+1] = new_task
 end
+
+--- Fixes the end position of a task if needed.
+---
+--- Returns a boolean on wether or not we could end up at either the starting position,
+--- or always true if the criteria are ignored anyways.
+---
+--- TODO: Currently this always returns true since there isnt any real error handling
+--- yet. Somebody should fix that.
+--- @param task TurtleTask
+--- @return boolean
+local function fixTaskPosition(task)
+    -- Did we end where we started?
+    local made_it_home = helpers.coordinatesAreEqual(task.start_position, walkback.cur_position.position)
+
+    -- Are we facing the right way?
+    local right_side_of_the_bed = task.start_facing == walkback.cur_position.facing
+
+    -- Do we meet all of the requirements that were set?
+    --- @type boolean
+    local all_good = true
+    if task.definition.return_to_facing then
+        all_good = all_good and right_side_of_the_bed
+    end
+
+    if task.definition.return_to_start then
+        all_good = all_good and made_it_home
+    end
+
+    local all_good = task.definition.return_to_facing == right_side_of_the_bed
+    all_good = all_good and task.definition.return_to_start == made_it_home
+
+    local destination_key = helpers.keyFromTable(task.start_position)
+    -- This has to be a string, since we can always make keys from positions.
+    --- @cast destination_key string
+
+    -- We're either in the wrong position, or facing the wrong direction.
+    -- Both? Perchance.
+    if task.definition.return_to_facing and not right_side_of_the_bed then
+        -- Lookin the wrong way pal. Easy fix though.
+        task.walkback:turnToFace(task.start_facing)
+    end
+
+    -- We can skip the following if we don't need to return to start.
+    if not task.definition.return_to_start then
+        goto position_good
+    end
+
+    -- Is the start point we want to be at in the chain?
+    if walkback.posQuery(task.walkback, destination_key) then
+        -- Position is in there, assuming we have enough fuel, we can
+        -- step back repeatedly until we reach it. If we run out of fuel,
+        -- we'll have to get help from the rust server TODO: in the future.
+        while not helpers.coordinatesAreEqual(task.start_position, task.walkback.cur_position.position) do
+            -- TODO: This will panic if something is in the way, if we run out
+            -- of fuel, etc.
+            panic.assert(task.walkback:stepBack())
+        end
+        -- We are now in the right spot.
+
+        goto position_good
+    else
+        -- We aren't in the right spot, AND we cant walk back to it.
+        -- If we had some sort of pathfinding, we could do more here, but
+        -- we dont yet. so we die.
+        -- TODO: Backup pathfinding.
+        panic.panic("Task failed to return to its start point, and we have no path back.")
+    end
+    ::position_good::
+    return true
+end
+
+--- Finish a task. Will automatically clean up passes or fails.
+---
+--- Checks a few things:
+--- - Make sure the task ended up where it started.
+--- - TODO: More post task completion checks.
+---
+--- Once we know it is safe to finish the task, we'll restore the walkback that
+--- was popped off when the task was started.
+--- TODO: This is also where we would return block information to the rust server.
+--- @param task TurtleTask
+--- @param result TaskCompletion|TaskFailure
+local function finishTask(task, result)
+    -- We don't take in walkback here or use the global since we can just keep
+    -- referencing the one that comes with the task.
+
+    -- Remove the task from the queue.
+    task_queue[#task_queue] = nil
+
+    -- Fix the position if needed.
+    if not fixTaskPosition(task) then
+        -- Whoops.
+        panic.panic("Failed to fix position after a task ended!")
+    end
+
+    -- Now we need to push the old walkback on. However, this requires our current walkback to
+    -- be empty. Since we now know that we're at the position we want to be at,
+    -- we can just pop off and discard the walkback, and push the old one on.
+
+    task.walkback:pop() -- Implicitly discarded.
+
+    -- Put that mf back
+    -- There may be nothing in the queue, which is fine, that just means we're
+    -- where we started, or the last position didn't matter either.
+    if walkback_queue[#walkback_queue] ~= nil then
+        task.walkback:push(walkback_queue[#walkback_queue])
+        walkback_queue[#walkback_queue] = nil
+    end
+
+    -- We actually do all of the cleanup before we even care if the task passed
+    -- or failed, since it needs to happen regardless.
+
+    -- Was this a pass or a fail?
+    print(result)
+    print(type(result))
+    if result.kind == "success" then
+        -- This is easy!
+        -- Nothing to do.
+        return
+    else
+        -- The task failed, we should do something about that... someday.
+        ---@cast result TaskFailure
+
+        -- TODO: Handle task failures.
+        panic.panic("Task failure! " .. "[" .. task.definition.task_data.name .. "]" .. "[" .. result.reason .. "]" .. "[" .. result.stacktrace .. "]")
+        return
+    end
+end
+
 
 --- !!! THIS IS ONLY FOR TEST CASES! !!!
 ---
@@ -437,11 +565,11 @@ local function handle_events()
     --- @diagnostic disable-next-line: undefined-field
     local watchdog = os.startTimer(current_event_timer_resolution)
 
-    ---@type CCEvent|CustomEvent
     ---@diagnostic disable-next-line: undefined-field
     local event = table.pack(os.pullEvent())
+    --- @cast event CCEvent|CustomEvent
     local event_name = event[1]
-    print("Handling event: ", event_name)
+    -- print("Handling event: ", event_name)
     local handled_event = true
     -- print(event_name)
     if event_name == "turtle_response" then
@@ -484,6 +612,10 @@ local function handle_events()
         -- TODO: Do something with this event
     elseif event_name == "websocket_closed" then
         -- TODO: Do something with this event
+    elseif event_name == "task_complete" then
+        -- When a coroutine finishes, it throws this. Tasks that start sub-tasks
+        -- end up requesting these, so we have to put these back.
+        queueEvent(table.unpack(event))
     elseif event_name == "websocket_message" then
         -- TODO: Do something with this event
     else
@@ -595,6 +727,22 @@ function mesh_os.main()
             panic.assert(task ~= nil, "Received no new tasks!")
         end
 
+        -- Check if the task already is over.
+        -- TODO: this is gross.
+        -- TODO: Make tasks unable to `error()` because it does not meet the
+        -- implied scheme of `TaskCompletion|TaskFailure` in result if a throw happens.
+        if coroutine.status(task.task_thread) == "dead" then
+            -- Task is over, do cleanup then skip to handling events.
+            finishTask(task, result)
+
+            -- Now that the task is finished, we need to start over, since we
+            -- need to grab the next task in the next iteration of the loop.
+            goto skip_task
+
+            -- We cannot set `result` to nil here, since the task will be expecting
+            -- a "task_complete" event.
+        end
+
         -- Run the current task.
 
         -- Sometimes the resume calls actually are trying to pull for an event,
@@ -614,27 +762,6 @@ function mesh_os.main()
         else
             ---@type boolean, TaskCompletion|TaskFailure|any
             bool, result = resume(task.task_thread)
-        end
-
-        -- Is the task over?
-        if not bool then
-            -- The task has ended. This either indicates that it actually
-            -- finished, or that the the task threw an error.
-
-            if result.kind == "success" then
-                -- Nothing else to do! :D
-                goto task_cleanup_done
-            end
-
-            -- TODO: actually recover lmao
-            -- Task threw an error. Currently there is no recovery system for this.
-            -- This should be a string.
-            panic.panic("task died lol" .. helpers.serializeJSON(result))
-
-
-            ::task_cleanup_done::
-            -- Done running that task, so we remove it from the queue and loop!
-            task_queue[#task_queue] = nil
         end
 
         -- This label is used when we are sleeping, as to not wake up the task

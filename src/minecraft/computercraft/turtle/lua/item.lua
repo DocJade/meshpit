@@ -36,7 +36,10 @@ function item_helper.detailsToItem(incoming)
     end
 
     local tag_array = {}
-    for tag, _ in pairs(incoming.tags) do
+    -- Tags are implemented as string:bool pairs so we cant use ipairs here.
+    -- Also if there are no tags, we need to make an empty table instead of it
+    -- being nil
+    for tag, _ in pairs(incoming.tags or {}) do
         tag_array[#tag_array+1] = tag
     end
 

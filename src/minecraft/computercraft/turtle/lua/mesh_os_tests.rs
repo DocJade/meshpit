@@ -68,7 +68,7 @@ async fn run_tree_chop(
 
     -- Wait for the go-ahead to start the task
     -- Run the task. this will throw when the queue is empty.
-    local _, _ = pcall(mesh_os.main())
+    local _, _ = pcall(mesh_os.main)
 
     -- Tell the os we are done.
     wait_step()
@@ -121,13 +121,13 @@ async fn run_tree_chop(
     // Turtle is done.
     // Did it end up back at the start?
     position.move_direction(MinecraftCardinalDirection::South);
-    position.move_direction(MinecraftCardinalDirection::South);
     let turtle_back = test.command(TestCommand::TestForBlock(position.position, &MinecraftBlock::from_string("computercraft:turtle_normal").unwrap())).await.success();
-
+    info!("Turtle made it back: {turtle_back}");
 
     // There should also NOT be an oak log in front of the turtle.
     position.move_direction(MinecraftCardinalDirection::North);
     let no_log = !test.command(TestCommand::TestForBlock(position.position, &MinecraftBlock::from_string("minecraft:oak_log").unwrap())).await.success();
+    info!("There is no log in front of the turtle: {no_log}");
 
     let success = turtle_back && no_log;
     test.stop(success).await;

@@ -37,6 +37,31 @@ local log_tag = "minecraft:logs"
 local leaves_tag = "minecraft:leaves"
 local stick_name = "minecraft:stick"
 
+--- Check if we've met our criteria
+---
+--- Returns true if we can end the task
+--- @param wb WalkbackSelf
+--- @param target_logs number
+--- @param task_end_time number
+--- @return boolean
+function are_we_there_yet(wb, target_logs, task_end_time)
+    -- Have we met our log goal?
+    if wb:inventoryCountPattern("log") >= target_logs then
+        -- Goal met!
+        return true
+    end
+
+    -- Do we still have time?
+    ---@diagnostic disable-next-line: undefined-field
+    if os.epoch("utc") >= task_end_time then
+        -- Out of time!
+        return true
+    end
+
+    -- Keep going
+    return false
+end
+
 --- Task that automatically cuts down trees.
 ---
 --- May leave a lingering tree or sapling.
@@ -240,20 +265,8 @@ local function tree_chop(config)
         print("[Tree chop] : Yielding to OS")
         task_helpers.taskYield()
 
-        -- Have we met our goal?
-        print("[Tree chop] : Goal check")
-        if wb:inventoryCountPattern("log") >= target_logs then
-            -- Goal met!
-            break
-        end
-
-        -- Do we still have time?
-        print("[Tree chop] : Time check")
-        ---@diagnostic disable-next-line: undefined-field
-        if os.epoch("utc") >= task_end_time then
-            -- Out of time!
-            break
-        end
+        -- Bail early if we're already done.
+        if are_we_there_yet(wb, target_logs, task_end_time) then break end
 
         -- Is there a log in front of us?
         print("[Tree chop] : Inspecting...")
@@ -345,6 +358,10 @@ local function tree_chop(config)
         -- We don't need to refuel with logs here, since the sub-task
         -- auto-refuels with them, and will either overshoot, or end up at
         -- exactly the amount we need.
+
+        -- We might be done. Don't place the sapling if we've met the end
+        -- criteria.
+        if are_we_there_yet(wb, target_logs, task_end_time) then break end
 
         -- Place the next sapling!
         -- We for sure have a sapling at this point, this could only fail if there

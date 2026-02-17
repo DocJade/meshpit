@@ -514,10 +514,17 @@ end
 ---
 --- "Consumes" the incoming walkback, please do not modify it after pushing.
 ---
+--- Passing in an empty state does nothing.
+---
 --- Returns a boolean on wether or not the walkback could be loaded.
 ---@param state PoppedWalkback
 ---@return boolean
 function walkback:push(state)
+	-- Bail if there is nothing to do.
+	if state == nil then
+		return true
+	end
+
 	-- Do we have any current steps?
 	if self:previousPosition() ~= nil then
 		return false
@@ -1161,8 +1168,12 @@ end
 ---@param count number|nil
 ---@return boolean
 function walkback:transferTo(slot, count)
+	-- If count is not set we skip its check, since its okay to be nill
 	panic.assert(slot >= 1 and slot <= 17, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
-	panic.assert(65 >= count or 0 <= count, "Invalid transfer amount! [" .. count .. "]")
+	if count ~= nil then
+		panic.assert(65 >= count or 0 <= count, "Invalid transfer amount! [" .. count .. "]")
+	end
+
 	-- I'm pretty sure its set to 64 by default? If i'm reading the java source right.
 	-- Experimenting with it in-game seems to imply it doesn't really matter anyways,
 	-- since it will just move the maximum amount possible if no argument is passed.
@@ -1200,6 +1211,8 @@ end
 --- Getting non-detailed information is extremely cheap, basic benchmarks show
 --- this can be called over a million times per second.
 ---
+--- If you want tag information, you MUST enable detailed.
+---
 --- Detailed returns more data, but see the note below.
 ---
 --- Returns `nil` if there is no item in this slot.
@@ -1214,6 +1227,7 @@ end
 ---@param detailed boolean|nil
 ---@return Item|nil
 function walkback:getItemDetail(slot, detailed)
+	detailed = detailed or false
 	---@diagnostic disable-next-line: undefined-global
 	return item_helper.detailsToItem(turtle.getItemDetail(slot, detailed))
 end
@@ -1242,7 +1256,6 @@ function walkback:transferFromSlotTo(source_slot, destination_slot, count)
 	local result = self:transferTo(destination_slot, count)
 
 	-- go back
-	self:select(source_slot)
 	self:select(old)
 	return result
 end
@@ -1406,7 +1419,8 @@ function walkback:inventoryFindTag(item_tag, search_downwards)
 	end
 	for i = loop_start, loop_end, loop_change do
 		-- Get item, if any
-		local item = self:getItemDetail(i)
+		-- Needs to be detailed to see the tags.
+		local item = self:getItemDetail(i, true)
 		if not item then goto continue end
 
 		-- Check if the tag is in there
@@ -1464,7 +1478,7 @@ function walkback:swapSlots(slot_1, slot_2)
 	-- These should not fail, as we asserted the third slot is empty.
 	self:transferFromSlotTo(slot_1, temp_slot)
 	self:transferFromSlotTo(slot_2, slot_1)
-	self:transferFromSlotTo(temp_slot, slot_1)
+	self:transferFromSlotTo(temp_slot, slot_2)
 	return true
 end
 
