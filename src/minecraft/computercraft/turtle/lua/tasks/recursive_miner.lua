@@ -67,32 +67,39 @@ local findString = helpers.findString
 local getAdjacentBlock = helpers.getAdjacentBlock
 local isPositionAdjacent = helpers.isPositionAdjacent
 
---- Check if an input block matches the required names or tags.
+--- Check if an input block matches the required names or tags. Block names
+--- are checked before block tags.
+---
+--- Returns a boolean for wether or not the block is wanted, and 2 indexes. The
+--- first index is into the wanted_names list, the second into the wanted_tags
+--- list. Only one of these will be set, the other will be nil.
 --- @param block Block|nil
 --- @param wanted_names string[]?
 --- @param wanted_tags string[]?
---- @return boolean
+--- @return boolean, number|nil, number|nil
 local function block_wanted(block, wanted_names, wanted_tags)
     -- If the block is air, we do not care.
-    if block == nil then return false end
+    if block == nil then return false, nil end
 
     -- Check the name first, then the tags.
     if wanted_names then
-        if arrayContains(wanted_names, block.name) then
-            return true
+        local bool, index = arrayContains(wanted_names, block.name)
+        if bool then
+            return true, index, nil
         end
     end
 
     if wanted_tags then
         for _, tag in ipairs(block.tag) do
-            if arrayContains(wanted_tags, tag) then
-                return true
+            local bool, index = arrayContains(wanted_tags, tag)
+            if bool then
+                return true, nil, index
             end
         end
     end
 
     -- No match.
-    return false
+    return false, nil
 end
 
 --- Get the coordinate positions of all the blocks next to a block.
@@ -183,7 +190,7 @@ end
 --- Returns a boolean, and the index into the array that the position is found
 --- at, if any.
 --- @param check_position CoordPosition
---- @param to_mine CoordPosition[]
+--- @param to_mine PositionWithReason[]
 --- @return boolean, number|nil
 local function position_wants_to_be_mined(check_position, to_mine)
     local saw_position = false
@@ -193,7 +200,7 @@ local function position_wants_to_be_mined(check_position, to_mine)
     -- near the top of the list, thus we iterate backwards.
 
     for i = #to_mine, 1, -1 do
-        if coordinatesAreEqual(to_mine[i], check_position) then
+        if coordinatesAreEqual(to_mine[i].pos, check_position) then
             saw_position = true
             index_seen = i
             break
@@ -233,7 +240,7 @@ end
 --- need to plug into mineAdjacent.
 --- @param cur_position MinecraftPosition
 --- @param seen_blocks {[string]: true}
---- @param to_mine CoordPosition[]
+--- @param to_mine PositionWithReason[]
 --- @return boolean, CoordPosition[]
 local function already_facing_shortcut(cur_position, seen_blocks, to_mine)
     local our_pos, our_facing = cur_position.position, cur_position.facing
@@ -304,15 +311,35 @@ end
 --- marked as wanted, this will panic, as we mined some random block.
 ---
 --- Modifies `to_mine`, does not modify the incoming position.
+---
+--- Also updates the balance sheet.
 --- @param mined_position CoordPosition
---- @param to_mine CoordPosition[]
-local function mark_mined(mined_position, to_mine)
+--- @param to_mine PositionWithReason[]
+--- @param miner_return_value RecursiveMinerResult
+--- @param did_you_break_it boolean
+local function mark_mined(mined_position, to_mine, miner_return_value, did_you_break_it)
 
     -- Check if we actually needed to mine that position
     local wanted, index = position_wants_to_be_mined(mined_position, to_mine)
 
     -- We should never mine a block we did not want.
     task_helpers.assert(wanted)
+
+    local the_block = to_mine[index]
+
+    -- Update the statistics if needed.
+    if did_you_break_it then
+        if the_block.name_string ~= nil then
+            -- god these are long lmao
+            local val = miner_return_value.mined_blocks.names_result[the_block.name_string]
+            val = val + 1
+            miner_return_value.mined_blocks.names_result[the_block.name_string] = val
+        else
+            local val = miner_return_value.mined_blocks.tags_result[the_block.tag_string]
+            val = val + 1
+            miner_return_value.mined_blocks.tags_result[the_block.tag_string] = val
+        end
+    end
 
     -- Remove it from the list. Since it may not be at the end, we'll use the
     -- remove method. This is slower than just always removing from the end, but
@@ -562,8 +589,11 @@ local function smart_scan(wb, seen_blocks)
 end
 
 --- Dig an adjacent position, and if that fails, die.
+---
+--- Returns a boolean if something was actually mined.
 --- @param wb WalkbackSelf
 --- @param pos CoordPosition
+--- @return boolean
 local function mine_or_die(wb, pos)
     local mine_result, mine_reason = wb:digAdjacent(pos)
 
@@ -571,6 +601,7 @@ local function mine_or_die(wb, pos)
     if (not mine_result) and (mine_reason ~= "Nothing to dig here") then
         task_helpers.throw("assumptions not met")
     end
+    return mine_result
 end
 
 --- Move into an adjacent position, and if that fails, die.
@@ -597,8 +628,9 @@ end
 --- If blocks are mined, to_mine is automatically updated.
 --- @param wb WalkbackSelf
 --- @param seen_blocks {[string]: true}
---- @param to_mine CoordPosition[]
-local function post_movement_shortcuts(wb, seen_blocks, to_mine)
+--- @param to_mine PositionWithReason[]
+--- @param miner_return_value RecursiveMinerResult
+local function post_movement_shortcuts(wb, seen_blocks, to_mine, miner_return_value)
     -- Check the shortcut
     local have_shortcut, go_mine = already_facing_shortcut(wb.cur_position, seen_blocks, to_mine)
     if not have_shortcut then
@@ -613,9 +645,9 @@ local function post_movement_shortcuts(wb, seen_blocks, to_mine)
     -- There are shortcuts! Mine them and mark them.
     for _, pos in ipairs(go_mine) do
         -- Mine
-        mine_or_die(wb, pos)
+        local mined = mine_or_die(wb, pos)
         -- Mark
-        mark_mined(pos, to_mine)
+        mark_mined(pos, to_mine, miner_return_value, mined)
     end
 end
 
@@ -629,11 +661,11 @@ end
 --- Returns the next position that should be mined. May not necessarily be the
 --- top of the stack.
 --- @param wb WalkbackSelf
---- @param to_mine CoordPosition[]
+--- @param to_mine PositionWithReason[]
 --- @param seen_blocks {[string]: true}
 --- @param mineable_names string[]
 --- @param mineable_tags string[]
---- @return CoordPosition
+--- @return PositionWithReason
 local function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
     local p, f = wb.cur_position.position, wb.cur_position.facing
 
@@ -651,14 +683,14 @@ local function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable
     -- modify the positions, thus we clone them. Although we never change the
     -- positions, we just need to make sure we don't accidentally remove the
     -- position we are referencing when we add everything back on after sorting.
-    --- @type {pos: CoordPosition[], score: number}
+    --- @type {pwr: PositionWithReason, score: number}[]
     local popped = {}
 
     while true do
         if #to_mine - #popped == 0 then break end
         local peek = to_mine[#to_mine - #popped]
-        if not helpers.isPositionAdjacent(p, peek) then break end
-        popped[#popped+1] = {pos = helpers.clonePosition(peek), score = 0}
+        if not helpers.isPositionAdjacent(p, peek.pos) then break end
+        popped[#popped + 1] = { pwr = peek, score = 0 }
     end
 
 
@@ -676,15 +708,15 @@ local function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable
     -- 1: Rotations
     for _, pop_pos in ipairs(popped) do
         -- Skip up and down
-        if pop_pos.pos.y == wb.cur_position.position.y then
-            local direction = helpers.mostSignificantDirection(pop_pos.pos.x - pop_pos.pos.x, pop_pos.pos.z - pop_pos.pos.z)
+        if pop_pos.pwr.pos.y == wb.cur_position.position.y then
+            local direction = helpers.mostSignificantDirection(pop_pos.pwr.pos.x - p.x, pop_pos.pwr.pos.z - p.z)
             local turns = #(helpers.findFacingRotation(f, direction) or {})
             pop_pos.score = pop_pos.score - turns
         else
             -- Going up and down appears to be worse for taking shortcuts.
             -- But its still way worth it if it reveals a lot of blocks, so it
             -- isn't penalized too hard.
-            pop_pos.score = pop_pos.score - 2
+            pop_pos.score = pop_pos.score - 1
         end
     end
 
@@ -693,7 +725,7 @@ local function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable
     -- Luckily we already have get_unseen_neighbor_blocks, so we can use that.
     for _, pop_pos in ipairs(popped) do
         -- Direction does not matter, since we're just counting.
-        local revealed = get_unseen_neighbor_blocks(pop_pos.pos, "n", seen_blocks) or {}
+        local revealed = get_unseen_neighbor_blocks(pop_pos.pwr.pos, "n", seen_blocks) or {}
         pop_pos.score = pop_pos.score + #revealed
     end
 
@@ -702,33 +734,30 @@ local function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable
     -- We actually want to incentivize this a little bit harder, since its very
     -- easy for this to get overpowered by check 2. Thus the bonus given is
     -- very large to practically separate the different kinds of blocks into groups.
-    local scaling_factor = 10
+    local scaling_factor = 20
 
     for _, pop_pos in ipairs(popped) do
-        -- Grab what block this is
-        local block = wb:blockQuery(pop_pos.pos)
-        -- This cannot be nil, otherwise it wouldn't be in the queue.
-        assert(block)
-        -- Check name first since its cheaper (probably?)
-        -- Patterns, so direct comparisons dont work.
-        for i, name_pattern in ipairs(mineable_names) do
-            if helpers.findString(name_pattern, block.name) then
-                -- Neat! Score based on position.
-                -- Since lua 1 indexing, gotta also add 1 here lol.
-                pop_pos.score = pop_pos.score + ((#mineable_names - i + 1) * scaling_factor)
-                goto next_position
+        -- Grab what block this is.
+        -- We already stored what kind it is so we can just use those stored values.
+        -- extra swag too, since now we don't need to hit global state.
+
+        -- Names
+        if pop_pos.pwr.name_string then
+            for i, name in ipairs(mineable_names) do
+                if name == pop_pos.pwr.name_string then
+                    pop_pos.score = pop_pos.score + ((#mineable_names - i) * scaling_factor)
+                    goto next_position
+                end
             end
         end
 
-        -- No names, so it must be tags.
-        assert(#mineable_tags > 0)
-
-        -- Now for tags.
-        -- These aren't patterns so they can be directly compared.
-        for i, tag in ipairs(mineable_tags) do
-            if helpers.arrayContains(block.tag, tag) then
-                pop_pos.score = pop_pos.score + ((#mineable_tags - i + 1) * scaling_factor)
-                goto next_position
+        -- Tags
+        if pop_pos.pwr.tag_string then
+            for i, tag in ipairs(mineable_tags) do
+                if tag == pop_pos.pwr.tag_string then
+                    pop_pos.score = pop_pos.score + ((#mineable_tags - i) * scaling_factor)
+                    goto next_position
+                end
             end
         end
 
@@ -748,7 +777,7 @@ local function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable
     -- thus we push them onto the top of the stack backwards.
 
     for i, pop_pos in ipairs(popped) do
-        to_mine[#to_mine - #popped + i] = pop_pos.pos
+        to_mine[#to_mine - #popped + i] = pop_pos.pwr
     end
 
     -- Return the new winner.
@@ -854,21 +883,45 @@ local function recursive_miner(config)
     ---@type {[string]: true}
     local seen_blocks = {}
 
-    -- The list of blocks that need to be mined. New blocks are pushed onto the
-    -- end of the list, as we look at the position at the top of the list to
-    -- check if we are next to it.
+    --- One of the indexes must be set.
+    --- @class PositionWithReason
+    --- @field pos CoordPosition
+    --- @field name_string string | nil
+    --- @field tag_string string | nil
 
+    --- The list of blocks that need to be mined. New blocks are pushed onto the
+    --- end of the list, as we look at the position at the top of the list to
+    --- check if we are next to it.
+    ---
+    --- This also is used to track what filters a block matched, allowing us
+    --- to keep track of what has been mined and why.
+    ---
     -- This is an array of coordinate positions. Clone before adding them!
-    ---@type CoordPosition[]
+    ---@type PositionWithReason[]
     local to_mine = {}
+
+    --- And finally, we set up the return type and pre-populate the arrays.
+    --- @type RecursiveMinerResult
+    local miner_return_value = {
+        name = "recursive_miner_result",
+        mined_blocks = {
+            names_result = {},
+            tags_result = {}
+        }
+    }
+
+    -- Pre-populate the result with zeros
+    for _, str in ipairs(mineable_names) do
+        miner_return_value.mined_blocks.names_result[str] = 0
+    end
+
+    for _, str in ipairs(mineable_tags) do
+        miner_return_value.mined_blocks.tags_result[str] = 0
+    end
 
     -- TODO: Pattern improvements!
     -- - While it shouldn't matter _too_ much, the pattern for mining trees looks
     --   pretty damn stupid.
-    -- TODO: Block priorities!
-    -- - The incoming block list should be sorted by its priority, thus you can
-    --   pick what blocks are mined first in the recursion. This will allow going
-    --   for trunks early in trees, for example.
 
     -- Main loop
     while true do
@@ -905,11 +958,26 @@ local function recursive_miner(config)
 
         -- Mark the blocks as wanted if needed.
         for i = 1, #neighbor_blocks do
-            if block_wanted(neighbor_blocks[i], mineable_names, mineable_tags) then
+            local bool, name_index, tag_index = block_wanted(neighbor_blocks[i], mineable_names, mineable_tags)
+            if bool then
                 -- We want this.
                 -- No need to clone on the way in, as the positions are not borrowed
                 -- from anywhere.
-                to_mine[#to_mine+1] = neighbor_positions[i]
+                -- This also will the info for what tag made the block wanted for tracking.
+                -- We do not directly increment here, just in case the block magically
+                -- disappears later.
+
+                --- @type PositionWithReason
+                local p_w_r = {
+                    pos = neighbor_positions[i],
+                }
+                if name_index then
+                    p_w_r.name_string = mineable_names[name_index]
+                else
+                    p_w_r.tag_string = mineable_tags[tag_index]
+                end
+
+                to_mine[#to_mine+1] = p_w_r
             end
         end
 
@@ -928,7 +996,7 @@ local function recursive_miner(config)
         local pos_to_mine = pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
 
         -- Peek at the top block, are we next to it?
-        if not isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
+        if not isPositionAdjacent(wb.cur_position.position, pos_to_mine.pos) then
             -- Walk back until we are next to it.
             while true do
                 -- os.setComputerLabel("Moving back...")
@@ -940,14 +1008,14 @@ local function recursive_miner(config)
                 -- Every time we step back, the priorities will change.
                 pos_to_mine = pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
 
-                if isPositionAdjacent(wb.cur_position.position, pos_to_mine) then
+                if isPositionAdjacent(wb.cur_position.position, pos_to_mine.pos) then
                     break
                 end
 
                 -- While moving backwards, we may have a shortcut we can take.
                 -- Shortcuts run _after_ the break check, since if we called this
                 -- first, we could mine what is being looked for before the break.
-                post_movement_shortcuts(wb, seen_blocks, to_mine)
+                post_movement_shortcuts(wb, seen_blocks, to_mine, miner_return_value)
             end
         end
 
@@ -955,17 +1023,20 @@ local function recursive_miner(config)
         -- We are now next to the block we need to mine.
 
         -- We will mine it, then move into it if moving in would provide information.
-        mine_or_die(wb, pos_to_mine)
+        -- Need to keep track if it was actually mined or not so we can update
+        -- statistics.
+        local actually_mined = mine_or_die(wb, pos_to_mine.pos)
 
-        if moving_would_give_info(pos_to_mine, seen_blocks) then
+        if moving_would_give_info(pos_to_mine.pos, seen_blocks) then
             -- Its worth moving in here. The scan will happen automatically on
             -- the next loop.
-            move_or_die(wb, pos_to_mine)
-            post_movement_shortcuts(wb, seen_blocks, to_mine)
+            move_or_die(wb, pos_to_mine.pos)
+            post_movement_shortcuts(wb, seen_blocks, to_mine, miner_return_value)
         end
 
-        -- Remove the old block from the list
-        mark_mined(pos_to_mine, to_mine)
+        -- Remove the old block from the list, adding it to the tally if we
+        -- did actually mine something.
+        mark_mined(pos_to_mine.pos, to_mine, miner_return_value, actually_mined)
 
         -- If we are running out of fuel, refuel if we are allowed to.
         -- We always burn only one item to keep our usage minimal and not overshoot.
@@ -1013,7 +1084,7 @@ local function recursive_miner(config)
 
     -- Loop broken, its time to perform the walkback.
     -- The walkback is automatically preformed by try_finish_task.
-    return task_helpers.try_finish_task(config)
+    return task_helpers.try_finish_task(config, miner_return_value)
 end
 
 

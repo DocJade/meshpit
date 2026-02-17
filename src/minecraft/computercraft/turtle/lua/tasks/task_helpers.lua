@@ -90,6 +90,8 @@ function task_helpers.throw(reason)
         reason = reason,
         stacktrace = debug.traceback(nil, 2)
     }
+    -- Doing a throw here stops the subroutine immediately without needing to
+    -- propagate this value upwards.
     error(task_failure, 0)
 end
 

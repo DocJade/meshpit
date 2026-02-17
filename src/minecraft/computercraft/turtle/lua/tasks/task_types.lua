@@ -68,6 +68,7 @@
 --- | "inventory full"
 --- | "out of fuel"
 --- | "walkback rewind failure"
+--- | "sub-task died"
 
 --- The special `none` result type for tasks if they don't need to send any
 --- response information. Imagine a task that only spins in a circle as a dumb

@@ -78,21 +78,23 @@ function helpers.slice_array(input_table, slice_start, slice_end)
 end
 
 --- Check if an array contains a matching item.
+---
+--- Returns a boolean, and the index that the item was found at.
 --- @generic T
 --- @param array T[]
 --- @param to_find T
---- @return boolean
+--- @return boolean, number|nil
 function helpers.arrayContains(array, to_find)
     local to_find_type = type(to_find)
-    for _, v in ipairs(array) do
+    for i, v in ipairs(array) do
         -- skip incorrect types
         if to_find_type == type(v) then
             if v == to_find then
-                return true
+                return true, i
             end
         end
     end
-    return false
+    return false, nil
 end
 
 -- === === ===

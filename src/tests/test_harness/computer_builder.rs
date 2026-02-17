@@ -4,6 +4,7 @@
 pub(super) const COMPUTER_STATE_CHANGE_TIME: Duration = Duration::from_millis(1000);
 
 use std::{path::PathBuf, time::Duration};
+use walkdir::WalkDir;
 
 use crate::tests::prelude::*;
 
@@ -77,13 +78,14 @@ impl MeshpitLibraries {
         if self.mesh_os.unwrap_or(false) {
             paths.push(lua_folder.join("mesh_os.lua"));
             // Need to also grab all of the tasks.
-            // Yes this flattens the directory structure but thats fine, we don't
-            // rely on it anyways.
             let task_folder = lua_folder.join("tasks");
-            for task in task_folder.as_path().read_dir().unwrap() {
-                let task = task.unwrap();
-                // Blindly copy
-                paths.push(task.path())
+            for entry in WalkDir::new(task_folder)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
+                if entry.file_type().is_file() {
+                    paths.push(entry.path().to_path_buf());
+                }
             }
         };
         paths
