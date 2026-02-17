@@ -293,6 +293,7 @@ local function setupNewTask(task_definition, is_sub_task)
         -- TODO: See below todo lol
         ---@diagnostic disable-next-line: assign-type-mismatch
         task_thread = nil,
+        is_sub_task = is_sub_task,
         walkback = walkback
     }
 
@@ -399,6 +400,18 @@ end
 local function finishTask(task, result)
     -- We don't take in walkback here or use the global since we can just keep
     -- referencing the one that comes with the task.
+
+    -- If this is a sub-task, update the parent task.
+    if task.is_sub_task then
+        -- Update the parent with the resulting data.
+
+        -- There should always be a parent task. If not... big bug.
+        local parent_task = task_queue[#task_queue - 1]
+        panic.assert(parent_task ~= nil, "Sub-task ended with no parent task!")
+
+        parent_task.last_subtask_result = result
+        -- spawnSubTask will nab this back off later.
+    end
 
     -- Remove the task from the queue.
     task_queue[#task_queue] = nil

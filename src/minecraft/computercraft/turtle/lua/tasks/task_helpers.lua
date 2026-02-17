@@ -8,9 +8,12 @@ local helpers = require("helpers")
 ---
 --- This will yield the current task until the sub-task completes.
 ---
+--- Returns a boolean and the result of the sub-task, if any.
+---
 --- Returns `false` if the subtask was unable to be spawned for any reason.
 --- @param current_task TurtleTask -- The currently running task.
 --- @param subtask TaskDefinition
+--- @return boolean, TaskCompletion|TaskFailure|nil
 function task_helpers.spawnSubTask(current_task, subtask)
     -- Sub-tasks are easy to spawn, but we do need to meet the requirements the
     -- definition sets, otherwise adding the task would immediately fail.
@@ -18,7 +21,7 @@ function task_helpers.spawnSubTask(current_task, subtask)
     -- Is the fuel buffer for the sub-task
     if subtask.fuel_buffer > current_task.walkback:getFuelLevel() then
         -- Impossible.
-        return false
+        return false, nil
     end
 
     -- Spawn the task.
@@ -32,7 +35,15 @@ function task_helpers.spawnSubTask(current_task, subtask)
     task_helpers.taskYield()
 
     -- If we're back here, the sub task is done!
-    return true
+    -- Retrieve the sub-task's result.
+
+    -- We immediately snipe it out of the TurtleTask, since the value stored
+    -- is only meant to be returned here. That's its only purpose. It doesn't
+    -- even pass butter.
+
+    local sub_task_result = current_task.last_subtask_result
+    current_task.last_subtask_result = nil
+    return true, sub_task_result
 end
 
 --- Queue a event. This is a wrapper around the inner computercraft call, as
@@ -175,8 +186,9 @@ end
 --- to some un-met constraint, then this will return false.
 ---
 ---@param turtle_task TurtleTask
+---@param result_data TaskResultData
 ---@return TaskCompletion
-function task_helpers.try_finish_task(turtle_task)
+function task_helpers.try_finish_task(turtle_task, result_data)
     -- Run walkback if needed.
     if turtle_task.definition.return_to_start then
         -- Is there any walkback to do?
@@ -215,7 +227,7 @@ function task_helpers.try_finish_task(turtle_task)
 
     -- All good.
     ---@type TaskCompletion
-    return {kind = "success"}
+    return {kind = "success", result = result_data}
 end
 
 return task_helpers

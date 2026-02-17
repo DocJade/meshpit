@@ -30,6 +30,31 @@
 --- @field mineable_tags MinecraftBlockTag[]? -- A list of block tags that can be mined. Works in tandem with mineable_names.
 --- @field fuel_patterns string[]? -- A list of string patterns that are allowed as fuel. For example, `coal` matches `minecraft:coal` or `minecraft:coal_block`
 
+--- What blocks were mined during the task. The format is a bit strange since
+--- we need to keep track of blocks and tags separately.
+---
+--- When a block is mined, it does not update every matching tag or name, only the
+--- one that caused it to be mined.
+---
+--- Thus each name and tag gets paired with a number.
+--- @class MinedBlocks
+--- @field names_result {[string]: number}
+--- @field tags_result {[string]: number}
+
+--- The result of the recursive miner.
+---
+--- TODO: Need to make this also somehow track fuels used in a way that makes
+--- sense so that callers can know that we did indeed mine the blocks requested,
+--- but some were used as fuel. No idea how to make this work for like coal ore
+--- and such. Will do later.
+---
+--- mined_blocks
+--- @class RecursiveMinerResult
+--- @field name "recursive_miner_result"
+--- @field mined_blocks MinedBlocks -- See MinedBlocks
+
+
+
 local helpers = require("helpers")
 local task_helpers = require ("task_helpers")
 local constants = require("constants")
