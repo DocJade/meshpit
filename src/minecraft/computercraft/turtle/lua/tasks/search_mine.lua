@@ -1,0 +1,105 @@
+-- Searches for and mines matching blocks
+
+--- Assumptions this task makes:
+--- - The turtle is equipped with a tool that can break all of the requested kinds
+---   of blocks. This also means you cannot request to break unbreakable blocks.
+--- - The assumptions made in the passed MiningStyle are upheld.
+---
+--- Task completion states:
+--- - The task has been running for longer than the alloted time.
+--- - Every requested block type has been mined at least the desired number of times
+---
+--- Task failures states:
+--- - The turtle is unable to return to the starting position for some reason.
+---   IE there are blocks in the way of the walkback so the turtle is stuck.
+--- - The turtle cannot break a block that it wants to break.
+--- - The turtle is not allowed to refuel with the items it's mining with, and
+---   has ran our of the allowed fuel supply.
+--- - The turtle has ran out of inventory space (turtle is required to always
+---   have one empty slot) and there was nothing we could discard.
+---
+--- Notes:
+--- - It is highly unlikely that any mining will happen if you pass in no incidental
+---   blocks. If you know you are already starting directly next to the block you
+---   want to mine, use the recursive_miner task instead.
+
+--- The configuration for the search_mine task.
+--- @class SearchMineTaskData
+--- @field name "search_mine"
+--- @field desired DesiredBlocks -- See DesiredBlocks
+--- @field incidental IncidentalBlocks? -- See IncidentalBlocks
+--- @field discardables DiscardableItems?
+--- @field target_saplings number? -- Target number of saplings to keep on hand. Extras will be burnt as fuel. Defaults to 16.
+--- @ -- Items you are allowed to discard if the inventory of the turtle is getting full. Take care to not discard goal items.
+
+
+
+--- Desired blocks to mine. The blocks contained within should be ordered by
+--- preference, as the blocks at the front of the list will be mined first. Do
+--- note that if you wish to self-refuel it may be a good idea to always put
+--- blocks that can be burnt as fuel at the top of the priority list.
+---
+--- This is an array of blocks, paired with the mining amounts. When the desired
+--- amount of blocks of a kind have been mined, these blocks will no-longer be
+--- passed into recursive_miner, and thus will be skipped over if seen.
+---
+--- For flexibility, the blocks within the array are described in such a way that
+--- you can put multiple blocks into one block, combining names or tags if desired.
+--- Thus you can group together the blocks into groups, and once that group has
+--- seen the specified amount of blocks mined, the entire group will be marked
+--- as finished.
+---
+--- The desired_total is how many blocks total that match this group need to be
+--- mined to mark the group as completed.
+---
+--- `mined` must be set to zero, or not set at all.
+---
+--- @class DesiredBlocks
+--- @field groups {group: BlockGroup, desired_total: number, mined: number|nil}[]
+
+--- Groups of blocks, or singular blocks. See DesiredBlocks for more info.
+---
+--- The array fields must not be nill. Use an empty table instead.
+--- @class BlockGroup
+--- @field names_patterns string[] -- Patterns that will match the names of blocks in the group.
+--- @field tags string[] -- Tags that blocks in this group may have.
+
+--- Groups of items. Like groups of blocks, but for items. Duh.
+---
+--- This is stored in a separate type to prevent mixing up blocks and items.
+--- @class ItemGroup
+--- @field names_patterns string[] -- Patterns that will match the names of items in this group.
+--- @field tags string[] -- Tags that items in this group may have.
+
+--- Incidental blocks are blocks that are allowed to be mined, but are not
+--- searched for during the mining process. IE, while boring tunnels to search
+--- for desired blocks, these are the blocks that are allowed to be mined.
+---
+--- There is no quota for these blocks.
+--- @class IncidentalBlocks
+--- @field groups BlockGroup[]
+
+--- This contains all of the items that the mining task is allowed to discard
+--- when the inventory of the turtle gets too full. This is a priority list,
+--- items first in this list will be discarded first.
+---
+--- When items are discarded, the turtle will search all of its slots once for
+--- every item in this list until it finds some that it can discard. The turtle
+--- will then find every slot containing this item, and discard the slot with
+--- the least of this item in it, unless `discard_all` is set, in which case it
+--- will drop all of them.
+---
+--- It is recommended to mark `discard_all` on groups of items that are very
+--- common, such as cobblestone.
+--- @class DiscardableItems
+--- @field groups ItemGroup[]
+
+--- There are a few mining patterns to choose from, Including optional configuration
+--- settings in them to better suite your needs :D
+---
+--- See the definitions in their respective files.
+--- @alias MiningStyle
+--- | BoreMiner
+--- | SearchVolumeMiner
+--- | BranchMiner
+--- | FullVolumeMiner

@@ -1,0 +1,18 @@
+--- Mine in a trunk and branch style.
+---
+--- IE, the turtle will mine in a direction for the optimal* number of blocks
+--- before turning to the side, mining for `branch_depth` blocks, then returning
+--- to the trunk, spinning 180 degrees, and branch again in the opposite direction.
+---
+--- *The optimal spacing here is debated, and I'm not about to add to that argument,
+--- so we will define "optimal" as what the minecraft wiki says it is.
+---
+--- https://minecraft.wiki/w/Tutorial:Mining#Efficiency_vs_Thoroughness
+---
+--- The gains above 6 blocks plateau, and the spacing of 9 looks suspicious, as
+--- the efficiency drops at 10. I think 8 is a good middle ground.
+---
+--- Theoretically the best efficiency is just a straight line, but shut up.
+--- @class BranchMiner
+--- @field name "branch_miner"
+--- @field branch_depth number

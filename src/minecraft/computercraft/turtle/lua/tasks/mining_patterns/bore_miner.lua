@@ -1,0 +1,8 @@
+--- Mine in a straight line with an optional distance limit.
+--- Will mine in the direction that the turtle was in when the task was started.
+--- Will always be hard-capped by fuel/walkback distance constraints.
+---
+--- The task will fail if the turtle is unable to continue mining in the
+--- @class BoreMiner
+--- @field name "bore_miner"
+--- @field max_distance number|nil
