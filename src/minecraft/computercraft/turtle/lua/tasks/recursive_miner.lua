@@ -747,7 +747,7 @@ end
 ---
 --- *depth first search
 ---
---- Takes in a TurtleTask. see RecursiveMinerTask for the sub-config.
+--- Takes in a TurtleTask. See RecursiveMinerTask for the sub-config.
 ---@param config TurtleTask
 ---@return TaskCompletion|TaskFailure
 local function recursive_miner(config)

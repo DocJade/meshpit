@@ -35,6 +35,7 @@
 --- @alias TaskDataType
 --- | TreeChopTaskData
 --- | RecursiveMinerData
+--- | StyledMiningData
 
 
 

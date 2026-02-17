@@ -1,4 +1,17 @@
--- Searches for and mines matching blocks
+-- Runs a specified mining style.
+
+-- === ===
+-- Imports
+-- === ===
+
+local task_helpers = require("task_helpers")
+local helpers = require("helpers")
+
+
+
+
+
+
 
 --- Assumptions this task makes:
 --- - The turtle is equipped with a tool that can break all of the requested kinds
@@ -24,13 +37,12 @@
 ---   want to mine, use the recursive_miner task instead.
 
 --- The configuration for the search_mine task.
---- @class SearchMineTaskData
---- @field name "search_mine"
---- @field desired DesiredBlocks -- See DesiredBlocks
---- @field incidental IncidentalBlocks? -- See IncidentalBlocks
---- @field discardables DiscardableItems?
---- @field target_saplings number? -- Target number of saplings to keep on hand. Extras will be burnt as fuel. Defaults to 16.
---- @ -- Items you are allowed to discard if the inventory of the turtle is getting full. Take care to not discard goal items.
+--- @class StyledMiningData
+--- @field name "styled_mining"
+--- @field desired DesiredBlocks -- See DesiredBlocks.
+--- @field incidental IncidentalBlocks? -- See IncidentalBlocks.
+--- @field discardables DiscardableItems? -- See DiscardableItems.
+--- @field fuel_items FuelItems? -- See FuelItems.
 
 
 
@@ -94,6 +106,11 @@
 --- @class DiscardableItems
 --- @field groups ItemGroup[]
 
+--- All of the items that the turtle is allowed to burn to refuel itself while
+--- mining.
+--- @class FuelItems
+--- @field groups ItemGroup[]
+
 --- There are a few mining patterns to choose from, Including optional configuration
 --- settings in them to better suite your needs :D
 ---
@@ -103,3 +120,42 @@
 --- | SearchVolumeMiner
 --- | BranchMiner
 --- | FullVolumeMiner
+
+--- Task that mines based on provided settings. See docs above.
+---
+--- Takes in a TurtleTask. See SearchMineTaskData for the sub-config.
+--- @param config TurtleTask
+--- @return TaskCompletion|TaskFailure
+local function styled_mining(config)
+    local wb = config.walkback
+
+    -- Pre-checks.
+
+    -- Right task?
+    if config.definition.task_data.name ~= "styled_mining" then
+        task_helpers.throw("bad config")
+    end
+
+    -- This must be the right task.
+    local task_data = config.definition.task_data
+    --- @cast task_data StyledMiningData
+
+    -- Something to mine?
+    if #task_data.desired.groups == 0 then
+        task_helpers.throw("bad config")
+    end
+
+    -- Enough fuel?
+    if config.definition.fuel_buffer > wb:getFuelLevel() then
+        task_helpers.throw("out of fuel")
+    end
+
+
+
+    -- todo
+    return
+end
+
+
+
+return styled_mining
