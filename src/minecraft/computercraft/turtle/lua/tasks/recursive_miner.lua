@@ -67,40 +67,6 @@ local findString = helpers.findString
 local getAdjacentBlock = helpers.getAdjacentBlock
 local isPositionAdjacent = helpers.isPositionAdjacent
 
---- Check if an input block matches any of the block groups. Names are checked
---- before tags within each group.
----
---- Returns a boolean for whether the block is wanted, and the group index.
---- @param block Block|nil
---- @param groups BlockGroup[]
---- @return boolean, number|nil
-local function block_wanted(block, groups)
-    -- If the block is air, we do not care.
-    if block == nil then return false, nil end
-
-    -- Check each group in order
-    for group_index, group in ipairs(groups) do
-        -- Names first
-        for _, name_pattern in ipairs(group.names_patterns) do
-            if findString(block.name, name_pattern) then
-                return true, group_index
-            end
-        end
-
-        -- Then tags
-        for _, group_tag in ipairs(group.tags) do
-            for _, block_tag in ipairs(block.tag) do
-                if block_tag == group_tag then
-                    return true, group_index
-                end
-            end
-        end
-    end
-
-    -- No match.
-    return false, nil
-end
-
 --- Get the coordinate positions of all the blocks next to a block.
 ---
 --- The ordering of the directions in here influences the search pattern of the
@@ -929,7 +895,7 @@ local function recursive_miner(config)
 
         -- Mark the blocks as wanted if needed.
         for i = 1, #neighbor_blocks do
-            local bool, group_index = block_wanted(neighbor_blocks[i], mineable_groups)
+            local bool, group_index = helpers.block_wanted(neighbor_blocks[i], mineable_groups)
             if bool then
                 -- We want this.
                 -- No need to clone on the way in, as the positions are not borrowed

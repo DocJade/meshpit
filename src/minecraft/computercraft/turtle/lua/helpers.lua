@@ -943,6 +943,47 @@ end
 
 -- === === ===
 -- === === ===
+-- BlockGroup helpers
+-- === === ===
+-- === === ===
+
+
+--- Check if an input block matches any of the block groups. Names are checked
+--- before tags within each group.
+---
+--- Returns a boolean for whether the block is wanted, and the group index.
+--- @param block Block|nil
+--- @param groups BlockGroup[]
+--- @return boolean, number|nil
+function helpers.block_wanted(block, groups)
+    -- If the block is air, we do not care.
+    if block == nil then return false, nil end
+
+    -- Check each group in order
+    for group_index, group in ipairs(groups) do
+        -- Names first
+        for _, name_pattern in ipairs(group.names_patterns) do
+            if helpers.findString(block.name, name_pattern) then
+                return true, group_index
+            end
+        end
+
+        -- Then tags
+        for _, group_tag in ipairs(group.tags) do
+            for _, block_tag in ipairs(block.tag) do
+                if block_tag == group_tag then
+                    return true, group_index
+                end
+            end
+        end
+    end
+
+    -- No match.
+    return false, nil
+end
+
+-- === === ===
+-- === === ===
 -- Sanity checks.
 -- === === ===
 -- === === ===
