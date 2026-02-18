@@ -11,6 +11,7 @@
 ---
 --- Task completion states:
 --- - There are no more matching blocks to break
+--- - The limit of blocks to break has been hit.
 ---
 --- Task failures states:
 --- - The turtle runs out of fuel.
@@ -26,6 +27,7 @@
 --- @class RecursiveMinerData
 --- @field name "recursive_miner"
 --- @field timeout number? -- Maximum number of seconds to spend in this task. May be nil to continue mining until fuel runs out.
+--- @field blocks_mined_limit number? -- Maximum number of blocks to mine before exiting early. May be nil to continue until fuel runs out or timeout.
 --- @field mineable_names string[]? -- A list of block names that can be mined. Works in tandem with mineable_tags.
 --- @field mineable_tags MinecraftBlockTag[]? -- A list of block tags that can be mined. Works in tandem with mineable_names.
 --- @field fuel_patterns string[]? -- A list of string patterns that are allowed as fuel. For example, `coal` matches `minecraft:coal` or `minecraft:coal_block`
@@ -52,6 +54,7 @@
 --- @class RecursiveMinerResult
 --- @field name "recursive_miner_result"
 --- @field mined_blocks MinedBlocks -- See MinedBlocks
+--- @field total_blocks_mined number -- Total number of blocks mined during the task.
 
 
 
@@ -312,7 +315,7 @@ end
 ---
 --- Modifies `to_mine`, does not modify the incoming position.
 ---
---- Also updates the balance sheet.
+--- Also updates the balance sheet, and total blocks mined.
 --- @param mined_position CoordPosition
 --- @param to_mine PositionWithReason[]
 --- @param miner_return_value RecursiveMinerResult
@@ -339,6 +342,8 @@ local function mark_mined(mined_position, to_mine, miner_return_value, did_you_b
             val = val + 1
             miner_return_value.mined_blocks.tags_result[the_block.tag_string] = val
         end
+        -- We mined another block. Update total
+        miner_return_value.total_blocks_mined = miner_return_value.total_blocks_mined + 1
     end
 
     -- Remove it from the list. Since it may not be at the end, we'll use the
@@ -907,7 +912,8 @@ local function recursive_miner(config)
         mined_blocks = {
             names_result = {},
             tags_result = {}
-        }
+        },
+        total_blocks_mined = 0
     }
 
     -- Pre-populate the result with zeros
@@ -937,6 +943,12 @@ local function recursive_miner(config)
         -- Are we out of time?
         if os.epoch("utc") > stop_time then
             -- Outta time!
+            break
+        end
+
+        -- Can we not mine any more blocks?
+        if task_data.blocks_mined_limit ~= nil and miner_return_value.total_blocks_mined >= task_data.blocks_mined_limit then
+            -- Can't mine any more!
             break
         end
 
