@@ -266,8 +266,12 @@ async fn recursive_miner_test() {
         task_data = {
             name = "recursive_miner",
             timeout = 60,
-            mineable_names = {"minecraft:stone"},
-            mineable_tags = {},
+            mineable_groups = {
+                {
+                    names_patterns = {"minecraft:stone"},
+                    tags = {}
+                }
+            },
             fuel_patterns = {},
         },
     }

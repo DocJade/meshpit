@@ -218,10 +218,17 @@ local function tree_chop(config)
     -- No timeout, since it should just be one tree... unless it gets stuck
     -- in a forest, which actually is very funny and i do not care, the
     -- inventory will eventually be full.
+    -- TODO: Eventually split logs and leaves into separate groups so we dont
+    -- mine leaves if we dont need saplings.
     ---@type RecursiveMinerData
     miner_data = {
         name = "recursive_miner",
-        mineable_tags = {log_tag, leaves_tag},
+        mineable_groups = {
+            {
+                names_patterns = {},
+                tags = {log_tag, leaves_tag}
+            }
+        },
         -- These patterns are anchored so we only try to mine items that END with
         -- these names. Otherwise `stick` would match `sticky_piston` for example.
         -- We also want to burn sticks before logs.
@@ -275,10 +282,11 @@ local function tree_chop(config)
         if mining_worked then
             -- Make sure we at least mined a log.
             ---@cast mining_result RecursiveMinerResult
-            local logs_chopped = mining_result.mined_blocks.tags_result[log_tag]
+            -- Only one group (right now at least. todo moment), so group 1
+            local logs_and_leaves_chopped = mining_result.mined_blocks.counts[1]
             -- We won't use this number at all since the recursive miner may have
             -- eaten some of them. But we can at least do a sanity check.
-            task_helpers.assert(logs_chopped > 0)
+            task_helpers.assert(logs_and_leaves_chopped > 0)
         else
             -- Failed to chop the tree for some reason!
             -- TODO: Currently there is no handling for this, maybe there doesn't

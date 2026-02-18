@@ -28,20 +28,17 @@
 --- @field name "recursive_miner"
 --- @field timeout number? -- Maximum number of seconds to spend in this task. May be nil to continue mining until fuel runs out.
 --- @field blocks_mined_limit number? -- Maximum number of blocks to mine before exiting early. May be nil to continue until fuel runs out or timeout.
---- @field mineable_names string[]? -- A list of block names that can be mined. Works in tandem with mineable_tags.
---- @field mineable_tags MinecraftBlockTag[]? -- A list of block tags that can be mined. Works in tandem with mineable_names.
+--- @field mineable_groups BlockGroup[] -- Groups of blocks that can be mined. Groups are ordered by priority.
 --- @field fuel_patterns string[]? -- A list of string patterns that are allowed as fuel. For example, `coal` matches `minecraft:coal` or `minecraft:coal_block`
 
---- What blocks were mined during the task. The format is a bit strange since
---- we need to keep track of blocks and tags separately.
+--- What blocks were mined during the task. Tracks at the group level.
 ---
---- When a block is mined, it does not update every matching tag or name, only the
---- one that caused it to be mined.
+--- When a block is mined, only the group that matched is incremented.
+--- The counts array is parallel to the mineable_groups array passed in the config.
+--- IE: counts[1] is the number of blocks mined from mineable_groups[1].
 ---
---- Thus each name and tag gets paired with a number.
 --- @class MinedBlocks
---- @field names_result {[string]: number}
---- @field tags_result {[string]: number}
+--- @field counts number[]
 
 --- The result of the recursive miner.
 ---
@@ -70,33 +67,32 @@ local findString = helpers.findString
 local getAdjacentBlock = helpers.getAdjacentBlock
 local isPositionAdjacent = helpers.isPositionAdjacent
 
---- Check if an input block matches the required names or tags. Block names
---- are checked before block tags.
+--- Check if an input block matches any of the block groups. Names are checked
+--- before tags within each group.
 ---
---- Returns a boolean for wether or not the block is wanted, and 2 indexes. The
---- first index is into the wanted_names list, the second into the wanted_tags
---- list. Only one of these will be set, the other will be nil.
+--- Returns a boolean for whether the block is wanted, and the group index.
 --- @param block Block|nil
---- @param wanted_names string[]?
---- @param wanted_tags string[]?
---- @return boolean, number|nil, number|nil
-local function block_wanted(block, wanted_names, wanted_tags)
+--- @param groups BlockGroup[]
+--- @return boolean, number|nil
+local function block_wanted(block, groups)
     -- If the block is air, we do not care.
     if block == nil then return false, nil end
 
-    -- Check the name first, then the tags.
-    if wanted_names then
-        local bool, index = arrayContains(wanted_names, block.name)
-        if bool then
-            return true, index, nil
+    -- Check each group in order
+    for group_index, group in ipairs(groups) do
+        -- Names first
+        for _, name_pattern in ipairs(group.names_patterns) do
+            if findString(block.name, name_pattern) then
+                return true, group_index
+            end
         end
-    end
 
-    if wanted_tags then
-        for _, tag in ipairs(block.tag) do
-            local bool, index = arrayContains(wanted_tags, tag)
-            if bool then
-                return true, nil, index
+        -- Then tags
+        for _, group_tag in ipairs(group.tags) do
+            for _, block_tag in ipairs(block.tag) do
+                if block_tag == group_tag then
+                    return true, group_index
+                end
             end
         end
     end
@@ -332,16 +328,11 @@ local function mark_mined(mined_position, to_mine, miner_return_value, did_you_b
 
     -- Update the statistics if needed.
     if did_you_break_it then
-        if the_block.name_string ~= nil then
-            -- god these are long lmao
-            local val = miner_return_value.mined_blocks.names_result[the_block.name_string]
-            val = val + 1
-            miner_return_value.mined_blocks.names_result[the_block.name_string] = val
-        else
-            local val = miner_return_value.mined_blocks.tags_result[the_block.tag_string]
-            val = val + 1
-            miner_return_value.mined_blocks.tags_result[the_block.tag_string] = val
-        end
+        -- god these are long lmao
+        local val = miner_return_value.mined_blocks.counts[the_block.group_index]
+        val = val + 1
+        miner_return_value.mined_blocks.counts[the_block.group_index] = val
+
         -- We mined another block. Update total
         miner_return_value.total_blocks_mined = miner_return_value.total_blocks_mined + 1
     end
@@ -668,10 +659,9 @@ end
 --- @param wb WalkbackSelf
 --- @param to_mine PositionWithReason[]
 --- @param seen_blocks {[string]: true}
---- @param mineable_names string[]
---- @param mineable_tags string[]
+--- @param mineable_groups BlockGroup[]
 --- @return PositionWithReason
-local function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
+local function pick_next_mine(wb, to_mine, seen_blocks, mineable_groups)
     local p, f = wb.cur_position.position, wb.cur_position.facing
 
     -- Bail if there is nothing to do, or only one thing to do. As re-ordering
@@ -746,30 +736,10 @@ local function pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable
         -- We already stored what kind it is so we can just use those stored values.
         -- extra swag too, since now we don't need to hit global state.
 
-        -- Names
-        if pop_pos.pwr.name_string then
-            for i, name in ipairs(mineable_names) do
-                if name == pop_pos.pwr.name_string then
-                    pop_pos.score = pop_pos.score + ((#mineable_names - i) * scaling_factor)
-                    goto next_position
-                end
-            end
-        end
-
-        -- Tags
-        if pop_pos.pwr.tag_string then
-            for i, tag in ipairs(mineable_tags) do
-                if tag == pop_pos.pwr.tag_string then
-                    pop_pos.score = pop_pos.score + ((#mineable_tags - i) * scaling_factor)
-                    goto next_position
-                end
-            end
-        end
-
-        -- This is unreachable.
-        assert(false, "unreachable. No name or tag match?")
-
-        ::next_position::
+        -- Groups are ordered by priority,
+        -- so lower index means higher priority.
+        local group_index = pop_pos.pwr.group_index
+        pop_pos.score = pop_pos.score + ((#mineable_groups - group_index) * scaling_factor)
     end
 
 
@@ -828,7 +798,7 @@ local function recursive_miner(config)
     end
 
     -- There must be some kind of block to mine
-    if (task_data.mineable_names == nil) and (task_data.mineable_tags == nil) then
+    if task_data.mineable_groups == nil or #task_data.mineable_groups == 0 then
         -- Can't mine nothing!
         task_helpers.throw("bad config")
     end
@@ -861,8 +831,7 @@ local function recursive_miner(config)
     -- Just shorten the name of these
     local fuel_buffer = config.definition.fuel_buffer
     local fuel_patterns = task_data.fuel_patterns or {}
-    local mineable_names = task_data.mineable_names or {}
-    local mineable_tags = task_data.mineable_tags or {}
+    local mineable_groups = task_data.mineable_groups
     local stop_time = 9999999999999999999999; -- roughly the year 317 million
     if task_data.timeout ~= nil then
         ---@diagnostic disable-next-line: undefined-field
@@ -888,11 +857,10 @@ local function recursive_miner(config)
     ---@type {[string]: true}
     local seen_blocks = {}
 
-    --- One of the indexes must be set.
+    --- Tracks which group this position matched.
     --- @class PositionWithReason
     --- @field pos CoordPosition
-    --- @field name_string string | nil
-    --- @field tag_string string | nil
+    --- @field group_index number
 
     --- The list of blocks that need to be mined. New blocks are pushed onto the
     --- end of the list, as we look at the position at the top of the list to
@@ -910,19 +878,14 @@ local function recursive_miner(config)
     local miner_return_value = {
         name = "recursive_miner_result",
         mined_blocks = {
-            names_result = {},
-            tags_result = {}
+            counts = {}
         },
         total_blocks_mined = 0
     }
 
-    -- Pre-populate the result with zeros
-    for _, str in ipairs(mineable_names) do
-        miner_return_value.mined_blocks.names_result[str] = 0
-    end
-
-    for _, str in ipairs(mineable_tags) do
-        miner_return_value.mined_blocks.tags_result[str] = 0
+    -- Pre-populate the result with zeros for each group
+    for i = 1, #mineable_groups do
+        miner_return_value.mined_blocks.counts[i] = 0
     end
 
     -- TODO: Pattern improvements!
@@ -970,24 +933,22 @@ local function recursive_miner(config)
 
         -- Mark the blocks as wanted if needed.
         for i = 1, #neighbor_blocks do
-            local bool, name_index, tag_index = block_wanted(neighbor_blocks[i], mineable_names, mineable_tags)
+            local bool, group_index = block_wanted(neighbor_blocks[i], mineable_groups)
             if bool then
                 -- We want this.
                 -- No need to clone on the way in, as the positions are not borrowed
                 -- from anywhere.
-                -- This also will the info for what tag made the block wanted for tracking.
+                -- This tracks which group matched for tracking later.
                 -- We do not directly increment here, just in case the block magically
                 -- disappears later.
+
+                --- @cast group_index number
 
                 --- @type PositionWithReason
                 local p_w_r = {
                     pos = neighbor_positions[i],
+                    group_index = group_index
                 }
-                if name_index then
-                    p_w_r.name_string = mineable_names[name_index]
-                else
-                    p_w_r.tag_string = mineable_tags[tag_index]
-                end
 
                 to_mine[#to_mine+1] = p_w_r
             end
@@ -1005,7 +966,7 @@ local function recursive_miner(config)
 
         -- There is something to mine!
         -- Mine the first thing as usual.
-        local pos_to_mine = pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
+        local pos_to_mine = pick_next_mine(wb, to_mine, seen_blocks, mineable_groups)
 
         -- Peek at the top block, are we next to it?
         if not isPositionAdjacent(wb.cur_position.position, pos_to_mine.pos) then
@@ -1018,7 +979,7 @@ local function recursive_miner(config)
                 task_helpers.assert(r)
 
                 -- Every time we step back, the priorities will change.
-                pos_to_mine = pick_next_mine(wb, to_mine, seen_blocks, mineable_names, mineable_tags)
+                pos_to_mine = pick_next_mine(wb, to_mine, seen_blocks, mineable_groups)
 
                 if isPositionAdjacent(wb.cur_position.position, pos_to_mine.pos) then
                     break
