@@ -232,4 +232,51 @@ function task_helpers.try_finish_task(turtle_task, result_data)
     return {kind = "success", result = result_data}
 end
 
+--- Attempt to burn a single item as fuel from the turtle's inventory based
+--- on string patterns. These patterns only match names. Be careful to not use
+--- patterns that are too broad.
+---
+--- Iterates the inventory front to back for items to burn, after finding a match,
+--- one item from that matching slot will be consumed as fuel.
+---
+--- Preserves what inventory slot was selected before the call.
+---
+--- Returns true if an item was burnt.
+--- @param walkback WalkbackSelf
+--- @param fuel_patterns string[]
+--- @return boolean
+function task_helpers.tryRefuelFromInventory(walkback, fuel_patterns)
+    -- Can't burn no options!
+    if #fuel_patterns == 0 then return false end
+
+    local original_slot = walkback:getSelectedSlot()
+
+    -- Front to back since when mining those are the stacks added to first.
+    for i = 1, 16 do
+        local item = walkback:getItemDetail(i)
+        -- Skip empty slots
+        if not item then goto continue end
+
+        -- Check if the item matches any pattern
+        for _, pattern in pairs(fuel_patterns) do
+            if not helpers.findString(item.name, pattern) then goto bad_pattern end
+
+            -- Good item, try burning it
+            walkback:select(i)
+            local did_refuel = walkback:refuel(1)
+            walkback:select(original_slot)
+
+            -- Did that work?
+            if did_refuel then return true end
+
+            ::bad_pattern::
+        end
+        ::continue::
+    end
+
+    -- Just in case...
+    walkback:select(original_slot)
+    return false
+end
+
 return task_helpers

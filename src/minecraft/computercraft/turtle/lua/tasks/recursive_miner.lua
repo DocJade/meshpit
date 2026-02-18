@@ -838,10 +838,6 @@ local function recursive_miner(config)
         stop_time = os.epoch("utc") + (task_data.timeout * 1000)
     end
 
-    -- Need to preserve what slot is selected.
-    local original_slot = wb:getSelectedSlot()
-
-
     -- The list of the blocks we have checked. If a block is ever looked at, it
     -- goes in here. This is separate from the wb:all_seen_blocks since we need
     -- to differentiate blocks we've _checked_ and blocks we've seen, as we
@@ -1011,45 +1007,11 @@ local function recursive_miner(config)
         -- did actually mine something.
         mark_mined(pos_to_mine.pos, to_mine, miner_return_value, actually_mined)
 
-        -- If we are running out of fuel, refuel if we are allowed to.
-        -- We always burn only one item to keep our usage minimal and not overshoot.
-        -- Additionally, if we're mining items that we're allowed to smelt, those items
-        -- would tend to be towards the top of the inventory, thus we iterate
-        -- front to back.
-
-        local did_refuel
-        if #fuel_patterns == 0 or movement_budget - 1 > 0 then
-            goto skip_refuel
+        -- If we are running low on fuel, try to refuel from the inventory if we're allowed to.
+        -- We always burn only one item per cycle to keep usage minimal and not overshoot.
+        if movement_budget - 1 <= 0 then
+            task_helpers.tryRefuelFromInventory(wb, fuel_patterns)
         end
-
-        did_refuel = false
-
-        for i = 1, 16 do
-            local item = wb:getItemDetail(i)
-            -- Skip if there is no item
-            if not item then goto continue end
-
-            -- Does the name match?
-            for _, pattern in pairs(fuel_patterns) do
-                ---@cast pattern string
-                -- Check if item matches
-                if not findString(item.name, pattern) then goto bad_pattern end
-
-                -- Valid item, try using it.
-                wb:select(i)
-                did_refuel = wb:refuel(1)
-                wb:select(original_slot)
-
-                -- Break out if that worked.
-                if did_refuel then break end
-
-                ::bad_pattern::
-                -- That didn't work, keep going.
-            end
-            if did_refuel then break end
-            ::continue::
-        end
-        ::skip_refuel::
 
         -- Loop! The next iteration will scan for more blocks and continue the
         -- recursion. Although it't not _really_ recursion, but shush.
