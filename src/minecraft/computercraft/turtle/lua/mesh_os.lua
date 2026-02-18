@@ -401,6 +401,14 @@ local function finishTask(task, result)
     -- We don't take in walkback here or use the global since we can just keep
     -- referencing the one that comes with the task.
 
+    -- If we're testing, we need to be able to get data out of the OS.
+    -- Thus, we will throw the result of the task if this was the final
+    -- task in the queue.
+    if test_mode and #task_queue == 1 then
+        -- Last test in the queue. Return the result directly.
+        error(result)
+    end
+
     -- If this is a sub-task, update the parent task.
     if task.is_sub_task then
         -- Update the parent with the resulting data.
