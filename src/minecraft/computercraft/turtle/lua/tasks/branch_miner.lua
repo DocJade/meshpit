@@ -1,4 +1,4 @@
--- Runs a specified mining style.
+-- Task to mine for blocks, searching in a branching pattern.
 
 -- === ===
 -- Imports
@@ -13,10 +13,33 @@ local helpers = require("helpers")
 
 
 
+
+-- === ===
+-- Task-specific constants.
+-- === ===
+
+
+--- *The optimal spacing here is debated, and I'm not about to add to that argument,
+--- so we will define "optimal" as what the minecraft wiki says it is.
+---
+--- https://minecraft.wiki/w/Tutorial:Mining#Efficiency_vs_Thoroughness
+---
+--- The gains above 6 blocks plateau, and the spacing of 9 looks suspicious, as
+--- the efficiency drops at 10. I think 8 is a good middle ground.
+---
+--- Theoretically the best efficiency is just a straight line, but shut up.
+local BRANCH_SPACING = 8
+
+
+
+
+
+
+
+
 --- Assumptions this task makes:
 --- - The turtle is equipped with a tool that can break all of the requested kinds
 ---   of blocks. This also means you cannot request to break unbreakable blocks.
---- - The assumptions made in the passed MiningStyle are upheld.
 ---
 --- Task completion states:
 --- - The task has been running for longer than the alloted time.
@@ -37,8 +60,8 @@ local helpers = require("helpers")
 ---   want to mine, use the recursive_miner task instead.
 
 --- The configuration for the search_mine task.
---- @class StyledMiningData
---- @field name "styled_mining"
+--- @class BranchMinerData
+--- @field name "branch_miner"
 --- @field desired DesiredBlocks -- See DesiredBlocks.
 --- @field incidental IncidentalBlocks? -- See IncidentalBlocks.
 --- @field discardables DiscardableItems? -- See DiscardableItems.
@@ -111,34 +134,34 @@ local helpers = require("helpers")
 --- @class FuelItems
 --- @field groups ItemGroup[]
 
---- There are a few mining patterns to choose from, Including optional configuration
---- settings in them to better suite your needs :D
----
---- See the definitions in their respective files.
---- @alias MiningStyle
---- | BoreMiner
---- | SearchVolumeMiner
---- | BranchMiner
---- | FullVolumeMiner
 
---- Task that mines based on provided settings. See docs above.
+
+
+
+--- Mines for specified blocks in a branch pattern.
 ---
---- Takes in a TurtleTask. See SearchMineTaskData for the sub-config.
+--- IE, the turtle will mine in a direction for the optimal* number of blocks
+--- before turning to the side, mining for `branch_depth` blocks, then returning
+--- to the trunk, spinning 180 degrees, and branch again in the opposite direction.
+---
+--- *see the global at the top of the file.
+---
+--- Takes in a TurtleTask. See BranchMinerData for the sub-config.
 --- @param config TurtleTask
 --- @return TaskCompletion|TaskFailure
-local function styled_mining(config)
+local function branch_miner(config)
     local wb = config.walkback
 
     -- Pre-checks.
 
     -- Right task?
-    if config.definition.task_data.name ~= "styled_mining" then
+    if config.definition.task_data.name ~= "branch_miner" then
         task_helpers.throw("bad config")
     end
 
     -- This must be the right task.
     local task_data = config.definition.task_data
-    --- @cast task_data StyledMiningData
+    --- @cast task_data BranchMinerData
 
     -- Something to mine?
     if #task_data.desired.groups == 0 then
@@ -158,4 +181,4 @@ end
 
 
 
-return styled_mining
+return branch_miner

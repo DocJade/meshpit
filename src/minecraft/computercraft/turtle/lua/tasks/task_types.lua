@@ -44,7 +44,7 @@
 --- @alias TaskDataType
 --- | TreeChopTaskData
 --- | RecursiveMinerData
---- | StyledMiningData
+--- | BranchMinerData
 
 --- TaskCompletion is the type returned by tasks when they finish their duties and
 --- no-longer need to be resumed.
