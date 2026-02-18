@@ -66,28 +66,7 @@ local keyFromTable = helpers.keyFromTable
 local findString = helpers.findString
 local getAdjacentBlock = helpers.getAdjacentBlock
 local isPositionAdjacent = helpers.isPositionAdjacent
-
---- Get the coordinate positions of all the blocks next to a block.
----
---- The ordering of the directions in here influences the search pattern of the
---- turtle.
---- @param position CoordPosition
---- @param facing CardinalDirection
---- @return CoordPosition[]
-local function get_true_neighbor_blocks(position, facing)
-    -- This should be fairly fast, since it's all just math, no actual
-    -- game-state.
-    -- Also, the ordering here gives us our priorities. First in last out.
-    -- We prefer to go straight up, then going back down last.
-    local neighbors = {}
-    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "d")
-    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "l")
-    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "b")
-    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "r")
-    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "f")
-    neighbors[#neighbors + 1] = getAdjacentBlock(position, facing, "u")
-    return neighbors
-end
+local GetNeighborBlocks = helpers.GetNeighborBlocks
 
 --- Helper function to check if a position has been seen within the list of seen
 --- positions.
@@ -112,7 +91,7 @@ end
 --- @param seen_blocks {[string]: true}
 --- @return CoordPosition[]
 local function get_unseen_neighbor_blocks(position, facing, seen_blocks)
-    local all_neighbors = get_true_neighbor_blocks(position, facing)
+    local all_neighbors = GetNeighborBlocks(position, facing)
 
     ---@type CoordPosition[]
     local kept_neighbors = {}

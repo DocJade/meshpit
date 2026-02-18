@@ -941,6 +941,24 @@ function helpers.getAdjacentBlock(position, facing, side)
 	}
 end
 
+--- Get the coordinate positions of all the blocks next to a block.
+--- @param position CoordPosition
+--- @param facing CardinalDirection
+--- @return CoordPosition[]
+function helpers.GetNeighborBlocks(position, facing)
+    -- This should be fairly fast, since it's all just math, no actual
+    -- game-state.
+    -- The ordering here is strange since its also used for mining priorities. lol
+    local neighbors = {}
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "d")
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "l")
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "b")
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "r")
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "f")
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "u")
+    return neighbors
+end
+
 -- === === ===
 -- === === ===
 -- BlockGroup helpers
