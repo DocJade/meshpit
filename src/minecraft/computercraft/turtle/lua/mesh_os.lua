@@ -38,6 +38,7 @@ require("networking")
 -- import all the task functions
 local tree_chop_function = require("tree_chop")
 local recursive_miner_function = require("recursive_miner")
+local branch_miner_function = require("branch_miner")
 
 -- Bring globals into scope to make them faster
 ---@type function
@@ -487,6 +488,8 @@ function getTaskFunction(data)
         return tree_chop_function
     elseif name =="recursive_miner" then
         return recursive_miner_function
+    elseif name == "branch_miner" then
+        return branch_miner_function
     end
     --????? None of those matched?
     panic.panic("Unknown task!")

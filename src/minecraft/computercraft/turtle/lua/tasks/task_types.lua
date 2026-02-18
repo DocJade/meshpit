@@ -82,4 +82,5 @@
 --- These data types are defined in their respective task files.
 --- @alias TaskResultData
 --- | RecursiveMinerResult
+--- | BranchMinerResult
 --- | NoneResult
