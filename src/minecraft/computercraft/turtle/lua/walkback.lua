@@ -1018,11 +1018,16 @@ end
 --- items in it. That wouldn't do anything anyways.
 ---
 --- Returns false if there was not enough room in the destination container.
----@param limit number
+---@param limit number?
+---@return boolean
 function walkback:drop(limit)
+	local limit = limit or 64
 	panic.assert(limit <= 64 and limit >= 0, "Tried to drop an invalid amount of items! [" .. limit .. "]")
 	local actual = self:getItemCount(self:getSelectedSlot())
-	assert(actual > 0, "Tried to drop from an empty slot!")
+	if actual == 0 then
+		-- Nothing to do
+		return true
+	end
 	-- This only returns "No space for items" or "No items to drop".
 	-- Since we already know some amount of items is being dropped, the only
 	-- failure mode is running out of space.
@@ -1041,10 +1046,16 @@ end
 --- items in it. That wouldn't do anything anyways.
 ---
 --- Returns false if there was not enough room in the destination container.
+--- @param limit number?
+---@return boolean
 function walkback:dropUp(limit)
+	local limit = limit or 64
 	panic.assert(limit <= 64 and limit >= 0, "Tried to drop an invalid amount of items! [" .. limit .. "]")
 	local actual = self:getItemCount(self:getSelectedSlot())
-	assert(actual > 0, "Tried to drop from an empty slot!")
+	if actual == 0 then
+		-- Nothing to do
+		return true
+	end
 	-- This only returns "No space for items" or "No items to drop".
 	-- Since we already know some amount of items is being dropped, the only
 	-- failure mode is running out of space.
@@ -1059,14 +1070,19 @@ end
 --- Takes in a limit of how many items to move, defaults to the entire contents
 --- of the slot.
 ---
---- Do not attempt to drop with a limit of zero, or drop from a slot with no
---- items in it. That wouldn't do anything anyways.
+--- Dropping zero or from an empty slot does nothing.
 ---
 --- Returns false if there was not enough room in the destination container.
+--- @param limit number?
+--- @return boolean
 function walkback:dropDown(limit)
+	local limit = limit or 64
 	panic.assert(limit <= 64 and limit >= 0, "Tried to drop an invalid amount of items! [" .. limit .. "]")
 	local actual = self:getItemCount(self:getSelectedSlot())
-	assert(actual > 0, "Tried to drop from an empty slot!")
+	if actual == 0 then
+		-- Nothing to do
+		return true
+	end
 	-- This only returns "No space for items" or "No items to drop".
 	-- Since we already know some amount of items is being dropped, the only
 	-- failure mode is running out of space.
@@ -1084,6 +1100,14 @@ end
 ---@param slot number
 function walkback:select(slot)
 	panic.assert( slot > 0 and slot <= 16, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+
+	-- Switching slots takes time even if its to the slot thats already selected,
+	-- however, checking if the slot is selected is near instant.
+	if self:getSelectedSlot() == slot then
+		-- Speed strats ftw
+		return
+	end
+
 	---@diagnostic disable-next-line: undefined-global
 	turtle.select(slot)
 end
@@ -1130,7 +1154,7 @@ end
 --- starting from the currently selected slot.
 ---
 --- Returns true if items were picked up, or a reason that not items were sucked.
----@param count number
+---@param count number?
 ---@return boolean, ItemError|nil
 function walkback:suck(count)
 	count = count or 64
@@ -1140,7 +1164,7 @@ function walkback:suck(count)
 end
 
 --- See suck(), but up!
----@param count number
+---@param count number?
 ---@return boolean, ItemError|nil
 function walkback:suckUp(count)
 	count = count or 64
@@ -1150,7 +1174,7 @@ function walkback:suckUp(count)
 end
 
 --- See suck(), but down!
----@param count number
+---@param count number?
 ---@return boolean, ItemError|nil
 function walkback:suckDown(count)
 	count = count or 64
@@ -1255,11 +1279,15 @@ function walkback:transferFromSlotTo(source_slot, destination_slot, count)
 	local old = self:getSelectedSlot()
 
 	-- Do the move.
-	self:select(source_slot)
+	if old ~= source_slot then
+		self:select(source_slot)
+	end
 	local result = self:transferTo(destination_slot, count)
 
 	-- go back
-	self:select(old)
+	if old ~= source_slot then
+		self:select(old)
+	end
 	return result
 end
 
@@ -1897,7 +1925,9 @@ end
 function walkback:equipLeft()
 	---@diagnostic disable-next-line: undefined-global
 	local a, b = turtle.equipLeft()
-	panic.assert(a, "Attempted to equip an invalid item! [" .. b .. "]")
+	if b then
+		panic.assert(a, "Attempted to equip an invalid item! [" .. b .. "]")
+	end
 end
 
 --- Attempt to equip the item in the currently selected slot on the right
@@ -1916,7 +1946,9 @@ end
 function walkback:equipRight()
 	---@diagnostic disable-next-line: undefined-global
 	local a, b = turtle.equipRight()
-	panic.assert(a, "Attempted to equip an invalid item! [" .. b .. "]")
+	if b then
+		panic.assert(a, "Attempted to equip an invalid item! [" .. b .. "]")
+	end
 end
 
 --- Returns the item that is currently equipped on the left side, if any.
@@ -1955,7 +1987,9 @@ function walkback:craft(limit)
 	panic.assert(limit <= 64 and limit >= 0, "Invalid craft limit! [" .. limit .. "]")
 	---@diagnostic disable-next-line: undefined-global
 	local a, b = turtle.craft(limit)
-	panic.assert(a, "Failed to craft! [" .. b .. "]")
+	if b then
+		panic.assert(a, "Failed to craft! [" .. b .. "]")
+	end
 	return true
 end
 

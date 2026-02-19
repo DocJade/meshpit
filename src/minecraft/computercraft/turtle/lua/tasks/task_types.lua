@@ -45,6 +45,7 @@
 --- | TreeChopTaskData
 --- | RecursiveMinerData
 --- | BranchMinerData
+--- | CraftingData
 
 --- TaskCompletion is the type returned by tasks when they finish their duties and
 --- no-longer need to be resumed.
