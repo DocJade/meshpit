@@ -699,6 +699,15 @@ local function branch_miner(config)
                 -- to the branches. So we're done.
                 break
             end
+
+            -- Check again if we have stuff to do. since we might have finished
+            -- all of the blocks while branching.
+            --
+            -- Without this check, the try forwards would run and break a random
+            -- ass block.
+            if #filter_wanted_blocks(desired_blocks).groups == 0 then
+                break
+            end
         end
 
         -- Move forwards.
