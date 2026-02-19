@@ -39,7 +39,7 @@ local helpers = require("helpers")
 --- @class CraftingData
 --- @field name "craft_task"
 --- @field recipe CraftingRecipe -- What we crafting
---- @field count number -- How many to craft. This number is required. We only craft exact amounts.
+--- @field count number -- How many of each ingredient to place per slot.
 
 
 --- Are we just throwing shit on the floor?
@@ -78,8 +78,11 @@ function swap_chest_slots(slot1, slot2)
     for slot = 1, wrapped_chest.size() do
         ---@diagnostic disable-next-line: need-check-nil, undefined-field
         if wrapped_chest.getItemDetail(slot) == nil then
-            empty_slot = slot
-            break
+            -- Can't be one of the two slots we want
+            if slot ~= slot1 and slot ~= slot2 then
+                empty_slot = slot
+                break
+            end
         end
     end
 
@@ -116,7 +119,7 @@ function find_item(wb, pattern)
 
     -- Find the item in the chest
     ---@diagnostic disable-next-line: need-check-nil, undefined-field
-    for slot, item in ipairs(wrapped_chest.list()) do
+    for slot, item in pairs(wrapped_chest.list()) do
         if helpers.findString(item.name, pattern) then
             -- This is what we want. Take it.
 
@@ -189,7 +192,7 @@ end
 --- Returns false if we are out of the ingredient that would go in that slot.
 --- @param wb WalkbackSelf
 --- @param ingredient_pattern string
---- @param count number
+--- @param count number -- How many items to place in the slot
 --- @return boolean
 function place_slot(wb, ingredient_pattern, destination_slot, count)
     -- Do we have what we need?
@@ -283,7 +286,6 @@ local function craft_task(config)
             wb:equipRight()
         else
             -- No free slot to equip it!
-            print("couldn't equip!")
             task_helpers.throw("assumptions not met")
         end
     end
@@ -295,7 +297,6 @@ local function craft_task(config)
         -- We aren't in a good spot. Can we move up?
         if wb:detectUp() then
             -- Can't do anything here.
-            print("Block above!")
             task_helpers.throw("assumptions not met")
         end
         -- We can move up.
@@ -303,7 +304,6 @@ local function craft_task(config)
         -- will automatically move us back down when we're done.
         if not wb:up() then
             -- Couldn't move up.
-            print("Can't move up!")
             task_helpers.throw("assumptions not met")
         end
     end
@@ -317,7 +317,6 @@ local function craft_task(config)
         -- Find the item.
         if wb:inventoryFindPattern(ingredient) == nil then
             -- Missing.
-            print("Missing ingredients!")
             task_helpers.throw("assumptions not met")
         end
         ::skip::
@@ -329,7 +328,6 @@ local function craft_task(config)
     local chest_slot = wb:inventoryFindPattern(CHEST_PATTERN)
     if chest_slot ~= nil then
         -- We have a chest!
-        print("Found chest!")
         squalor = false
 
         -- Place it
@@ -347,8 +345,9 @@ local function craft_task(config)
 
     -- Put all of our crap away
     for i=1, 16 do
-        print("Putting crap away...")
-        store_slot(wb, i)
+        if wb:getItemCount(i) > 0 then
+            store_slot(wb, i)
+        end
     end
 
     -- Assemble ingredients
@@ -375,8 +374,13 @@ local function craft_task(config)
         end
     end
 
-    -- Do the craft
-    task_helpers.assert(wb:craft(task_data.count))
+    -- If there's extra items in slot 4 we need to ditch them before the craft
+    if wb:getItemCount(4) > 0 then
+        store_slot(wb, 4)
+    end
+
+    -- Do the craft. Always crafts as many as possible
+    task_helpers.assert(wb:craft(64))
 
     -- Now move that crafted item (ends up in whatever slot is currently selected)
     -- into slot 1

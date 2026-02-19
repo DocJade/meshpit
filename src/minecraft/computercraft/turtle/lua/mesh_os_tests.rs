@@ -568,6 +568,218 @@ async fn branch_miner_test() {
     assert!(winner_winner_chicken_dinner)
 }
 
+/// Make a lectern from scratch bc they're complicated as hell
+#[tokio::test]
+async fn lectern_from_scratch_test() {
+    let area = TestArea {
+        size_x: 3,
+        size_z: 3,
+    };
+
+    let mut test = MinecraftTestHandle::new(area, "lectern from scratch test").await;
+    let position = MinecraftPosition {
+        // placed mid-air so it doesn't have to move for the chest
+        position: CoordinatePosition { x: 1, y: 2, z: 1 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    let test_script = r#"
+    local mesh_os = require("mesh_os")
+    local panic = require("panic")
+    require("networking")
+    local debugging = require("debugging")
+
+    ---@type MinecraftPosition
+    local start_position = {
+        position = { x = 0, y = 0, z = 0 },
+        facing = "n"
+    }
+
+    debugging.wait_step()
+
+    turtle.equipLeft()
+
+    debugging.wait_step()
+
+    mesh_os.startup(start_position)
+
+    -- bc of task queuing these are in reverse order
+
+    -- Lectern
+    mesh_os.testAddTask({
+        fuel_buffer = 0,
+        return_to_facing = true,
+        return_to_start = true,
+        task_data = {
+            name = "craft_task",
+            recipe = { shape = {
+                "slab", "slab", "slab",
+                "BLANK", "bookshelf", "BLANK",
+                "BLANK", "slab", "BLANK",
+            }},
+            count = 1,
+        },
+    })
+
+    -- Bookshelf
+    mesh_os.testAddTask({
+        fuel_buffer = 0,
+        return_to_facing = true,
+        return_to_start = true,
+        task_data = {
+            name = "craft_task",
+            recipe = { shape = {
+                "planks", "planks", "planks",
+                "book", "book", "book",
+                "planks", "planks", "planks",
+            }},
+            count = 1,
+        },
+    })
+
+    -- Slabs
+    mesh_os.testAddTask({
+        fuel_buffer = 0,
+        return_to_facing = true,
+        return_to_start = true,
+        task_data = {
+            name = "craft_task",
+            recipe = { shape = {
+                "planks", "planks", "planks",
+                "BLANK", "BLANK", "BLANK",
+                "BLANK", "BLANK", "BLANK",
+            }},
+            count = 1,
+        },
+    })
+
+    -- Books
+    mesh_os.testAddTask({
+        fuel_buffer = 0,
+        return_to_facing = true,
+        return_to_start = true,
+        task_data = {
+            name = "craft_task",
+            recipe = { shape = {
+                "paper", "paper", "BLANK",
+                "paper", "leather", "BLANK",
+                "BLANK", "BLANK", "BLANK",
+            }},
+            count = 3,
+        },
+    })
+
+    -- Paper
+    mesh_os.testAddTask({
+        fuel_buffer = 0,
+        return_to_facing = true,
+        return_to_start = true,
+        task_data = {
+            name = "craft_task",
+            recipe = { shape = {
+                "sugar_cane", "sugar_cane", "sugar_cane",
+                "BLANK", "BLANK", "BLANK",
+                "BLANK", "BLANK", "BLANK",
+            }},
+            count = 3,
+        },
+    })
+
+    -- Planks
+    mesh_os.testAddTask({
+        fuel_buffer = 0,
+        return_to_facing = true,
+        return_to_start = true,
+        task_data = {
+            name = "craft_task",
+            recipe = { shape = {
+                "oak_log", "BLANK", "BLANK",
+                "BLANK", "BLANK", "BLANK",
+                "BLANK", "BLANK", "BLANK",
+            }},
+            count = 3,
+        },
+    })
+
+    -- Leather. Making it from rabbit hide adds another step lol
+    mesh_os.testAddTask({
+        fuel_buffer = 0,
+        return_to_facing = true,
+        return_to_start = true,
+        task_data = {
+            name = "craft_task",
+            recipe = { shape = {
+                "rabbit_hide", "rabbit_hide", "BLANK",
+                "rabbit_hide", "rabbit_hide", "BLANK",
+                "BLANK", "BLANK", "BLANK",
+            }},
+            count = 3,
+        },
+    })
+
+    -- Run all of those
+    local _, _ = pcall(mesh_os.main)
+
+    -- Place the lectern
+    turtle.placeUp()
+
+    -- Done
+    debugging.wait_step()
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        mesh_os: Some(true),
+        debugging: Some(true),
+    };
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+    let setup = ComputerSetup::new(ComputerKind::Turtle(Some(2000)), config);
+    let computer = test.build_computer(&position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
+
+    // Give the turtle everything it needs to craft the lectern of doom and test-casery
+    let axe = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("diamond_axe").unwrap(), 1, 0)).await;
+    let table = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("crafting_table").unwrap(), 1, 1)).await;
+    let chest = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("chest").unwrap(), 1, 2)).await;
+    let hides = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("rabbit_hide").unwrap(), 12, 3)).await;
+    let logs = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("oak_log").unwrap(), 3, 4)).await;
+    let cane = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("sugar_cane").unwrap(), 9, 5)).await;
+    assert!(axe.success() && table.success() && chest.success() && hides.success() && logs.success() && cane.success());
+
+    computer.turn_on(&mut test).await;
+
+    let go = String::from("go");
+
+    socket.receive(5).await.expect("Should receive");
+    socket.send(go.clone(), 5).await.expect("Should send");
+
+    socket.receive(5).await.expect("Should receive");
+    socket.send(go.clone(), 5).await.expect("Should send");
+
+    socket.receive(600).await.expect("Should receive");
+    socket.send(go.clone(), 5).await.expect("Should send");
+
+    // Check for the lectern
+    let lectern_pos = position.with_offset(CoordinatePosition { x: 0, y: 1, z: 0 }).position;
+
+    let got_lectern = test.command(TestCommand::TestForBlock(
+        lectern_pos,
+        &MinecraftBlock::from_string("minecraft:lectern").unwrap(),
+    )).await.success();
+    info!("Lectern? : {got_lectern}");
+
+    test.stop(got_lectern).await;
+    assert!(got_lectern);
+}
+
 /// Craft some stuff! We're going to make a furnace and place it above ourselves.
 #[tokio::test]
 async fn crafting_test() {

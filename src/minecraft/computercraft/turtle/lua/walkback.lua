@@ -1100,6 +1100,14 @@ end
 ---@param slot number
 function walkback:select(slot)
 	panic.assert( slot > 0 and slot <= 16, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+
+	-- Switching slots takes time even if its to the slot thats already selected,
+	-- however, checking if the slot is selected is near instant.
+	if self:getSelectedSlot() == slot then
+		-- Speed strats ftw
+		return
+	end
+
 	---@diagnostic disable-next-line: undefined-global
 	turtle.select(slot)
 end
@@ -1271,11 +1279,15 @@ function walkback:transferFromSlotTo(source_slot, destination_slot, count)
 	local old = self:getSelectedSlot()
 
 	-- Do the move.
-	self:select(source_slot)
+	if old ~= source_slot then
+		self:select(source_slot)
+	end
 	local result = self:transferTo(destination_slot, count)
 
 	-- go back
-	self:select(old)
+	if old ~= source_slot then
+		self:select(old)
+	end
 	return result
 end
 
