@@ -567,3 +567,133 @@ async fn branch_miner_test() {
 
     assert!(winner_winner_chicken_dinner)
 }
+
+/// Craft some stuff! We're going to make a furnace and place it above ourselves.
+#[tokio::test]
+async fn crafting_test() {
+    let area = TestArea {
+        size_x: 3,
+        size_z: 3,
+    };
+
+    let mut test = MinecraftTestHandle::new(area, "crafting test").await;
+    let position = MinecraftPosition {
+        position: CoordinatePosition { x: 1, y: 1, z: 1 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    let test_script = r#"
+    local mesh_os = require("mesh_os")
+    local panic = require("panic")
+    require("networking")
+    local debugging = require("debugging")
+
+    -- position? who gaf
+    ---@type MinecraftPosition
+    local start_position = {
+        position = {
+            x = 0,
+            y = 0,
+            z = 0
+        },
+        facing = "n"
+    }
+
+    -- Sync yield
+    debugging.wait_step()
+
+    -- Signal ready to start
+    debugging.wait_step()
+
+    -- Equip the axe
+    turtle.equipLeft()
+
+    -- Setup mesh_os
+    mesh_os.startup(start_position)
+
+    ---@type TaskDefinition
+    local craft_task = {
+        fuel_buffer = 0,
+        return_to_facing = true,
+        return_to_start = true,
+        ---@type CraftingData
+        task_data = {
+            name = "craft_task",
+            recipe = {
+                -- furnace
+                shape = {
+                    "cobblestone", "cobblestone", "cobblestone",
+                    "cobblestone", "BLANK",        "cobblestone",
+                    "cobblestone", "cobblestone", "cobblestone",
+                }
+            },
+            count = 1,
+        },
+    }
+
+    -- Add the task to the queue
+    mesh_os.testAddTask(craft_task)
+
+    -- Run the task
+    local _, _ = pcall(mesh_os.main)
+
+    -- Place the furnace (shoulda ended up in slot 1)
+    turtle.placeUp()
+
+    -- Tell the test we are done
+    debugging.wait_step()
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        mesh_os: Some(true),
+        debugging: Some(true),
+    };
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+    let setup = ComputerSetup::new(ComputerKind::Turtle(Some(2000)), config);
+    let computer = test.build_computer(&position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
+
+    // Crafting table, cobblestone, chest, and an diamond axe to break the chest with.
+    let axe = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("diamond_axe").unwrap(), 1, 0)).await;
+    assert!(axe.success());
+    let table = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("crafting_table").unwrap(), 1, 3)).await;
+    assert!(table.success());
+    let chest = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("chest").unwrap(), 1, 1)).await;
+    assert!(chest.success());
+    let cobblestone = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("cobblestone").unwrap(), 8, 2)).await;
+    assert!(cobblestone.success());
+
+
+    computer.turn_on(&mut test).await;
+
+    let str = String::from("go");
+
+    // Initial handshake
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
+
+    // Signal the turtle to begin the task
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
+
+    // Wait for the task to finish, which should also place the furnace.
+    socket.receive(60).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
+
+    // Check that a furnace was placed above the turtle's starting position
+    let furnace_pos = CoordinatePosition { x: position.position.x, y: position.position.y + 1, z: position.position.z };
+    let got_furnace = test.command(TestCommand::TestForBlock(furnace_pos, &MinecraftBlock::from_string("minecraft:furnace").unwrap())).await.success();
+    info!("Furnace placed above turtle: {got_furnace}");
+
+    test.stop(got_furnace).await;
+    assert!(got_furnace);
+}
