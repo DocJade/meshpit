@@ -78,21 +78,23 @@ function helpers.slice_array(input_table, slice_start, slice_end)
 end
 
 --- Check if an array contains a matching item.
+---
+--- Returns a boolean, and the index that the item was found at.
 --- @generic T
 --- @param array T[]
 --- @param to_find T
---- @return boolean
+--- @return boolean, number|nil
 function helpers.arrayContains(array, to_find)
     local to_find_type = type(to_find)
-    for _, v in ipairs(array) do
+    for i, v in ipairs(array) do
         -- skip incorrect types
         if to_find_type == type(v) then
             if v == to_find then
-                return true
+                return true, i
             end
         end
     end
-    return false
+    return false, nil
 end
 
 -- === === ===
@@ -937,6 +939,68 @@ function helpers.getAdjacentBlock(position, facing, side)
 		y = position.y + delta.y,
 		z = position.z + delta.z,
 	}
+end
+
+--- Get the coordinate positions of all the blocks next to a block.
+--- @param position CoordPosition
+--- @param facing CardinalDirection
+--- @return CoordPosition[]
+function helpers.GetNeighborBlocks(position, facing)
+    -- This should be fairly fast, since it's all just math, no actual
+    -- game-state.
+    -- The ordering here is strange since its also used for mining priorities. lol
+    local neighbors = {}
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "d")
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "l")
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "b")
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "r")
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "f")
+    neighbors[#neighbors + 1] = helpers.getAdjacentBlock(position, facing, "u")
+    return neighbors
+end
+
+-- === === ===
+-- === === ===
+-- BlockGroup helpers
+-- === === ===
+-- === === ===
+
+
+--- Check if an input block matches any of the block groups. Names are checked
+--- before tags within each group.
+---
+--- Returns a boolean for whether the block is wanted, and the group index.
+--- @param block Block|nil
+--- @param groups BlockGroup[]
+--- @return boolean, number|nil
+function helpers.block_wanted(block, groups)
+    -- If the block is air, we do not care.
+    if block == nil then return false, nil end
+
+    -- Also do not care if there's no groups.
+    if #groups == 0 then return false, nil end
+
+    -- Check each group in order
+    for group_index, group in ipairs(groups) do
+        -- Names first
+        for _, name_pattern in ipairs(group.names_patterns or {}) do
+            if helpers.findString(block.name, name_pattern) then
+                return true, group_index
+            end
+        end
+
+        -- Then tags
+        for _, group_tag in ipairs(group.tags or {}) do
+            for _, block_tag in ipairs(block.tag) do
+                if block_tag == group_tag then
+                    return true, group_index
+                end
+            end
+        end
+    end
+
+    -- No match.
+    return false, nil
 end
 
 -- === === ===

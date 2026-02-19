@@ -38,6 +38,7 @@ require("networking")
 -- import all the task functions
 local tree_chop_function = require("tree_chop")
 local recursive_miner_function = require("recursive_miner")
+local branch_miner_function = require("branch_miner")
 
 -- Bring globals into scope to make them faster
 ---@type function
@@ -282,6 +283,9 @@ local function setupNewTask(task_definition, is_sub_task)
         -- anything.
     end
 
+    -- Make sure to mark the new return position of the walkback.
+    walkback:mark()
+
     -- The rest of the owl.
     ---@type TurtleTask
     local new_task = {
@@ -293,6 +297,7 @@ local function setupNewTask(task_definition, is_sub_task)
         -- TODO: See below todo lol
         ---@diagnostic disable-next-line: assign-type-mismatch
         task_thread = nil,
+        is_sub_task = is_sub_task,
         walkback = walkback
     }
 
@@ -356,8 +361,9 @@ local function fixTaskPosition(task)
         task.walkback:turnToFace(task.start_facing)
     end
 
-    -- We can skip the following if we don't need to return to start.
-    if not task.definition.return_to_start then
+    -- We can skip the following if we don't need to return to start, or if we're
+    -- already in the right spot.
+    if (not task.definition.return_to_start) or made_it_home then
         goto position_good
     end
 
@@ -400,6 +406,26 @@ local function finishTask(task, result)
     -- We don't take in walkback here or use the global since we can just keep
     -- referencing the one that comes with the task.
 
+    -- If we're testing, we need to be able to get data out of the OS.
+    -- Thus, we will throw the result of the task if this was the final
+    -- task in the queue.
+    if test_mode and #task_queue == 1 then
+        -- Last test in the queue. Return the result directly.
+        error(result)
+    end
+
+    -- If this is a sub-task, update the parent task.
+    if task.is_sub_task then
+        -- Update the parent with the resulting data.
+
+        -- There should always be a parent task. If not... big bug.
+        local parent_task = task_queue[#task_queue - 1]
+        panic.assert(parent_task ~= nil, "Sub-task ended with no parent task!")
+
+        parent_task.last_subtask_result = result
+        -- spawnSubTask will nab this back off later.
+    end
+
     -- Remove the task from the queue.
     task_queue[#task_queue] = nil
 
@@ -427,8 +453,6 @@ local function finishTask(task, result)
     -- or failed, since it needs to happen regardless.
 
     -- Was this a pass or a fail?
-    print(result)
-    print(type(result))
     if result.kind == "success" then
         -- This is easy!
         -- Nothing to do.
@@ -466,6 +490,8 @@ function getTaskFunction(data)
         return tree_chop_function
     elseif name =="recursive_miner" then
         return recursive_miner_function
+    elseif name == "branch_miner" then
+        return branch_miner_function
     end
     --????? None of those matched?
     panic.panic("Unknown task!")
@@ -755,7 +781,7 @@ function mesh_os.main()
             else
                 -- TODO: Rewrite this to not pull in-line and use a safer function
                 -- that will not block forever.
-                print("Task is waiting for an event titled: \"", result, "\".")
+                -- print("Task is waiting for an event titled: \"", result, "\".")
                 ---@diagnostic disable-next-line: undefined-field -- TODO:
                 bool, result = resume(task.task_thread, os.pullEvent(result))
             end

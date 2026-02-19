@@ -4,7 +4,7 @@ use crate::{
     minecraft::vanilla::block_type::HasMinecraftBlock,
     tests::{prelude::*, test_harness::computer_builder::COMPUTER_STATE_CHANGE_TIME},
 };
-use std::{cmp::max, fmt::Display, sync::Arc};
+use std::{cmp::max, fmt::Display, path::PathBuf, sync::Arc};
 
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;
@@ -287,15 +287,17 @@ impl MinecraftTestHandle {
                 add_file_to_computer(new_computer.id, startup, "startup.lua")
                     .await
                     .expect("Unable to write startup lua file.");
-                // Loop over he libraries and add them
+                // Loop over the libraries and add them
                 for path in libraries.to_files() {
                     let file_contents =
                         std::fs::read_to_string(&path).expect("Unable to read lua file!");
+
                     let file_name = path
                         .file_name()
                         .expect("Should have a file name")
                         .to_str()
                         .expect("Should be valid.");
+
                     add_file_to_computer(new_computer.id, file_contents, file_name)
                         .await
                         .expect("Unable to write a lua file to the computer!");

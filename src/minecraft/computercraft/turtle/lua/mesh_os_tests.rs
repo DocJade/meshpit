@@ -1,8 +1,9 @@
 // Turtle networking related tests.
 
 use log::info;
+use rand::Rng;
 
-use crate::tests::prelude::*;
+use crate::{minecraft::computercraft::computer_types::packet_types::{DebuggingPacket, RawTurtlePacket}, tests::prelude::*};
 
 /// Spawns a tree_chop task test. This is it's own function to allow you to start
 /// hella tree tests at once for fun!
@@ -200,4 +201,387 @@ async fn tree_chop_galore() {
     let all_passed = fails == 0;
     info!("Ran {} tree tests. Of those tests, {} passed and {} failed.", fails + passes, passes, fails);
     assert!(all_passed, "One or more tree_chop tests failed");
+}
+
+/// Make sure recursive miner can actually count.
+///
+/// Mines a 3x3x3 cube of stone to check that, indeed, there was 27 stone mined.
+#[tokio::test]
+async fn recursive_miner_test() {
+    let area = TestArea {
+        size_x: 5,
+        size_z: 5,
+    };
+    let mut test = MinecraftTestHandle::new(area, "recursive_miner counting test").await;
+    let mut position = MinecraftPosition {
+        position: CoordinatePosition { x: 2, y: 1, z: 2 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    let test_script = r#"
+    local mesh_os = require("mesh_os")
+    local panic = require("panic")
+    require("networking")
+    local function wait_step()
+        NETWORKING.debugSend("wait")
+        if NETWORKING.waitForPacket(240) then
+            return
+        end
+        NETWORKING.debugSend("fail, no response from harness.")
+        os.setComputerLabel("step failure")
+    end
+
+    -- This does not need to be accurate for this test, its all relative anyways.
+    ---@type MinecraftPosition
+    local start_position = {
+        position = {
+            x = 0,
+            y = 0,
+            z = 0
+        },
+        facing = "n"
+    }
+
+    -- Sync yield
+    wait_step()
+
+    -- Equip the pickaxe
+    turtle.equipRight()
+
+    -- Get out of the way
+    turtle.back()
+    turtle.back()
+
+    -- Yield to let the test know we are ready to start
+    wait_step()
+
+    -- setup the OS
+    mesh_os.startup(start_position)
+
+    ---@type TaskDefinition
+    local miner_task = {
+        fuel_buffer = 0,
+        return_to_facing = true,
+        return_to_start = true,
+        ---@type RecursiveMinerData
+        task_data = {
+            name = "recursive_miner",
+            timeout = 60,
+            mineable_groups = {
+                {
+                    names_patterns = {"minecraft:stone"},
+                    tags = {}
+                }
+            },
+            fuel_patterns = {},
+        },
+    }
+
+    -- Add the task to the queue
+    mesh_os.testAddTask(miner_task)
+
+    -- Run the task. This will return the result of the task
+    local _, result = pcall(mesh_os.main)
+
+    local total_mined = result.result.total_blocks_mined or 0
+
+    -- Send that back
+    NETWORKING.debugSend(total_mined)
+
+    -- Also send the amount of blocks broken of each category.
+    -- the first and only group should have the same count as total blocks mined.
+    local mined_blocks = result.result.mined_blocks.counts[1] or 0
+
+    NETWORKING.debugSend(mined_blocks)
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        mesh_os: Some(true)
+    };
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+
+    let setup = ComputerSetup::new(ComputerKind::Turtle(Some(2000)), config);
+    let computer = test.build_computer(&position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
+
+    // Give turt a pickaxe
+    let gave_pickaxe = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("diamond_pickaxe").unwrap(), 1, 0)).await;
+    assert!(gave_pickaxe.success());
+
+    computer.turn_on(&mut test).await;
+
+    // Initial handshake
+    let str = String::from("go");
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
+
+    // Wait for the turtle to move back twice
+    socket.receive(15).await.expect("Should receive");
+
+
+
+    // 3x3x3 stone cube
+    let p1 = CoordinatePosition { x: 1, y: 1, z: 1 };
+    let p2 = CoordinatePosition { x: 3, y: 3, z: 3 };
+    let stone = MinecraftBlock::from_string("minecraft:stone").unwrap();
+    assert!(test.command(TestCommand::Fill(p1, p2, &stone)).await.success());
+
+    // Son, im mine 😭
+    socket.send(str.clone(), 5).await.expect("Should send");
+
+    // Wait for the mining to finish.
+    let turtle_json = socket.receive(300).await.expect("Should receive");
+    let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
+    let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
+    // This should just be a number
+    let blocks_mined = debug_packet.inner_data.as_u64().unwrap();
+    info!("Turtle claims to have mined {blocks_mined} blocks.");
+
+    // Now get the count of the first group. It should be equal.
+    let turtle_json = socket.receive(5).await.expect("Should receive");
+    let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
+    let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
+    let group_count = debug_packet.inner_data.as_u64().unwrap();
+    info!("The group claims {group_count} blocks mined.");
+
+    // Did the turtle return to start?
+    position.move_direction(MinecraftCardinalDirection::South);
+    position.move_direction(MinecraftCardinalDirection::South);
+    let turtle_back = test.command(TestCommand::TestForBlock(position.position, &MinecraftBlock::from_string("computercraft:turtle_normal").unwrap())).await.success();
+    info!("Did turtle make it back? : {turtle_back}");
+
+    // All good?
+    let winner_winner_chicken_dinner = blocks_mined == 27 && turtle_back && group_count == blocks_mined;
+
+    test.stop(winner_winner_chicken_dinner).await;
+
+    assert!(winner_winner_chicken_dinner)
+}
+
+/// Make sure branch mining doesn't fail
+///
+/// It should be able to find at least three pieces of the randomly placed copper ore.
+#[tokio::test]
+async fn branch_miner_test() {
+    let area = TestArea {
+        size_x: 19,
+        size_z: 19,
+    };
+
+    let mut test = MinecraftTestHandle::new(area, "branch_miner test").await;
+
+    // We spawn the turtle at the edge this time.
+    // Still needs to be in the middle of the edge tho
+    let position = MinecraftPosition {
+        position: CoordinatePosition { x: 9, y: 1, z: 18 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    let test_script = r#"
+    local mesh_os = require("mesh_os")
+    local panic = require("panic")
+    require("networking")
+    local function wait_step()
+        NETWORKING.debugSend("wait")
+        if NETWORKING.waitForPacket(240) then
+            return
+        end
+        NETWORKING.debugSend("fail, no response from harness.")
+        os.setComputerLabel("step failure")
+    end
+
+    -- This does not need to be accurate for this test, its all relative anyways.
+    ---@type MinecraftPosition
+    local start_position = {
+        position = {
+            x = 0,
+            y = 0,
+            z = 0
+        },
+        facing = "n"
+    }
+
+    -- Sync yield
+    wait_step()
+
+    -- Equip the pickaxe
+    turtle.equipRight()
+
+    -- Yield to let the test know we are ready to start
+    wait_step()
+
+    -- setup the OS
+    mesh_os.startup(start_position)
+
+    ---@type TaskDefinition
+    local miner_task = {
+        fuel_buffer = 0,
+        return_to_facing = true,
+        return_to_start = true,
+        ---@type BranchMinerData
+        task_data = {
+            trunk_length = 17,
+            name = "branch_miner",
+            desired = {
+                groups = {
+                    {
+                        desired_total = 3,
+                        group = {
+                            names_patterns = {
+                                "copper_ore"
+                            },
+                            tags = {}
+                        }
+                    }
+                }
+            },
+            discardables = { patterns = {} },
+            fuel_items = { patterns = {} },
+            incidental = {
+                groups = {
+                    {
+                        names_patterns = { "stone" },
+                        tags = {}
+                    }
+                }
+            }
+        },
+    }
+
+    -- Add the task to the queue
+    mesh_os.testAddTask(miner_task)
+
+    -- Run the task. This will return the result of the task
+    local _, result = pcall(mesh_os.main)
+
+    local total_mined = result.result.total_blocks_mined or -100
+
+    -- Also send the amount of blocks broken of each category.
+    -- the first and only group should have the same count as total blocks mined.
+    local mined_blocks = result.result.mined_blocks.counts[1] or -100
+
+    -- Send that back
+    NETWORKING.debugSend(total_mined)
+    NETWORKING.debugSend(mined_blocks)
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        mesh_os: Some(true)
+    };
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+
+    let setup = ComputerSetup::new(ComputerKind::Turtle(Some(2000)), config);
+    let computer = test.build_computer(&position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
+
+    // Give turt a pickaxe
+    let gave_pickaxe = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("diamond_pickaxe").unwrap(), 1, 0)).await;
+    assert!(gave_pickaxe.success());
+
+    computer.turn_on(&mut test).await;
+
+    // Initial handshake
+    let str = String::from("go");
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
+
+    // Wait for the turtle to move back twice
+    socket.receive(15).await.expect("Should receive");
+
+
+
+    // Make a big stone platform
+    // Do note that these positions are floating, this is intentional.
+    let p1 = CoordinatePosition { x: 1, y: 2, z: 1 };
+    let p2 = CoordinatePosition { x: 17, y: 2, z: 17 };
+    let stone = MinecraftBlock::from_string("minecraft:stone").unwrap();
+    assert!(test.command(TestCommand::Fill(p1, p2, &stone)).await.success());
+
+    // Then disperse some ores in it
+    // Luckily minecraft has a command for this
+    // /place feature minecraft:ore_copper_large ~ ~ ~
+    let x_offset = p1.with_offset(test.corner()).x + 1;
+    let x_range = x_offset..x_offset + 17;
+    let z_offset = p1.with_offset(test.corner()).z + 1;
+    let z_range = z_offset..z_offset + 17;
+    let y_level = p1.with_offset(test.corner()).y - 1;
+
+    // This doesnt always work, so we do it a lot of times.
+    let mut features_placed = 0;
+    let mut rng = rand::rng();
+    while features_placed <= 25 {
+        let x_pos = rng.random_range(x_range.clone());
+        let z_pos = rng.random_range(z_range.clone());
+        // Run the command. We don't care about the result, but it should output SOMETHING
+        let command = format!("/place feature minecraft:ore_copper_large {x_pos} {y_level} {z_pos}");
+        #[allow(deprecated)] // hhhhh
+        let command = test.command(TestCommand::RawCommand(&command));
+        if !command.await.data().unwrap().contains("Failed") {
+            // Feature placed!
+            features_placed += 1
+        }
+    }
+
+    // HOWEVER: minecraft is jank and the blocks wont show up until after a block
+    // update, so after adding the ores, we have to clone the blocks back downwards
+    // to make them show up properly.
+    let p1_down = p1.with_offset(CoordinatePosition { x: 0, y: -1, z: 0 });
+
+    let p1_string = p1.with_offset(test.corner()).as_command_string();
+    let p2_string = p2.with_offset(test.corner()).as_command_string();
+    let p1_down_string = p1_down.with_offset(test.corner()).as_command_string();
+
+    let command_string = format!("/clone {p1_string} {p2_string} {p1_down_string} replace move");
+    #[allow(deprecated)]
+    let command = test.command(TestCommand::RawCommand(&command_string));
+    let command_result = command.await.data();
+    assert!(command_result.unwrap().contains("Succ"));
+
+    // Slab has moved down, we can now start mining.
+    socket.send(str.clone(), 5).await.expect("Should send");
+
+    // Wait for the mining to finish.
+    let turtle_json = socket.receive(300).await.expect("Should receive");
+    let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
+    let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
+    // This should just be a number of ores mined.
+    // This will panic if its -100, which is intended.
+    let blocks_mined = debug_packet.inner_data.as_u64().unwrap();
+    info!("Turtle claims to have mined {blocks_mined} total blocks.");
+
+    // Now get the count of the first group. It should be equal.
+    let turtle_json = socket.receive(5).await.expect("Should receive");
+    let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
+    let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
+    let copper_count = debug_packet.inner_data.as_u64().unwrap();
+    info!("The turtle claims to have mined {copper_count} copper ore.");
+
+    // Did the turtle return to start?
+    let turtle_back = test.command(TestCommand::TestForBlock(position.position, &MinecraftBlock::from_string("computercraft:turtle_normal").unwrap())).await.success();
+    info!("Did turtle make it back? : {turtle_back}");
+
+    // All good?
+    let winner_winner_chicken_dinner = blocks_mined > 0 && turtle_back && copper_count == 3;
+
+    test.stop(winner_winner_chicken_dinner).await;
+
+    assert!(winner_winner_chicken_dinner)
 }

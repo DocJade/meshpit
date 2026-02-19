@@ -8,9 +8,12 @@ local helpers = require("helpers")
 ---
 --- This will yield the current task until the sub-task completes.
 ---
+--- Returns a boolean and the result of the sub-task, if any.
+---
 --- Returns `false` if the subtask was unable to be spawned for any reason.
 --- @param current_task TurtleTask -- The currently running task.
 --- @param subtask TaskDefinition
+--- @return boolean, TaskCompletion|TaskFailure|"impossible config"
 function task_helpers.spawnSubTask(current_task, subtask)
     -- Sub-tasks are easy to spawn, but we do need to meet the requirements the
     -- definition sets, otherwise adding the task would immediately fail.
@@ -18,7 +21,7 @@ function task_helpers.spawnSubTask(current_task, subtask)
     -- Is the fuel buffer for the sub-task
     if subtask.fuel_buffer > current_task.walkback:getFuelLevel() then
         -- Impossible.
-        return false
+        return false, "impossible config"
     end
 
     -- Spawn the task.
@@ -32,7 +35,17 @@ function task_helpers.spawnSubTask(current_task, subtask)
     task_helpers.taskYield()
 
     -- If we're back here, the sub task is done!
-    return true
+    -- Retrieve the sub-task's result.
+
+    -- We immediately snipe it out of the TurtleTask, since the value stored
+    -- is only meant to be returned here. That's its only purpose. It doesn't
+    -- even pass butter.
+
+    local sub_task_result = current_task.last_subtask_result
+    -- We expect to always get SOME kind of result.
+    --- @cast sub_task_result TaskCompletion|TaskFailure
+    current_task.last_subtask_result = nil
+    return true, sub_task_result
 end
 
 --- Queue a event. This is a wrapper around the inner computercraft call, as
@@ -79,6 +92,8 @@ function task_helpers.throw(reason)
         reason = reason,
         stacktrace = debug.traceback(nil, 2)
     }
+    -- Doing a throw here stops the subroutine immediately without needing to
+    -- propagate this value upwards.
     error(task_failure, 0)
 end
 
@@ -175,8 +190,9 @@ end
 --- to some un-met constraint, then this will return false.
 ---
 ---@param turtle_task TurtleTask
+---@param result_data TaskResultData
 ---@return TaskCompletion
-function task_helpers.try_finish_task(turtle_task)
+function task_helpers.try_finish_task(turtle_task, result_data)
     -- Run walkback if needed.
     if turtle_task.definition.return_to_start then
         -- Is there any walkback to do?
@@ -215,7 +231,54 @@ function task_helpers.try_finish_task(turtle_task)
 
     -- All good.
     ---@type TaskCompletion
-    return {kind = "success"}
+    return {kind = "success", result = result_data}
+end
+
+--- Attempt to burn a single item as fuel from the turtle's inventory based
+--- on string patterns. These patterns only match names. Be careful to not use
+--- patterns that are too broad.
+---
+--- Iterates the inventory front to back for items to burn, after finding a match,
+--- one item from that matching slot will be consumed as fuel.
+---
+--- Preserves what inventory slot was selected before the call.
+---
+--- Returns true if an item was burnt.
+--- @param walkback WalkbackSelf
+--- @param fuel_patterns string[]
+--- @return boolean
+function task_helpers.tryRefuelFromInventory(walkback, fuel_patterns)
+    -- Can't burn no options!
+    if #fuel_patterns == 0 then return false end
+
+    local original_slot = walkback:getSelectedSlot()
+
+    -- Front to back since when mining those are the stacks added to first.
+    for i = 1, 16 do
+        local item = walkback:getItemDetail(i)
+        -- Skip empty slots
+        if not item then goto continue end
+
+        -- Check if the item matches any pattern
+        for _, pattern in pairs(fuel_patterns) do
+            if not helpers.findString(item.name, pattern) then goto bad_pattern end
+
+            -- Good item, try burning it
+            walkback:select(i)
+            local did_refuel = walkback:refuel(1)
+            walkback:select(original_slot)
+
+            -- Did that work?
+            if did_refuel then return true end
+
+            ::bad_pattern::
+        end
+        ::continue::
+    end
+
+    -- Just in case...
+    walkback:select(original_slot)
+    return false
 end
 
 return task_helpers
