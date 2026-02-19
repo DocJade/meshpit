@@ -45,6 +45,10 @@ pub struct MeshpitLibraries {
     ///
     /// This also comes with all of the tasks.
     pub mesh_os: Option<bool>,
+    /// Debugging stuff. Not meant to go onto wild, organic turtles.
+    ///
+    /// Requires networking to also be loaded.
+    pub debugging: Option<bool>,
 }
 
 impl MeshpitLibraries {
@@ -88,6 +92,9 @@ impl MeshpitLibraries {
                 }
             }
         };
+        if self.debugging.unwrap_or(false) {
+            paths.push(lua_folder.join("debugging.lua"));
+        };
         paths
     }
 
@@ -99,7 +106,8 @@ impl MeshpitLibraries {
             helpers: None,
             block: None,
             item: None,
-            mesh_os: None
+            mesh_os: None,
+            debugging: None,
         }
     }
 }

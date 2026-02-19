@@ -15,14 +15,7 @@ async fn run_tree_chop(
     local mesh_os = require("mesh_os")
     local panic = require("panic")
     require("networking")
-    local function wait_step()
-        NETWORKING.debugSend("wait")
-        if NETWORKING.waitForPacket(240) then
-            return
-        end
-        NETWORKING.debugSend("fail, no response from harness.")
-        os.setComputerLabel("step failure")
-    end
+    local debugging = require("debugging")
 
     -- This does not need to be accurate for this test, its all relative anyways.
     ---@type MinecraftPosition
@@ -36,7 +29,7 @@ async fn run_tree_chop(
     }
 
     -- Sync yield
-    wait_step()
+    debugging.wait_step()
 
     -- Equip the axe
     turtle.equipRight()
@@ -45,7 +38,7 @@ async fn run_tree_chop(
     turtle.back()
 
     -- Yield to let the test know we are ready to start
-    wait_step()
+    debugging.wait_step()
 
     -- setup the OS
     mesh_os.startup(start_position)
@@ -72,7 +65,7 @@ async fn run_tree_chop(
     local _, _ = pcall(mesh_os.main)
 
     -- Tell the os we are done.
-    wait_step()
+    debugging.wait_step()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -82,7 +75,8 @@ async fn run_tree_chop(
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
-        mesh_os: Some(true)
+        mesh_os: Some(true),
+        debugging: Some(true),
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -222,14 +216,7 @@ async fn recursive_miner_test() {
     local mesh_os = require("mesh_os")
     local panic = require("panic")
     require("networking")
-    local function wait_step()
-        NETWORKING.debugSend("wait")
-        if NETWORKING.waitForPacket(240) then
-            return
-        end
-        NETWORKING.debugSend("fail, no response from harness.")
-        os.setComputerLabel("step failure")
-    end
+    local debugging = require("debugging")
 
     -- This does not need to be accurate for this test, its all relative anyways.
     ---@type MinecraftPosition
@@ -243,7 +230,7 @@ async fn recursive_miner_test() {
     }
 
     -- Sync yield
-    wait_step()
+    debugging.wait_step()
 
     -- Equip the pickaxe
     turtle.equipRight()
@@ -253,7 +240,7 @@ async fn recursive_miner_test() {
     turtle.back()
 
     -- Yield to let the test know we are ready to start
-    wait_step()
+    debugging.wait_step()
 
     -- setup the OS
     mesh_os.startup(start_position)
@@ -302,7 +289,8 @@ async fn recursive_miner_test() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
-        mesh_os: Some(true)
+        mesh_os: Some(true),
+        debugging: Some(true),
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
@@ -390,14 +378,7 @@ async fn branch_miner_test() {
     local mesh_os = require("mesh_os")
     local panic = require("panic")
     require("networking")
-    local function wait_step()
-        NETWORKING.debugSend("wait")
-        if NETWORKING.waitForPacket(240) then
-            return
-        end
-        NETWORKING.debugSend("fail, no response from harness.")
-        os.setComputerLabel("step failure")
-    end
+    local debugging = require("debugging")
 
     -- This does not need to be accurate for this test, its all relative anyways.
     ---@type MinecraftPosition
@@ -411,13 +392,13 @@ async fn branch_miner_test() {
     }
 
     -- Sync yield
-    wait_step()
+    debugging.wait_step()
 
     -- Equip the pickaxe
     turtle.equipRight()
 
     -- Yield to let the test know we are ready to start
-    wait_step()
+    debugging.wait_step()
 
     -- setup the OS
     mesh_os.startup(start_position)
@@ -481,7 +462,8 @@ async fn branch_miner_test() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
-        mesh_os: Some(true)
+        mesh_os: Some(true),
+        debugging: Some(true),
     };
 
     let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);

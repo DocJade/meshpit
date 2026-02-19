@@ -46,4 +46,8 @@ constants.dirs = {"n", "e", "s", "w"}
 ---@type {[CardinalDirection]: number}
 constants.dir_to_num = {n = 1, e = 2, s = 3, w = 4}
 
+--- How long debugging wait_step() calls should wait before timing out.
+---@type number
+constants.WAIT_STEP_TIMEOUT = 240
+
 return constants

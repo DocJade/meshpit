@@ -43,36 +43,29 @@ async fn basic_movement_test() {
     local walkback = require("walkback")
     local panic = require("panic")
     require("networking")
-    local function wait_step()
-        NETWORKING.debugSend("wait")
-        if NETWORKING.waitForPacket(5) then
-            return
-        end
-        NETWORKING.debugSend("fail, no response from harness.")
-        os.setComputerLabel("step failure")
-    end
+    local debugging = require("debugging")
 
     walkback:setup(2,1,2,"n")
-    wait_step()
+    debugging.wait_step()
     panic.assert(walkback:forward())
-    wait_step()
+    debugging.wait_step()
     panic.assert(walkback:back())
     panic.assert(walkback:back())
-    wait_step()
+    debugging.wait_step()
     panic.assert(walkback:forward())
     panic.assert(walkback:turnLeft())
     panic.assert(walkback:forward())
-    wait_step()
+    debugging.wait_step()
     panic.assert(walkback:turnRight())
     panic.assert(walkback:turnRight())
     panic.assert(walkback:forward())
     panic.assert(walkback:forward())
-    wait_step()
+    debugging.wait_step()
     panic.assert(walkback:back())
     panic.assert(walkback:up())
-    wait_step()
+    debugging.wait_step()
     panic.assert(walkback:down())
-    wait_step()
+    debugging.wait_step()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -82,6 +75,7 @@ async fn basic_movement_test() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        debugging: Some(true),
         ..Default::default()
     };
 
@@ -200,18 +194,11 @@ async fn basic_walkback_tests() {
     local walkback = require("walkback")
     local panic = require("panic")
     require("networking")
-    local function wait_step()
-        NETWORKING.debugSend("wait")
-        if NETWORKING.waitForPacket(5) then
-            return
-        end
-        NETWORKING.debugSend("fail, no response from harness.")
-        os.setComputerLabel("step failure")
-    end
+    local debugging = require("debugging")
 
     walkback:setup(2,1,2,"n")
 
-    wait_step()
+    debugging.wait_step()
     panic.assert(walkback:forward())
     panic.assert(walkback:forward())
     panic.assert(walkback:up())
@@ -219,9 +206,9 @@ async fn basic_walkback_tests() {
     panic.assert(walkback:turnRight())
     panic.assert(walkback:turnRight())
     panic.assert(walkback:forward())
-    wait_step()
+    debugging.wait_step()
     panic.assert(walkback:rewind())
-    wait_step()
+    debugging.wait_step()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -231,6 +218,7 @@ async fn basic_walkback_tests() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        debugging: Some(true),
         ..Default::default()
     };
 
@@ -315,17 +303,10 @@ async fn basic_block_memorization() {
     local walkback = require("walkback")
     local panic = require("panic")
     require("networking")
-    local function wait_step()
-        NETWORKING.debugSend("wait")
-        if NETWORKING.waitForPacket(5) then
-            return
-        end
-        NETWORKING.debugSend("fail, no response from harness.")
-        os.setComputerLabel("step failure")
-    end
+    local debugging = require("debugging")
     walkback:setup(1,1,1,"n")
     -- handshake
-    wait_step()
+    debugging.wait_step()
 
     -- inspect
     local _ = walkback:inspect()
@@ -350,6 +331,7 @@ async fn basic_block_memorization() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        debugging: Some(true),
         ..Default::default()
     };
 
@@ -437,18 +419,11 @@ async fn walkback_serialization() {
     local walkback = require("walkback")
     local panic = require("panic")
     require("networking")
-    local function wait_step()
-        NETWORKING.debugSend("wait")
-        if NETWORKING.waitForPacket(5) then
-            return
-        end
-        NETWORKING.debugSend("fail, no response from harness.")
-        os.setComputerLabel("step failure")
-    end
+    local debugging = require("debugging")
 
     walkback:setup(1,1,1,"n")
 
-    wait_step()
+    debugging.wait_step()
     NETWORKING.debugSend(walkback:dataJson())
     "#;
 
@@ -459,6 +434,7 @@ async fn walkback_serialization() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        debugging: Some(true),
         ..Default::default()
     };
 
@@ -514,18 +490,11 @@ async fn empty_inventory_serialization() {
     require("networking")
     local walkback = require("walkback")
     local panic = require("panic")
-    local function wait_step()
-        NETWORKING.debugSend("wait")
-        if NETWORKING.waitForPacket(5) then
-            return
-        end
-        NETWORKING.debugSend("fail, no response from harness.")
-        os.setComputerLabel("step failure")
-    end
+    local debugging = require("debugging")
 
     walkback:setup(1,1,1,"n")
 
-    wait_step()
+    debugging.wait_step()
     NETWORKING.debugSend(walkback:inventoryJSON())
     "#;
 
@@ -536,6 +505,7 @@ async fn empty_inventory_serialization() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        debugging: Some(true),
         ..Default::default()
     };
 
@@ -937,17 +907,10 @@ async fn rotation_breaking() {
     local walkback = require("walkback")
     local panic = require("panic")
     require("networking")
-    local function wait_step()
-        NETWORKING.debugSend("wait")
-        if NETWORKING.waitForPacket(5) then
-            return
-        end
-        NETWORKING.debugSend("fail, no response from harness.")
-        os.setComputerLabel("step failure")
-    end
+    local debugging = require("debugging")
 
     walkback:setup(0,0,0,"n")
-    wait_step()
+    debugging.wait_step()
 
     -- Spins and forwards, walkbacks
     turtle.equipRight()
@@ -1006,7 +969,7 @@ async fn rotation_breaking() {
         panic.assert(walkback:moveAdjacent(home))
     end
 
-    wait_step()
+    debugging.wait_step()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -1016,6 +979,7 @@ async fn rotation_breaking() {
         helpers: Some(true),
         block: Some(true),
         item: Some(true),
+        debugging: Some(true),
         ..Default::default()
     };
 
