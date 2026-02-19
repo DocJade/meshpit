@@ -404,13 +404,16 @@ end
 ---
 --- Returns a bool, string|nil pair denoting success or a failure reason.
 ---
+--- Returns true if there is nothing to walkback, as that would be the same as
+--- successfully walking everything back.
+---
 --- Will return `"Not enough fuel"` if the rewind could never possibly work due
 --- to being too long.
----@return boolean, MovementError|"not enough fuel"|"nothing to walkback"|nil
+---@return boolean, MovementError|"not enough fuel"|nil
 function walkback:rewind()
-	-- If there is nothing to rewind, return false.
+	-- If there is nothing to rewind, return true.
 	if self:previousPosition() == nil then
-		return false,"nothing to walkback"
+		return true, nil
 	end
     -- Composed of other methods for implementation simplicity! :D
     -- Pre-check if we have enough fuel. If we don't, then we won't

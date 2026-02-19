@@ -977,17 +977,20 @@ function helpers.block_wanted(block, groups)
     -- If the block is air, we do not care.
     if block == nil then return false, nil end
 
+    -- Also do not care if there's no groups.
+    if #groups == 0 then return false, nil end
+
     -- Check each group in order
     for group_index, group in ipairs(groups) do
         -- Names first
-        for _, name_pattern in ipairs(group.names_patterns) do
+        for _, name_pattern in ipairs(group.names_patterns or {}) do
             if helpers.findString(block.name, name_pattern) then
                 return true, group_index
             end
         end
 
         -- Then tags
-        for _, group_tag in ipairs(group.tags) do
+        for _, group_tag in ipairs(group.tags or {}) do
             for _, block_tag in ipairs(block.tag) do
                 if block_tag == group_tag then
                     return true, group_index

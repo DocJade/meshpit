@@ -283,6 +283,9 @@ local function setupNewTask(task_definition, is_sub_task)
         -- anything.
     end
 
+    -- Make sure to mark the new return position of the walkback.
+    walkback:mark()
+
     -- The rest of the owl.
     ---@type TurtleTask
     local new_task = {
@@ -358,8 +361,9 @@ local function fixTaskPosition(task)
         task.walkback:turnToFace(task.start_facing)
     end
 
-    -- We can skip the following if we don't need to return to start.
-    if not task.definition.return_to_start then
+    -- We can skip the following if we don't need to return to start, or if we're
+    -- already in the right spot.
+    if (not task.definition.return_to_start) or made_it_home then
         goto position_good
     end
 
@@ -449,8 +453,6 @@ local function finishTask(task, result)
     -- or failed, since it needs to happen regardless.
 
     -- Was this a pass or a fail?
-    print(result)
-    print(type(result))
     if result.kind == "success" then
         -- This is easy!
         -- Nothing to do.
@@ -779,7 +781,7 @@ function mesh_os.main()
             else
                 -- TODO: Rewrite this to not pull in-line and use a safer function
                 -- that will not block forever.
-                print("Task is waiting for an event titled: \"", result, "\".")
+                -- print("Task is waiting for an event titled: \"", result, "\".")
                 ---@diagnostic disable-next-line: undefined-field -- TODO:
                 bool, result = resume(task.task_thread, os.pullEvent(result))
             end

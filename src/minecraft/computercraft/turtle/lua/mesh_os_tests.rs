@@ -286,10 +286,13 @@ async fn recursive_miner_test() {
     local total_mined = result.result.total_blocks_mined or 0
 
     -- Send that back
-    NETWORKING.debugSend(result.result.total_blocks_mined)
+    NETWORKING.debugSend(total_mined)
 
-    -- Tell tell the test we are done.
-    wait_step()
+    -- Also send the amount of blocks broken of each category.
+    -- the first and only group should have the same count as total blocks mined.
+    local mined_blocks = result.result.mined_blocks.counts[1] or 0
+
+    NETWORKING.debugSend(mined_blocks)
     "#;
 
     let libraries = MeshpitLibraries {
@@ -343,6 +346,13 @@ async fn recursive_miner_test() {
     let blocks_mined = debug_packet.inner_data.as_u64().unwrap();
     info!("Turtle claims to have mined {blocks_mined} blocks.");
 
+    // Now get the count of the first group. It should be equal.
+    let turtle_json = socket.receive(5).await.expect("Should receive");
+    let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
+    let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
+    let group_count = debug_packet.inner_data.as_u64().unwrap();
+    info!("The group claims {group_count} blocks mined.");
+
     // Did the turtle return to start?
     position.move_direction(MinecraftCardinalDirection::South);
     position.move_direction(MinecraftCardinalDirection::South);
@@ -350,7 +360,7 @@ async fn recursive_miner_test() {
     info!("Did turtle make it back? : {turtle_back}");
 
     // All good?
-    let winner_winner_chicken_dinner = blocks_mined == 27 && turtle_back;
+    let winner_winner_chicken_dinner = blocks_mined == 27 && turtle_back && group_count == blocks_mined;
 
     test.stop(winner_winner_chicken_dinner).await;
 
@@ -371,8 +381,8 @@ async fn branch_miner_test() {
 
     // We spawn the turtle at the edge this time.
     // Still needs to be in the middle of the edge tho
-    let mut position = MinecraftPosition {
-        position: CoordinatePosition { x: 9, y: 1, z: 0 },
+    let position = MinecraftPosition {
+        position: CoordinatePosition { x: 9, y: 1, z: 18 },
         facing: Some(MinecraftCardinalDirection::North),
     };
 
@@ -419,6 +429,7 @@ async fn branch_miner_test() {
         return_to_start = true,
         ---@type BranchMinerData
         task_data = {
+            trunk_length = 17,
             name = "branch_miner",
             desired = {
                 groups = {
@@ -452,13 +463,15 @@ async fn branch_miner_test() {
     -- Run the task. This will return the result of the task
     local _, result = pcall(mesh_os.main)
 
-    local total_mined = (result.mined_blocks or {})[1] or -100
+    local total_mined = result.result.total_blocks_mined or -100
+
+    -- Also send the amount of blocks broken of each category.
+    -- the first and only group should have the same count as total blocks mined.
+    local mined_blocks = result.result.mined_blocks.counts[1] or -100
 
     -- Send that back
-    NETWORKING.debugSend(result.result.total_blocks_mined)
-
-    -- Tell tell the test we are done.
-    wait_step()
+    NETWORKING.debugSend(total_mined)
+    NETWORKING.debugSend(mined_blocks)
     "#;
 
     let libraries = MeshpitLibraries {
@@ -509,17 +522,22 @@ async fn branch_miner_test() {
     let x_range = x_offset..x_offset + 17;
     let z_offset = p1.with_offset(test.corner()).z + 1;
     let z_range = z_offset..z_offset + 17;
+    let y_level = p1.with_offset(test.corner()).y - 1;
 
-    // 5 random spots should be enough.
+    // This doesnt always work, so we do it a lot of times.
+    let mut features_placed = 0;
     let mut rng = rand::rng();
-    for _ in 0..5 {
+    while features_placed <= 25 {
         let x_pos = rng.random_range(x_range.clone());
         let z_pos = rng.random_range(z_range.clone());
         // Run the command. We don't care about the result, but it should output SOMETHING
-        let command = format!("/place feature minecraft:ore_copper_large {x_pos} 2 {z_pos}");
+        let command = format!("/place feature minecraft:ore_copper_large {x_pos} {y_level} {z_pos}");
         #[allow(deprecated)] // hhhhh
         let command = test.command(TestCommand::RawCommand(&command));
-        assert!(command.await.data().is_some())
+        if !command.await.data().unwrap().contains("Failed") {
+            // Feature placed!
+            features_placed += 1
+        }
     }
 
     // HOWEVER: minecraft is jank and the blocks wont show up until after a block
@@ -545,17 +563,23 @@ async fn branch_miner_test() {
     let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
     let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
     // This should just be a number of ores mined.
+    // This will panic if its -100, which is intended.
     let blocks_mined = debug_packet.inner_data.as_u64().unwrap();
-    info!("Turtle claims to have mined {blocks_mined} ore blocks.");
+    info!("Turtle claims to have mined {blocks_mined} total blocks.");
+
+    // Now get the count of the first group. It should be equal.
+    let turtle_json = socket.receive(5).await.expect("Should receive");
+    let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
+    let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
+    let copper_count = debug_packet.inner_data.as_u64().unwrap();
+    info!("The turtle claims to have mined {copper_count} copper ore.");
 
     // Did the turtle return to start?
-    position.move_direction(MinecraftCardinalDirection::South);
-    position.move_direction(MinecraftCardinalDirection::South);
     let turtle_back = test.command(TestCommand::TestForBlock(position.position, &MinecraftBlock::from_string("computercraft:turtle_normal").unwrap())).await.success();
     info!("Did turtle make it back? : {turtle_back}");
 
     // All good?
-    let winner_winner_chicken_dinner = blocks_mined == 3 && turtle_back;
+    let winner_winner_chicken_dinner = blocks_mined > 0 && turtle_back && copper_count == 3;
 
     test.stop(winner_winner_chicken_dinner).await;
 
