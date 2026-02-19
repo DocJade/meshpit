@@ -148,26 +148,26 @@ local BRANCH_SPACING = 8
 --- @class BranchMinerResult
 --- @field name "branch_miner_result"
 --- @field mined_blocks MinedBlocks -- Tracks which blocks were mined and how many
---- @field total_blocks_mined number -- Total number of blocks mined during the task
+--- @field total_blocks_mined number -- Total number of blocks mined during the task, including incidentals.
 
 --- Helper function to check if we have enough fuel to keep going, and refuel
 --- if we need to / can.
 ---
 --- Returns a boolean on wether or not the task can continue.
---- @param task_data TurtleTask
+--- @param task TurtleTask
 --- @return boolean
-function fuel_check(task_data)
-    local wb = task_data.walkback
-    local inner_data = task_data.definition.task_data
+local function fuel_check(task)
+    local wb = task.walkback
+    local inner_data = task.definition.task_data
     ---@cast inner_data BranchMinerData
     local fuel_needed = 0
 
     -- Walkback budget only matters if we need to return to the starting position.
-    if task_data.definition.return_to_start then
+    if task.definition.return_to_start then
         fuel_needed = fuel_needed + wb:cost()
     end
 
-    fuel_needed = fuel_needed + task_data.definition.fuel_buffer
+    fuel_needed = fuel_needed + task.definition.fuel_buffer
 
     if fuel_needed < wb:getFuelLevel() then
         -- Nothing to do
@@ -197,7 +197,7 @@ end
 --- Returns a boolean on wether or not the task can continue.
 --- @param wb WalkbackSelf
 --- @param discardables DiscardableItems
-function inventory_check(wb, discardables)
+local function inventory_check(wb, discardables)
     -- If there's a free slot, nothing to do.
     if wb:haveEmptySlot() then return true end
 
@@ -265,30 +265,250 @@ function inventory_check(wb, discardables)
     return true
 end
 
+--- Filter out the blocks we want to only the ones which have not hit their mined
+--- limit yet.
+---
+--- Does not modify the incoming table, and the returned table is built out of
+--- references to the original table, thus you can modify it to update values
+--- in the main table if needed.
+--- @param wanted_blocks DesiredBlocks
+--- @return DesiredBlocks
+local function filter_wanted_blocks(wanted_blocks)
+    --- @type DesiredBlocks
+    local copy = {
+        groups = {}
+    }
+
+    for _, group in ipairs(wanted_blocks.groups) do
+        if group.desired_total >group.mined then
+            -- Add it!
+            copy.groups[#copy.groups + 1] = group
+        end
+    end
+
+    return copy
+end
+
 --- Helper function to check a new position for ores to recurse into.
+---
+--- Takes in the entire task, as this may spawn a sub- task. Also takes in the
+--- timeout timestamp to force the recursive miner to stop early if needed.
 ---
 --- Takes into account what blocks are currently wanted.
 ---
---- Returns true if recursive mining could be started from this position.
-function check_and_recurse()
-    -- TODO: filter the list of blocks to only the blocks we still want
+--- Automatically does the recursive mining if needed, and updates the desired
+--- blocks list automatically with how many blocks were mined.
+--- @param task TurtleTask
+--- @param task_result BranchMinerResult
+--- @param timeout number
+local function check_and_recurse(task, task_result, timeout)
+    local task_data = task.definition.task_data
+    --- @cast task_data BranchMinerData
+
+    local wb = task.walkback
+
+    -- Filter out for the blocks we still want
+    local filtered = filter_wanted_blocks(task.definition.task_data.desired)
+
+    -- If no blocks are desired, we have no need to recurse. Plus this should
+    -- have been caught in the main loop anyways.
+    if #filtered.groups == 0 then
+        return
+    end
+
+    -- We can just do a spin scan since it takes the same amount of rotations as
+    -- just looking left and right.
+    wb:spinScan()
+
+    local our_pos = wb.cur_position.position
+    local our_facing= wb.cur_position.facing
+
+    -- Get to know our neighbors, sans potato casserole.
+    local neighbors = helpers.GetNeighborBlocks(our_pos, our_facing)
+
+    -- We only need to find one matching neighbor at all, since recursive miner
+    -- will scan in every direction again after this.
+    local found_something = false
+    for neighbor in neighbors do
+        local the_block = wb:blockQuery(neighbor)
+        -- This checks for nil for us.
+        if helpers.block_wanted(the_block, filtered.groups) then
+            found_something = true
+            break
+        end
+    end
+
+    -- Something to do?
+    if not found_something then return end
+
+    -- Yes! Run the recursive miner.
+
+    -- Sum up all of the blocks we want to mine to set a hard limit on recursive_miner
+    local mine_limit = 0
+    for _, group in ipairs(filtered.groups) do
+        mine_limit = mine_limit + (group.desired_total - group.mined)
+    end
+
+    -- Same timeout as the base task.
+
+    --- @type RecursiveMinerData
+    local recurse_data = {
+        name = "recursive_miner",
+        mineable_groups = filtered.groups,
+        blocks_mined_limit = mine_limit,
+        fuel_patterns = task_data.fuel_items.patterns,
+        timeout = timeout
+    }
+
+    --- @type TaskDefinition
+    local sub_task = {
+        fuel_buffer = task.definition.fuel_buffer,
+        return_to_facing = true,
+        return_to_start = true,
+        task_data = recurse_data,
+    }
+
+    -- Run the recursive miner!
+    local success, data = task_helpers.spawnSubTask(task, sub_task)
+
+    -- Did that work?
+    if not success then
+        -- Well. Shoot.
+        ---@cast data TaskFailure
+
+        -- TODO: Some sort of error handling here.
+        print("Branch miner subtask died!")
+        print("Reason:")
+        print(data.reason)
+        print("Stack trace:")
+        print(data.stacktrace)
+        task_helpers.throw("sub-task died")
+    end
+
+    -- All good!
+    --- @cast data TaskCompletion
+    local result = data.result
+    --- @cast result RecursiveMinerResult
+
+    -- Update the groups with the amount of mined blocks.
+    local total_mined = 0
+    for index, amount_mined in ipairs(result.mined_blocks) do
+        local inner_group = filtered.groups[index]
+        inner_group.mined = inner_group.mined + amount_mined
+        total_mined = total_mined + amount_mined
+    end
+
+    -- Update the task result
+    task_result.total_blocks_mined = task_result.total_blocks_mined + total_mined
+
+    -- All done! It's the main loop's job to refuel and such if needed.
 end
+
+--- Try to move forwards, mining incidental blocks if they are in the way.
+---
+--- Returns a boolean on wether the move succeeded or not.
+--- @param task TurtleTask
+--- @param task_result BranchMinerResult
+--- @return boolean
+local function try_forwards(task, task_result)
+    local wb = task.walkback
+    local task_data = task.definition.task_data
+    --- @cast task_data BranchMinerData
+    local incidentals = task_data.incidental or {}
+    -- Usually there is a block in front of us, but if there isn't, thats fine
+    -- too.
+    -- TODO: this will not allow the turtle to move through lava or water,
+    -- walkback should have a method to check if the position in front of us is
+    -- enterable.
+    local block = wb:inspect()
+    if block == nil then
+        -- Open space, skip mining
+        goto done_mining
+    end
+
+    -- There is a block in front of us, can we mine it?
+    if helpers.block_wanted(block, incidentals.groups) then
+        -- We can mine it. Go for it.
+        if not wb:dig() then
+            -- Failed to mine it! Must be something up with either the list or
+            -- ...something else IDK. Regardless, we cannot move
+            return false
+        end
+    else
+        -- We are not allowed to mine this.
+        -- Do note that we did not check the wanted_blocks list, as we assume that
+        -- the caller would have already cleared out any neighboring blocks that
+        -- were wanted already.
+        return false
+    end
+
+    -- We mined a block.
+    task_result.total_blocks_mined = task_result.total_blocks_mined + 1
+
+    ::done_mining::
+
+    -- Move into the space
+    if not wb:forward() then
+        -- Can't go for some reason. Don't care that much. Just say we can't
+        -- keep going.
+        -- TODO: In the future maybe this should care about falling blocks.
+        return false
+    end
+
+    return true
+end
+
+--- Loop for just one branch. Assumes we have already been rotated.
+--- @param task TurtleTask
+--- @param task_result BranchMinerResult
+--- @param timeout number
+local function branch_time(task, task_result, timeout)
+    local wb = task.walkback
+    local incidental = task.definition.task_data.incidental or {}
+    -- We assume the first block we look at would have already been
+    -- recursively mined if it matched our list.
+
+    -- The branch depth is the same as the spacing.
+    -- TODO: This should have a setting in the future.
+    for _ = 1, BRANCH_SPACING do
+        -- Stop early if needed
+        ---@diagnostic disable-next-line: undefined-field
+        if os.epoch("utc") > timeout then
+            break
+        end
+
+        -- Just move forwards.
+        if not try_forwards(task, task_result) then
+            -- Something we cannot break in our way. However, branches are
+            -- allowed to just end early if they cannot go any further.
+            break
+        end
+        -- Recurse if needed.
+        check_and_recurse(task, task_result, timeout)
+    end
+
+    -- Went as far as we could, or as deep as requested.
+end
+
 
 
 --- Helper function to run a branch off of the side of the trunk. Assumes the
 --- branches will go left and right from the position that the turtle is currently
 --- standing in, respecting its facing direction.
-function do_branches()
-
-end
-
-
---- Try to move forwards, mining incidental blocks if they are in the way.
----
---- Returns a boolean on wether the move succeeded or not.
---- @return boolean
-function try_forwards()
-
+--- @param task TurtleTask
+--- @param task_result BranchMinerResult
+--- @param timeout number
+local function do_branches(task, task_result, timeout)
+    local wb = task.walkback
+    -- Right branch first
+    wb:turnRight()
+    branch_time(task, task_result, timeout)
+    -- Turn around, and do the other side
+    wb:turnRight()
+    wb:turnRight()
+    branch_time(task, task_result, timeout)
+    -- Final turn, and we're done.
+    wb:turnRight()
 end
 
 
@@ -380,6 +600,8 @@ local function branch_miner(config)
     -- Commonly used functions and values
     local fuel_buffer = config.definition.fuel_buffer
     local current_trunk_distance = 0
+    local discardables = config.definition.task_data.discardables or {}
+    local incidental = config.definition.task_data.incidental or {}
 
     -- Main loop
     while true do
@@ -412,13 +634,13 @@ local function branch_miner(config)
 
         -- Do we have enough fuel?
         -- This will automatically refuel if needed.
-        if not fuel_check() then
+        if not fuel_check(config) then
             -- Out of fuel!
             break
         end
 
         -- Inventory space?
-        if not inventory_check then
+        if not inventory_check(wb, discardables) then
             -- Out of room!
             break
         end
@@ -426,17 +648,17 @@ local function branch_miner(config)
         -- We can keep going. Move forward unless its time for a branch.
         if current_trunk_distance % BRANCH_SPACING == 0 then
             -- Do the branch!
-            do_branches()
+            do_branches(config, branch_miner_result, stop_time)
         else
             -- Just move forwards.
-            if not try_forwards() then
+            if not try_forwards(config, branch_miner_result) then
                 -- Something we cannot break in our way. Must give up.
                 break
             end
             current_trunk_distance = current_trunk_distance + 1
             -- See if there's anything we want to recurse into. This will
             -- automatically recurse for us.
-            check_and_recurse()
+            check_and_recurse(config, branch_miner_result, stop_time)
         end
 
         -- Loop!

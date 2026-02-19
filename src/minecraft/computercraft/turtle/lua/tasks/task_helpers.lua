@@ -13,7 +13,7 @@ local helpers = require("helpers")
 --- Returns `false` if the subtask was unable to be spawned for any reason.
 --- @param current_task TurtleTask -- The currently running task.
 --- @param subtask TaskDefinition
---- @return boolean, TaskCompletion|TaskFailure|nil
+--- @return boolean, TaskCompletion|TaskFailure|"impossible config"
 function task_helpers.spawnSubTask(current_task, subtask)
     -- Sub-tasks are easy to spawn, but we do need to meet the requirements the
     -- definition sets, otherwise adding the task would immediately fail.
@@ -21,7 +21,7 @@ function task_helpers.spawnSubTask(current_task, subtask)
     -- Is the fuel buffer for the sub-task
     if subtask.fuel_buffer > current_task.walkback:getFuelLevel() then
         -- Impossible.
-        return false, nil
+        return false, "impossible config"
     end
 
     -- Spawn the task.
@@ -42,6 +42,8 @@ function task_helpers.spawnSubTask(current_task, subtask)
     -- even pass butter.
 
     local sub_task_result = current_task.last_subtask_result
+    -- We expect to always get SOME kind of result.
+    --- @cast sub_task_result TaskCompletion|TaskFailure
     current_task.last_subtask_result = nil
     return true, sub_task_result
 end
