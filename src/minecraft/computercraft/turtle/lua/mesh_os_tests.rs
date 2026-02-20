@@ -909,3 +909,131 @@ async fn crafting_test() {
     test.stop(got_furnace).await;
     assert!(got_furnace);
 }
+
+/// We will try to smelt 16 iron ore out of a stack of 64
+#[tokio::test]
+async fn smelting_test() {
+    let area = TestArea {
+        size_x: 3,
+        size_z: 3,
+    };
+
+    let mut test = MinecraftTestHandle::new(area, "smelting test").await;
+    let position = MinecraftPosition {
+        position: CoordinatePosition { x: 1, y: 1, z: 1 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    let test_script = r#"
+    local mesh_os = require("mesh_os")
+    local panic = require("panic")
+    require("networking")
+    local debugging = require("debugging")
+
+    -- position? who gaf
+    ---@type MinecraftPosition
+    local start_position = {
+        position = {
+            x = 0,
+            y = 0,
+            z = 0
+        },
+        facing = "n"
+    }
+
+    -- Sync yield
+    debugging.wait_step()
+
+    -- Signal ready to start
+    debugging.wait_step()
+
+    -- Equip the axe
+    turtle.equipLeft()
+
+    -- Setup mesh_os
+    mesh_os.startup(start_position)
+
+    --- @type TaskDefinition
+    local smelt_task = {
+        fuel_buffer = 2,
+        return_to_facing = true,
+        return_to_start = true,
+        --- @type SmeltingData
+        task_data = {
+            name = "smelt_task",
+            to_smelt = {
+                {
+                    name_pattern = "raw_iron$",
+                    limit = 16
+                }
+            },
+            fuels = {
+                "coal$"
+            }
+        }
+    }
+
+    -- Add the task to the queue
+    mesh_os.testAddTask(smelt_task)
+
+    -- Run the task
+    local _, _ = pcall(mesh_os.main)
+
+    -- Get another walkback to count how many iron ingots we ended up with
+    local wb = require("walkback")
+
+    local count = wb:inventoryCountPattern("ingot")
+
+    -- Tell the test how many ingots we made.
+    NETWORKING.debugSend(count)
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        mesh_os: Some(true),
+        debugging: Some(true),
+    };
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+    let setup = ComputerSetup::new(ComputerKind::Turtle(Some(2000)), config);
+    let computer = test.build_computer(&position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
+
+    // Pickaxe, furnace, coal, and raw iron. I remember when you smelt the full blocks...
+    let pick = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("diamond_pickaxe").unwrap(), 1, 0)).await;
+    assert!(pick.success());
+    let iron = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("raw_iron").unwrap(), 64, 1)).await;
+    assert!(iron.success());
+    let furnace = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("furnace").unwrap(), 1, 2)).await;
+    assert!(furnace.success());
+    let coal = test.command(TestCommand::InsertItem(position.position, &MinecraftItem::from_string("coal").unwrap(), 10, 3)).await;
+    assert!(coal.success());
+
+    computer.turn_on(&mut test).await;
+
+    let str = String::from("go");
+
+    // Initial handshake
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
+
+    // Signal the turtle to begin the task
+    socket.receive(5).await.expect("Should receive");
+    socket.send(str.clone(), 5).await.expect("Should send");
+
+    let turtle_json = socket.receive(300).await.expect("Should receive");
+    let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
+    let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
+    let ingots = debug_packet.inner_data.as_u64().unwrap();
+    info!("Turtle claims to have smelt {ingots} iron ingots.");
+
+    test.stop(ingots == 16).await;
+    assert!(ingots == 16);
+}

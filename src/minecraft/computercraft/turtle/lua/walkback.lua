@@ -1119,10 +1119,13 @@ end
 --- The difference in CPU time between this and getItemDetail() without detailed
 --- info is insignificant. So if you are going to manipulate this item further,
 --- consider loading the slot's item directly.
----@param slot number
+---@param slot number?
 ---@return number
 function walkback:getItemCount(slot)
-	panic.assert(slot > 0 and slot <= 16, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	-- This can be nil to just check the current slot.
+	if slot ~= nil then
+		panic.assert(slot > 0 and slot <= 16, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	end
 	---@diagnostic disable-next-line: undefined-global
 	return turtle.getItemCount(slot)
 end
@@ -1135,10 +1138,13 @@ end
 --- This is extremely cheap, this can be called millions of times per second.
 ---
 --- Returns 64 for empty slots.
----@param slot number
+---@param slot number?
 ---@return number
 function walkback:getItemSpace(slot)
-	panic.assert(slot > 0 and slot <= 16, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	-- This can be nil to just check the current slot.
+	if slot ~= nil then
+		panic.assert(slot > 0 and slot <= 16, "Tried to index outside of the allowed slot range! [" .. slot .. "]")
+	end
 	---@diagnostic disable-next-line: undefined-global
 	return turtle.getItemSpace(slot)
 end
