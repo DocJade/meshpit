@@ -2094,6 +2094,70 @@ function walkback:getFuelLimit()
 end
 
 
+
+
+-- ========================
+-- Walkback shortcuts
+-- ========================
+
+--- Attempt to generate a path back to the marked position from the current
+--- position of the turtle via moving through seen positions that are not
+--- necessarily within the current walkback chain.
+---
+--- TLDR: This tries to reduce the cost of walkback:cost() by taking shortcuts.
+---
+--- Returns a boolean indicating wether the walkback chain was shortened.
+--- @return boolean
+function walkback:makeShortcut()
+	-- This could be done with an algorithm like A* or Dijkstra's, however those
+	-- require making a large list of positions to check and would use a lot of
+	-- time / memory. Therefore our approach is much simpler.
+
+	-- Due to this, the shortcuts may be a little funky, but the goal is to make
+	-- searching relatively cheap.
+
+	-- The position we wish to reach isn't necessarily the start of the chain,
+	-- we compare the midway point of the chain and the start of the chain and
+	-- pick whatever is closer by taxicab distance. We don't need to make a full
+	-- path back to the start, our only goal is to optimize our existing path.
+	-- Furthermore, if while we are searching we find a position that is adjacent
+	-- to any position in the walkback chain, if we've gotten to that position in
+	-- less steps than normally stepping back would take, then we can stop searching
+	-- early, since we're looking for any shortcut, not the best shortcut.
+	-- However, if it took us longer to reach that position than just walking
+	-- back, we will give up immediately.
+
+	-- In theory this could discard a path that may be usable before it's able
+	-- to make its way to a better position, but that's fine, since we're trying
+	-- to make this function very cheap to call, thus it can be called repeatedly
+	-- as you walk back to attempt to find shortcuts after every step.
+
+	-- Given a starting position, we will get all of the neighboring positions
+	-- and rank them by how much closer they get us to our chosen destination.
+
+	-- We greedily move into the best position we've seen if it is contained
+	-- within the set of allowed positions (We are not allowed to re-visit positions)
+	-- This will be repeated until we've found some shortcut, or the amount of
+	-- positions we've seen is 1.5x the cost of just walking back to the position
+	-- normally.
+
+	-- If our best position is tied with our second best position, we will break
+	-- this tie with the normal distance formula. We usually avoid doing normal
+	-- distance evaluation with this since the square root is relatively expensive,
+	-- but getting more prevision on our distance here will let us make smarter
+	-- decisions, such as when we need to move along a flat wall. If the positions
+	-- are still equal, the first position will be picked. We could flip a coin,
+	-- but non-determinism sucks.
+
+	-- If we ever hit a position where the only options increase our distance to
+	-- the destination, we'll step back over and over in the chain we're checking
+	-- until we either find a new option or we hit the starting position again.
+
+	-- Our only bound is the number of checked positions.
+end
+
+
+
 -- ========================
 -- Sanity checks
 -- ========================
