@@ -40,6 +40,7 @@ local tree_chop_function = require("tree_chop")
 local recursive_miner_function = require("recursive_miner")
 local branch_miner_function = require("branch_miner")
 local craft_task_function = require("craft")
+local smelt_task_function = require("smelt")
 
 -- Bring globals into scope to make them faster
 ---@type function
@@ -311,7 +312,7 @@ local function setupNewTask(task_definition, is_sub_task)
     end
 
     local new_thread = coroutine.create(the_cooler_function)
-    -- debug.sethook(new_thread, hook, "l")
+    debug.sethook(new_thread, hook, "l")
 
     -- Then add the thread
     -- TODO: move the thread out of TurtleTask
@@ -495,6 +496,8 @@ function getTaskFunction(data)
         return branch_miner_function
     elseif name == "craft_task" then
         return craft_task_function
+    elseif name == "smelt_task" then
+        return smelt_task_function
     end
     --????? None of those matched?
     panic.panic("Unknown task!")
