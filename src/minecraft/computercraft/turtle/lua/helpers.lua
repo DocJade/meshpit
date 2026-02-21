@@ -1003,6 +1003,25 @@ function helpers.block_wanted(block, groups)
     return false, nil
 end
 
+--- Check if a kind of block can be stood in. Accepts nil for air.
+--- @param block Block|nil
+--- @return boolean
+function helpers.can_stand_in(block)
+    if block == nil then
+        -- Can stand in air
+        return true
+    end
+
+    -- Is it air?
+    if helpers.findString(block.name, "air$") then
+        -- yeah
+        return true
+    end
+
+    -- Check the globals list
+    return helpers.arrayContains(constants.OCCUPIABLE_BLOCKS, block.name)
+end
+
 -- === === ===
 -- === === ===
 -- Sanity checks.
