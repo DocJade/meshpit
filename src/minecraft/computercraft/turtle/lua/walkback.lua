@@ -2228,6 +2228,9 @@ function walkback:makeShortcut()
 	local checked = 0
 
 	while checked < budget do
+		-- This is intense so we yield
+		helpers.quick_yield()
+
 		--- @type CoordPosition
 		local head = shortcut_chain[#shortcut_chain]
 		local head_key = keyFrom(head)
