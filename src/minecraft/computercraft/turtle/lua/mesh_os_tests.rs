@@ -1037,3 +1037,121 @@ async fn smelting_test() {
     test.stop(ingots == 16).await;
     assert!(ingots == 16);
 }
+
+/// Make sure the block_search task can actually find a block, in this case,
+/// sand.
+///
+///
+/// Surrounded in barriers to prevent the turtle from escaping.
+#[tokio::test]
+async fn block_search_task_test() {
+    let area = TestArea {
+        size_x: 13,
+        size_z: 13,
+    };
+
+    let mut test = MinecraftTestHandle::new(area, "block_search task test").await;
+
+    // Barrier box
+
+    // Barriers
+    let c_p1 = CoordinatePosition { x: 0, y: 1, z: 0 };
+    let c_p2 = CoordinatePosition { x: 12, y: 3, z: 12 };
+    let barrier = MinecraftBlock::from_string("barrier").unwrap();
+    assert!(test.command(TestCommand::Fill(c_p1, c_p2, &barrier)).await.success());
+
+    // Hollow it out
+    let h_p1 = CoordinatePosition { x: 1, y: 1, z: 1 };
+    let h_p2 = CoordinatePosition { x: 11, y: 2, z: 11 };
+    let air = MinecraftBlock::from_string("air").unwrap();
+    assert!(test.command(TestCommand::Fill(h_p1, h_p2, &air)).await.success());
+
+    // Add some sand
+    let s_p1 = CoordinatePosition { x: 9, y: 1, z: 9 };
+    let s_p2 = CoordinatePosition { x: 11, y: 2, z: 11 };
+    let sand = MinecraftBlock::from_string("minecraft:sand").unwrap();
+    assert!(test.command(TestCommand::Fill(s_p1, s_p2, &sand)).await.success());
+
+    // Turt
+    let position = MinecraftPosition {
+        position: CoordinatePosition { x: 6, y: 1, z: 6 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    let test_script = r#"
+    local mesh_os = require("mesh_os")
+    local panic = require("panic")
+    require("networking")
+    local debugging = require("debugging")
+
+    ---@type MinecraftPosition
+    local start_position = {
+        position = { x = 0, y = 0, z = 0 },
+        facing = "n"
+    }
+
+    debugging.wait_step()
+
+    mesh_os.startup(start_position)
+
+    ---@type TaskDefinition
+    local search_task = {
+        fuel_buffer = 0,
+        return_to_facing = false,
+        return_to_start = false,
+        ---@type BlockSearchData
+        task_data = {
+            name = "block_search",
+            to_find = {
+                names_patterns = { "sand" },
+                tags = {}
+            },
+        },
+    }
+
+    mesh_os.testAddTask(search_task)
+
+    local _, result = pcall(mesh_os.main)
+
+    -- Return a bool if we found the sand. This will crash the turtle if no
+    -- sand is found somehow which is fine.
+    local found = result.result.found ~= nil
+    NETWORKING.debugSend(found)
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        mesh_os: Some(true),
+        debugging: Some(true),
+    };
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+    let setup = ComputerSetup::new(ComputerKind::Turtle(Some(2000)), config);
+    let computer = test.build_computer(&position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
+
+    computer.turn_on(&mut test).await;
+
+    let go = String::from("go");
+
+    // Sync
+    socket.receive(5).await.expect("Should receive");
+    socket.send(go.clone(), 5).await.expect("Should send");
+
+    // Wait for the search.
+    let turtle_json = socket.receive(300).await.expect("Should receive");
+    let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
+    let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
+    let found_block = debug_packet.inner_data.as_bool().unwrap();
+    info!("Turtle found sand: {found_block}");
+
+    test.stop(found_block).await;
+    assert!(found_block);
+}
