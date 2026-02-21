@@ -246,14 +246,15 @@ function forward_step(task)
     -- initially started at, we keep marching backwards and ruling out positions
     -- since we'll eventually be able to get around whatever we're stuck on.
 
-    -- We only need to pull our position once, since this is a referenced table
-    -- that will be updated by walkback.
-    local position = wb.cur_position.position
-
     -- We should never turn while doing these movements.
     local facing = wb.cur_position.facing
 
     while true do
+        -- We have to re-read the position every iteration, since in theory the
+        -- position could be completely replaced and we would get a stale reference,
+        -- thus all of the relative checks would fail.
+        local position = wb.cur_position.position
+
         -- Easy case, can we just go?
         if helpers.can_stand_in(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "f"))) then
             -- yeah, go forward
@@ -370,6 +371,12 @@ local function block_search(config)
 
     -- Alternates between true and false
     local parity = false
+
+    -- Scan the blocks around us to make sure we have them documented before trying
+    -- to look at them
+    wb:spinScan()
+    -- You never know, we might be right next to what we need.
+    check_neighbors(config)
 
     while true do
 

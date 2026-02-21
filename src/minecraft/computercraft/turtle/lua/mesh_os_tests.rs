@@ -1276,8 +1276,9 @@ async fn block_search_no_fly_test() {
     socket.receive(5).await.expect("Should receive");
     socket.send(go.clone(), 5).await.expect("Should send");
 
-    // Wait for turtle to finish search
-    let turtle_json = socket.receive(120).await.expect("Should receive");
+    // Wait for turtle to finish search'
+    // Should be real fast
+    let turtle_json = socket.receive(10).await.expect("Should receive");
     let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
     let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
     let found_block = debug_packet.inner_data.as_bool().unwrap();

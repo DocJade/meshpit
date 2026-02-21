@@ -313,7 +313,10 @@ local function setupNewTask(task_definition, is_sub_task)
     end
 
     local new_thread = coroutine.create(the_cooler_function)
-    debug.sethook(new_thread, hook, "l")
+    -- Add the debug hook to print line numbers if we are in test mode
+    if test_mode then
+        debug.sethook(new_thread, hook, "l")
+    end
 
     -- Then add the thread
     -- TODO: move the thread out of TurtleTask
