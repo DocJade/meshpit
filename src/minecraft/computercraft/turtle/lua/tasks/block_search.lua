@@ -256,7 +256,8 @@ function forward_step(task)
         local position = wb.cur_position.position
 
         -- Easy case, can we just go?
-        if helpers.can_stand_in(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "f"))) then
+        -- Cant go forwards if we just went back to prevent moving back and forth.
+        if helpers.can_stand_in(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "f"))) and last_move ~= "b" then
             -- yeah, go forward
             -- Cancel if we cannot afford it
             if not shortcut_or_refuel(task) then return false end
@@ -422,6 +423,9 @@ local function block_search(config)
             -- Ran out of fuel while moving forwards.
             break
         end
+
+        -- Bail if we found the block before moving down
+        if found_block ~= nil then break end
 
         -- Fall down if needed
         if not fall_down(config) then
