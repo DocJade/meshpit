@@ -2094,6 +2094,323 @@ function walkback:getFuelLimit()
 end
 
 
+
+
+-- ========================
+-- Walkback shortcuts
+-- ========================
+
+--- Attempt to generate a path back to the marked position from the current
+--- position of the turtle via moving through seen positions that are not
+--- necessarily within the current walkback chain.
+---
+--- This will not work well in low-information environments, but small improvements
+--- are still possible.
+---
+--- TLDR: This tries to reduce the cost of walkback:cost() by taking shortcuts.
+--- This function is relatively cheap to call, but prefer not to use it if possible.
+---
+--- Returns a boolean indicating wether the walkback chain was shortened.
+--- @return boolean
+function walkback:makeShortcut()
+	-- This could be done with an algorithm like A* or Dijkstra's, however those
+	-- require making a large list of positions to check and would use a lot of
+	-- time / memory. Therefore our approach is much simpler.
+
+	-- Due to this, the shortcuts may be a little funky, but the goal is to make
+	-- searching relatively cheap.
+
+	-- The position we wish to reach isn't necessarily the start of the chain,
+	-- we compare the midway point of the chain and the start of the chain and
+	-- pick whatever is closer by taxicab distance. We don't need to make a full
+	-- path back to the start, our only goal is to optimize our existing path.
+	-- Furthermore, if while we are searching we find a position that is adjacent
+	-- to any position in the walkback chain, if we've gotten to that position in
+	-- less steps than normally stepping back would take, then we can stop searching
+	-- early, since we're looking for any shortcut, not the best shortcut.
+	-- However, if it took us longer to reach that position than just walking
+	-- back, we will give up immediately.
+
+	-- In theory this could discard a path that may be usable before it's able
+	-- to make its way to a better position, but that's fine, since we're trying
+	-- to make this function very cheap to call, thus it can be called repeatedly
+	-- as you walk back to attempt to find shortcuts after every step.
+
+	-- Given a starting position, we will get all of the neighboring positions
+	-- and rank them by how much closer they get us to our chosen destination.
+
+	-- We greedily move into the best position we've seen if it is contained
+	-- within the set of allowed positions (We are not allowed to re-visit positions)
+	-- This will be repeated until we've found some shortcut, or the amount of
+	-- positions we've seen is 1.5x the cost of just walking back to the position
+	-- normally.
+
+	-- If our best position is tied with our second best position, we will break
+	-- this tie with the normal distance formula. We usually avoid doing normal
+	-- distance evaluation with this since the square root is relatively expensive,
+	-- but getting more prevision on our distance here will let us make smarter
+	-- decisions, such as when we need to move along a flat wall. If the positions
+	-- are still equal, the first position will be picked. We could flip a coin,
+	-- but non-determinism sucks.
+
+	-- If we ever hit a position where the only options increase our distance to
+	-- the destination, we'll step back over and over in the chain we're checking
+	-- until we either find a new option or we hit the starting position again.
+
+	-- Our only bound is the number of checked positions.
+
+	-- Pull functions into locals to make them run faster (globals are slow according
+	-- to _Codegreen.)
+	local taxicab = helpers.taxicabDistance
+	local keyFrom = helpers.keyFromTable
+	local getNeighbors = helpers.GetNeighborBlocks
+
+	-- ======
+	-- Bailing early and picking a target
+	-- ======
+
+	--- @type CoordPosition[]
+	local chain = self.walkback_chain
+	local chain_length = #chain
+
+	-- Technically need at minimum 3 steps to be able to pick a midpoint...
+	-- However, seriously, what would be the point of trying to shorten any paths
+	-- less then like, 10 steps long? lol.
+	if chain_length < 10 then
+		return false
+	end
+
+	-- Our search budget is 1.5x the length of the current chain
+	local budget = math.floor((chain_length) * 1.5)
+
+
+	-- Figure out if the midpoint or the start is closer and aim for that
+	--- @type CoordPosition
+	local cur_pos = self.cur_position.position
+	--- @type CoordPosition
+	local chain_start = chain[1]
+	--- @type CoordPosition
+	local ts_chain_mid   = chain[math.max(1, math.floor(chain_length / 2))]
+
+	local to_start = taxicab(cur_pos, chain_start)
+	local to_mid   = taxicab(cur_pos, ts_chain_mid)
+
+	-- Lua bullshit bc no trinary operations. Somebody kill me.
+	local target = to_mid < to_start and ts_chain_mid or chain_start
+
+	-- ======
+	-- Search'n splice
+	-- ======
+
+	-- Our stating position
+	local start_key = keyFrom(cur_pos)
+	--- @cast start_key string
+
+	-- The chain as we build it, starts with our current position obv.
+	-- Also all of the positions we used are references, since we don't modify
+	-- them, we dont need to copy them, which is WAY faster.
+	-- The last position in the list is the next position to deepen.
+	--- @type CoordPosition[]
+	local shortcut_chain = { cur_pos }
+
+	-- To prevent needing to scan over the chain, we also keep a second table
+	-- in sync with the chain that stores if the current chain contains a position
+	-- so we can prevent self-intersection.
+	-- Hashset of booleans
+	--- @type {[string]: boolean|nil}
+	local shortcut_seen = { [start_key] = true }
+
+	-- Dead end potions we never need to look at again
+	--- @type {[string]: boolean|nil}
+	local dead_ends = {}
+
+	-- How many positions we've looked at
+	local checked = 0
+
+	while checked < budget do
+		-- This is intense so we yield
+		helpers.quick_yield()
+
+		--- @type CoordPosition
+		local head = shortcut_chain[#shortcut_chain]
+		local head_key = keyFrom(head)
+		-- We always get head. Unlike real life.
+		---@cast head_key string
+
+		-- Find good neighbors, statefarm is there i think
+		--- @type CoordPosition[]
+		local candidates = {}
+		local maybe = getNeighbors(head, self.cur_position.facing)
+
+		for _, neighbor in ipairs(maybe) do
+			local n_key = keyFrom(neighbor)
+			---@cast n_key string
+
+			-- No loops allowed
+			if shortcut_seen[n_key] then
+				goto next_neighbor
+			end
+
+			-- No dead ends
+			if dead_ends[n_key]then
+				goto next_neighbor
+			end
+
+			-- Must be able to stand there
+			if not self.all_seen_positions[n_key] then
+				-- We haven't stood in the position, but maybe its air
+				local nblock = self.all_seen_blocks[n_key]
+				if (not nblock) or nblock.name ~= "minecraft:air" then
+					-- Cant park there sir
+					goto next_neighbor
+				end
+				-- We can still go here since its air.
+			end
+
+			-- Position is a valid candidate!
+
+			-- Is this position already in the chain?
+			local chain_index = self.chain_seen_positions[n_key]
+
+			-- Goto moment.
+			local savings
+
+			if chain_index == nil then
+				-- No its not. We will check it normally when deepening.
+				goto skip_splice
+			end
+			--- @cast chain_index number
+
+			-- Yes it is! We will now either splice in the chain, or skip if
+			-- it wouldn't save us any distance.
+
+			-- Would we save distance?
+			savings = (chain_length - chain_index) - #shortcut_chain
+			if savings <= 0 then
+				-- This neighbor is useless
+				goto next_neighbor
+			end
+
+			-- This is a valid shortcut! Splice the new path onto the chain.
+
+			-- ======
+			-- The splice of doom
+			-- ======
+
+			-- Complex bullshit but basically: we trim the chain up until the
+			-- point that our splice point found (the end of our new chain) then
+			-- we can add the shortcut we found back onto the chain in reverse.
+
+			-- Take notes, there's a quiz on Friday.
+
+			-- Remove the old chain after where we are starting the splice.
+			-- Iterate backwards so we always remove the last element. If we didn't,
+			-- that would make a hole in the array and BAM THE ENTIRE TABLE IS A
+			-- HASHMAP NOW BECAUSE LUA HATES YOU. Even if you put the missing
+			-- indexes back, it wont turn it back into an array, because fuck you.
+			for i = chain_length, chain_index + 1, -1 do
+				local old_key = keyFrom(chain[i])
+				---@cast old_key string
+				-- We also have to remove it from seen positions since the
+				-- hashmap would be pointing to non-existent entries or different
+				-- positions lol
+				self.chain_seen_positions[old_key] = nil
+				chain[i] = nil
+			end
+
+			-- Add the shortcut in reverse, we put the cherry on top last
+			for i = #shortcut_chain, 2, -1 do
+				local sc_pos = shortcut_chain[i]
+				local sc_key = keyFrom(sc_pos)
+				---@cast sc_key string
+				chain[#chain + 1] = sc_pos
+				self.chain_seen_positions[sc_key] = #chain
+			end
+
+			-- The cherry is us!
+			chain[#chain + 1] = shortcut_chain[1]
+			self.chain_seen_positions[start_key] = #chain
+
+			-- The chain is now shorter. Yippie!
+
+			-- Magic block of make-goto-go-away
+			if true then
+				return true
+			end
+
+			::skip_splice::
+			-- Good enough to keep.
+			candidates[#candidates + 1] = neighbor
+			::next_neighbor::
+		end
+
+		checked = checked + 1
+
+		-- Only keep positions that would move us closer to the target
+		local cur_dist = taxicab(head, target)
+		local closer_positions = {}
+		for _, c in ipairs(candidates) do
+			-- No need for equals here since the only movement that could
+			-- change our distance by zero would be not moving.
+			if taxicab(c, target) < cur_dist then
+				-- closer!
+				closer_positions[#closer_positions + 1] = c
+			end
+		end
+
+		if #closer_positions == 0 then
+			-- Nowhere to go from here, this is a deadend!
+			dead_ends[head_key] = true
+			shortcut_seen[head_key] = nil
+			shortcut_chain[#shortcut_chain] = nil -- pop!
+			if #shortcut_chain == 0 then
+				-- We've made it all the way back to where we started.
+				-- Dead ends on every side shouldn't even be possible but yk.
+				return false
+			end
+		else
+			-- We have places to go!
+			-- Sort by taxicab first, then actual distance if that's not enough.
+			if #closer_positions > 1 then
+				-- Tiebreaker.
+				-- We don't take the square root since we just need to compare
+				-- which one is bigger. We dont need the real internal value.
+				local function true_distance_sq(a, b)
+					local dx = a.x - b.x
+					local dy = a.y - b.y
+					local dz = a.z - b.z
+					-- These arent XOR I checked. Why lua. Why.
+					return (dx^2) + (dy^2) + (dz^2)
+				end
+
+				-- Sorting in line like this really feels like Rust iterators.
+				-- its kinda fun
+				table.sort(closer_positions, function(a, b)
+					local t_a = taxicab(a, target)
+					local t_b = taxicab(b, target)
+					if t_a ~= t_b then return t_a < t_b end
+					-- Need more accuracy
+					return true_distance_sq(a, target) < true_distance_sq(b, target)
+				end)
+			end
+
+			-- Take the best candidate and run with it.
+			local best = closer_positions[1]
+			local best_key = keyFrom(best)
+			---@cast best_key string
+			---@
+			shortcut_seen[best_key] = true
+			-- "move" there
+			shortcut_chain[#shortcut_chain + 1] = best
+		end
+	end
+
+	-- Budget exhausted without finding a useful shortcut.
+	return false
+end
+
+
+
 -- ========================
 -- Sanity checks
 -- ========================
