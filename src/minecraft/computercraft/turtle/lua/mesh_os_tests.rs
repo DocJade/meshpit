@@ -1413,5 +1413,248 @@ async fn block_search_back_and_forth_test() {
     let found_block = found_block && turtle_at_expected_pos;
 
     test.stop(found_block).await;
-    assert!(found_block, "Turtle oscillated in the hole and never found the sand");
+    assert!(found_block);
+}
+
+
+/// When searching for blocks the turtle can end up in a cycle of up, back, down,
+/// forward, and repeat which gets it stuck.
+#[tokio::test]
+async fn block_search_4_step_loop() {
+    let area = TestArea {
+        size_x: 6,
+        size_z: 6,
+    };
+
+    let mut test = MinecraftTestHandle::new(area, "block_search stuck back and forth").await;
+
+    let stone = MinecraftBlock::from_string("minecraft:stone").unwrap();
+    let sand = MinecraftBlock::from_string("minecraft:sand").unwrap();
+
+    // Wall in front
+    // No fill bc lazy
+    assert!(test.command(TestCommand::SetBlock(MinecraftPosition {position:CoordinatePosition { x: 2, y: 1, z: 1 }, facing: None}, &stone)).await.success());
+    assert!(test.command(TestCommand::SetBlock(MinecraftPosition {position:CoordinatePosition { x: 2, y: 2, z: 1 }, facing: None}, &stone)).await.success());
+
+    // Ceiling over hole
+    assert!(test.command(TestCommand::SetBlock(MinecraftPosition {position:CoordinatePosition { x: 2, y: 3, z: 2 }, facing: None}, &stone)).await.success());
+
+    // no need for the stone block below this time
+    assert!(test.command(TestCommand::SetBlock(MinecraftPosition {position:CoordinatePosition { x: 2, y: 3, z: 3 }, facing: None}, &stone)).await.success());
+    assert!(test.command(TestCommand::SetBlock(MinecraftPosition {position:CoordinatePosition { x: 2, y: 4, z: 3 }, facing: None}, &sand)).await.success());
+
+    // Start on the floor
+    let position = MinecraftPosition {
+        position: CoordinatePosition { x: 2, y: 1, z: 3 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    let test_script = r#"
+    local mesh_os = require("mesh_os")
+    local panic = require("panic")
+    require("networking")
+    local debugging = require("debugging")
+
+    ---@type MinecraftPosition
+    local start_position = {
+        position = { x = 0, y = 0, z = 0 },
+        facing = "n"
+    }
+
+    debugging.wait_step()
+
+    mesh_os.startup(start_position)
+
+    ---@type TaskDefinition
+    local search_task = {
+        fuel_buffer = 0,
+        return_to_facing = false,
+        return_to_start = false,
+        ---@type BlockSearchData
+        task_data = {
+            name = "block_search",
+            to_find = {
+                names_patterns = { "sand" },
+                tags = {}
+            },
+        },
+    }
+
+    mesh_os.testAddTask(search_task)
+
+    local _, result = pcall(mesh_os.main)
+
+    local found = result.result.found ~= nil
+    NETWORKING.debugSend(found)
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        mesh_os: Some(true),
+        debugging: Some(true),
+    };
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+    // Only a little fuel since this should find the sand in 6 moves
+    let setup = ComputerSetup::new(ComputerKind::Turtle(Some(10)), config);
+    let computer = test.build_computer(&position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
+
+    computer.turn_on(&mut test).await;
+
+    let go = String::from("go");
+
+    socket.receive(5).await.expect("Should receive");
+    socket.send(go.clone(), 5).await.expect("Should send");
+
+    // Should find it fast
+    let turtle_json = socket.receive(30).await.expect("Should receive");
+    let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
+    let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
+    let found_block = debug_packet.inner_data.as_bool().unwrap();
+    info!("Turtle found sand: {found_block}");
+
+    // The turtle should end up next to the sand.
+    let by_sand = CoordinatePosition { x: 2, y: 4, z: 4 };
+    let turtle_block = MinecraftBlock::from_string("computercraft:turtle_normal").unwrap();
+    let turtle_at_expected_pos = test
+        .command(TestCommand::TestForBlock(by_sand, &turtle_block))
+        .await
+        .success();
+
+    info!("Turtle in the right spot: {turtle_at_expected_pos}");
+
+    let found_block = found_block && turtle_at_expected_pos;
+
+    test.stop(found_block).await;
+    assert!(found_block);
+}
+
+
+/// Large overhangs can cause looping when moving down.
+#[tokio::test]
+async fn block_search_overhang() {
+    let area = TestArea {
+        size_x: 12,
+        size_z: 12,
+    };
+
+    let mut test = MinecraftTestHandle::new(area, "block_search overhang").await;
+
+    let stone = MinecraftBlock::from_string("minecraft:stone").unwrap();
+    let sand = MinecraftBlock::from_string("minecraft:sand").unwrap();
+
+    // Wall in front
+    // No fill bc lazy
+    assert!(test.command(TestCommand::SetBlock(MinecraftPosition {position:CoordinatePosition { x: 2, y: 1, z: 1 }, facing: None}, &stone)).await.success());
+    assert!(test.command(TestCommand::SetBlock(MinecraftPosition {position:CoordinatePosition { x: 2, y: 2, z: 1 }, facing: None}, &stone)).await.success());
+
+    // Ceiling over hole
+    // longer ceiling with a required downwards movement at the end
+    let p1 = CoordinatePosition { x: 2, y: 3, z: 2 };
+    let p2 = CoordinatePosition { x: 2, y: 3, z: 9 };
+    assert!(test.command(TestCommand::Fill(p1, p2, &stone)).await.success());
+    assert!(test.command(TestCommand::SetBlock(MinecraftPosition {position:CoordinatePosition { x: 2, y: 2, z: 9 }, facing: None}, &stone)).await.success());
+
+    // Its okay that we have to move forwards for the sand again
+    assert!(test.command(TestCommand::SetBlock(MinecraftPosition {position:CoordinatePosition { x: 2, y: 4, z: 3 }, facing: None}, &sand)).await.success());
+
+    // Start on the floor
+    let position = MinecraftPosition {
+        position: CoordinatePosition { x: 2, y: 1, z: 3 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    let test_script = r#"
+    local mesh_os = require("mesh_os")
+    local panic = require("panic")
+    require("networking")
+    local debugging = require("debugging")
+
+    ---@type MinecraftPosition
+    local start_position = {
+        position = { x = 0, y = 0, z = 0 },
+        facing = "n"
+    }
+
+    debugging.wait_step()
+
+    mesh_os.startup(start_position)
+
+    ---@type TaskDefinition
+    local search_task = {
+        fuel_buffer = 0,
+        return_to_facing = false,
+        return_to_start = false,
+        ---@type BlockSearchData
+        task_data = {
+            name = "block_search",
+            to_find = {
+                names_patterns = { "sand" },
+                tags = {}
+            },
+        },
+    }
+
+    mesh_os.testAddTask(search_task)
+
+    local _, result = pcall(mesh_os.main)
+
+    local found = result.result.found ~= nil
+    NETWORKING.debugSend(found)
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        mesh_os: Some(true),
+        debugging: Some(true),
+    };
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+    let setup = ComputerSetup::new(ComputerKind::Turtle(Some(100)), config);
+    let computer = test.build_computer(&position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
+
+    computer.turn_on(&mut test).await;
+
+    let go = String::from("go");
+
+    socket.receive(5).await.expect("Should receive");
+    socket.send(go.clone(), 5).await.expect("Should send");
+
+    // Should find it fast
+    let turtle_json = socket.receive(120).await.expect("Should receive");
+    let raw_packet: RawTurtlePacket = serde_json::from_str(&turtle_json).unwrap();
+    let debug_packet: DebuggingPacket = raw_packet.try_into().unwrap();
+    let found_block = debug_packet.inner_data.as_bool().unwrap();
+    info!("Turtle found sand: {found_block}");
+
+    // The turtle should end up next to the sand.
+    let by_sand = CoordinatePosition { x: 2, y: 4, z: 4 };
+    let turtle_block = MinecraftBlock::from_string("computercraft:turtle_normal").unwrap();
+    let turtle_at_expected_pos = test
+        .command(TestCommand::TestForBlock(by_sand, &turtle_block))
+        .await
+        .success();
+
+    info!("Turtle in the right spot: {turtle_at_expected_pos}");
+
+    let found_block = found_block && turtle_at_expected_pos;
+
+    test.stop(found_block).await;
+    assert!(found_block);
 }

@@ -256,8 +256,11 @@ function forward_step(task)
         local position = wb.cur_position.position
 
         -- Easy case, can we just go?
-        -- Cant go forwards if we just went back to prevent moving back and forth.
-        if helpers.can_stand_in(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "f"))) and last_move ~= "b" then
+        -- If we're trying to move out of a bad position, we need to not move forwards
+        -- while backtracking, so if we move down, we also need to know that we
+        -- aren't backtracking, otherwise this would cause a loop.
+        local still_retreating = back_moves > 0 and last_move == "d"
+        if helpers.can_stand_in(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "f"))) and last_move ~= "b" and not still_retreating then
             -- yeah, go forward
             -- Cancel if we cannot afford it
             if not shortcut_or_refuel(task) then return false end
