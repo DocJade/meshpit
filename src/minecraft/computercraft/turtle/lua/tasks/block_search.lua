@@ -1,0 +1,3 @@
+-- Search for any matching blocks in a group. Does not return to start. However,
+-- the search space is still constrained by distance to the start point. So when
+-- the task ends, you could still path back to the start manually if needed.
