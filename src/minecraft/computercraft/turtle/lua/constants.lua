@@ -82,4 +82,15 @@ constants.OCCUPIABLE_BLOCKS = {
     "minecraft:sea_grass",
 }
 
+--- Blocks that cannot be mined safely and require the `unsafe` flag to be set
+--- on the dig operation.
+---
+--- A list of full names.
+--- @type string[]
+constants.UNSAFE_BLOCKS = {
+    "computercraft:turtle_normal",
+    "computercraft:turtle_advanced",
+    "computercraft:disk_drive",
+}
+
 return constants

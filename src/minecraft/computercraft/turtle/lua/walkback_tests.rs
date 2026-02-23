@@ -1038,3 +1038,110 @@ async fn rotation_breaking() {
     // Actually worked?
     assert!(all_good)
 }
+
+#[tokio::test]
+/// Make sure that we can only dig unsafe blocks when unsafe is set.
+async fn dig_unsafe_block_test() {
+    let area = TestArea {
+        size_x: 5,
+        size_z: 5,
+    };
+    let mut test = MinecraftTestHandle::new(area, "Dig unsafe test").await;
+
+    let turtle_position = MinecraftPosition {
+        position: CoordinatePosition { x: 2, y: 1, z: 2 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    let disk_drive_pos = CoordinatePosition { x: 2, y: 1, z: 1 };
+
+    let test_script = r#"
+    local walkback = require("walkback")
+    local panic = require("panic")
+    require("networking")
+    local debugging = require("debugging")
+
+    walkback:setup(2,1,2,"n")
+
+    debugging.wait_step()
+
+    -- equip the pick
+    walkback:equipRight()
+
+    -- Try digging without the flag, this should not work
+    local ok, reason = walkback:dig()
+    -- That did not work
+    panic.assert(not ok, "Dug unsafely.")
+    -- It returned the right string
+    panic.assert(reason == "Unsafe", "??? : " .. tostring(reason))
+
+    debugging.wait_step()
+
+    -- Not actually mine it
+    local actually_okay, nothing = walkback:dig(nil, true)
+    panic.assert(actually_okay, "??? : " .. tostring(nothing))
+
+    NETWORKING.debugSend("good")
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        debugging: Some(true),
+        ..Default::default()
+    };
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+
+    // No need for fuel
+    let setup = ComputerSetup::new(ComputerKind::Turtle(None), config);
+    let computer = test.build_computer(&turtle_position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
+
+    // Place a disk_drive directly in front of the turtle.
+    let disk_drive = MinecraftBlock::from_string("computercraft:disk_drive")
+        .expect("Is modded blocks not working?");
+
+    assert!(test.command(TestCommand::SetBlock(MinecraftPosition { position: disk_drive_pos, facing: None }, &disk_drive)).await.success());
+
+    // Pickaxe
+    let gave_pickaxe = test.command(TestCommand::InsertItem(turtle_position.position, &MinecraftItem::from_string("diamond_pickaxe").unwrap(), 1, 0 )).await;
+    assert!(gave_pickaxe.success());
+
+    computer.turn_on(&mut test).await;
+
+    let str = String::from("go");
+
+    // Initial handshake
+    socket.receive(5).await.unwrap();
+    socket.send(str.clone(), 5).await.unwrap();
+
+    // Wait for the failed dig
+    socket.receive(10).await.unwrap();
+
+    // Make sure the drive is still there
+    assert!(test.command(TestCommand::TestForBlock(disk_drive_pos, &disk_drive)).await.success());
+
+    // Real dig this time
+    socket.send(str.clone(), 10).await.unwrap();
+
+    // Wait for that
+    let result = socket.receive(10).await.unwrap();
+
+    // Don't even need to deserialize it just look for the string
+    let turtle_ok = result.contains("good");
+
+    // Drive should be gone
+    let gone_stolem = !test.command(TestCommand::TestForBlock(disk_drive_pos, &disk_drive)).await.success();
+
+    let all_good = turtle_ok && gone_stolem;
+    test.stop(all_good).await;
+
+    assert!(all_good);
+}

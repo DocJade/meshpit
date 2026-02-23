@@ -1736,10 +1736,34 @@ end
 ---
 --- Optionally takes in a side for which tool to use.
 ---
+--- Optionally takes in a boolean that disables the banned blocks list. Only set
+--- this if you are absolutely sure about what is in front of you. Otherwise, the
+--- mining operation will fail if a banned block is attempted to be mined.
+---
 --- Returns if the block was broken, and reason it was not broken if needed.
 ---@param side TurtleSide|nil
----@return boolean, MiningError
-function walkback:dig(side)
+---@param unsafe boolean|nil
+---@return boolean, MiningError|"Unsafe"
+function walkback:dig(side, unsafe)
+	local unsafe = unsafe or false
+	-- Before digging, pre-check to make sure this is safe if needed.
+	if not unsafe then
+		-- Check the block. We don't trust cached data either.
+		-- Yes this is slow-ish since we now have to re-scan the world
+		-- before mining.
+		local block = self:inspect()
+		if block == nil then
+			-- shortcut
+			return false, "Nothing to dig here"
+		end
+
+		-- Check the list
+		if helpers.arrayContains(constants.UNSAFE_BLOCKS, block.name) then
+			-- Can't!
+			return false, "Unsafe"
+		end
+	end
+
 	---@diagnostic disable-next-line: undefined-global
 	local a, b = turtle.dig(side)
 	if a then
@@ -1757,10 +1781,34 @@ end
 ---
 --- Optionally takes in a side for which tool to use.
 ---
+--- Optionally takes in a boolean that disables the banned blocks list. Only set
+--- this if you are absolutely sure about what is in front of you. Otherwise, the
+--- mining operation will fail if a banned block is attempted to be mined.
+---
 --- Returns if the block was broken, and reason it was not broken if needed.
 ---@param side TurtleSide|nil
----@return boolean, MiningError
-function walkback:digUp(side)
+---@param unsafe boolean|nil
+---@return boolean, MiningError|"Unsafe"
+function walkback:digUp(side, unsafe)
+	local unsafe = unsafe or false
+	-- Before digging, pre-check to make sure this is safe if needed.
+	if not unsafe then
+		-- Check the block. We don't trust cached data either.
+		-- Yes this is slow-ish since we now have to re-scan the world
+		-- before mining.
+		local block = self:inspectUp()
+		if block == nil then
+			-- shortcut
+			return false, "Nothing to dig here"
+		end
+
+		-- Check the list
+		if helpers.arrayContains(constants.UNSAFE_BLOCKS, block.name) then
+			-- Can't!
+			return false, "Unsafe"
+		end
+	end
+
 	---@diagnostic disable-next-line: undefined-global
 	local a, b = turtle.digUp(side)
 	if a then
@@ -1775,10 +1823,34 @@ end
 ---
 --- Optionally takes in a side for which tool to use.
 ---
+--- Optionally takes in a boolean that disables the banned blocks list. Only set
+--- this if you are absolutely sure about what is in front of you. Otherwise, the
+--- mining operation will fail if a banned block is attempted to be mined.
+---
 --- Returns if the block was broken, and reason it was not broken if needed.
 ---@param side TurtleSide|nil
----@return boolean, MiningError
-function walkback:digDown(side)
+---@param unsafe boolean|nil
+---@return boolean, MiningError|"Unsafe"
+function walkback:digDown(side, unsafe)
+	local unsafe = unsafe or false
+	-- Before digging, pre-check to make sure this is safe if needed.
+	if not unsafe then
+		-- Check the block. We don't trust cached data either.
+		-- Yes this is slow-ish since we now have to re-scan the world
+		-- before mining.
+		local block = self:inspectDown()
+		if block == nil then
+			-- shortcut
+			return false, "Nothing to dig here"
+		end
+
+		-- Check the list
+		if helpers.arrayContains(constants.UNSAFE_BLOCKS, block.name) then
+			-- Can't!
+			return false, "Unsafe"
+		end
+	end
+
 	---@diagnostic disable-next-line: undefined-global
 	local a, b = turtle.digDown(side)
 	if a then
@@ -1800,8 +1872,9 @@ end
 --- adjacent, this will return `false, nil`
 ---@param adjacent CoordPosition
 ---@param side TurtleSide? -- Which tool to use.
----@return boolean, MiningError|nil
-function walkback:digAdjacent(adjacent, side)
+---@param unsafe boolean|nil
+---@return boolean, MiningError|"Unsafe"|nil
+function walkback:digAdjacent(adjacent, side, unsafe)
 	-- Confirm this is really adjacent
 	if not isPositionAdjacent(self.cur_position.position, adjacent) then
 		return false, nil
@@ -1812,9 +1885,9 @@ function walkback:digAdjacent(adjacent, side)
 	if y_delta ~= 0 then
 		-- mine it!
 		if y_delta > 0 then
-			return self:digUp(side)
+			return self:digUp(side, unsafe)
 		else
-			return self:digDown(side)
+			return self:digDown(side, unsafe)
 		end
 	end
 
@@ -1823,7 +1896,7 @@ function walkback:digAdjacent(adjacent, side)
 	self:faceAdjacentBlock(adjacent)
 
 	-- Mine it.
-	return self:dig(side)
+	return self:dig(side, unsafe)
 end
 
 -- ============
