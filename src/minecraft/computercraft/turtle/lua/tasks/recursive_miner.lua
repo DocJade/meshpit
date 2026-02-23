@@ -30,6 +30,7 @@
 --- @field blocks_mined_limit number? -- Maximum number of blocks to mine before exiting early. May be nil to continue until fuel runs out or timeout.
 --- @field mineable_groups BlockGroup[] -- Groups of blocks that can be mined. Groups are ordered by priority.
 --- @field fuel_patterns string[]? -- A list of string patterns that are allowed as fuel. For example, `coal` matches `minecraft:coal` or `minecraft:coal_block`
+--- @field discardables DiscardableItems? -- See DiscardableItems.
 
 --- What blocks were mined during the task. Tracks at the group level.
 ---
@@ -783,6 +784,8 @@ local function recursive_miner(config)
         stop_time = os.epoch("utc") + (task_data.timeout * 1000)
     end
 
+    local discardables = task_data.discardables or {}
+
     -- The list of the blocks we have checked. If a block is ever looked at, it
     -- goes in here. This is separate from the wb:all_seen_blocks since we need
     -- to differentiate blocks we've _checked_ and blocks we've seen, as we
@@ -856,8 +859,8 @@ local function recursive_miner(config)
             break
         end
 
-        -- Make sure we have an empty slot
-        if not wb:haveEmptySlot() then
+        -- Check if we have room in our inventory, or make room if needed.
+        if not task_helpers.inventory_check(wb, discardables) then
             -- Out of free slots!
             task_helpers.throw("inventory full")
         end

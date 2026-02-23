@@ -137,3 +137,67 @@
 ---
 --- Keyed with helpers.keyFromTable(CoordPosition)
 ---@alias AllSeenBlocks {[string]: Block}
+
+--- ===============
+--- Mining task related
+--- ===============
+
+--- This contains all of the items that a mining task is allowed to discard
+--- when the inventory of the turtle gets too full. This is a priority list,
+--- items first in this list will be discarded first.
+---
+--- When items are discarded, the turtle will search all of its slots once for
+--- every item in this list until it finds some that it can discard. The turtle
+--- will then find every slot containing this item, and discard the slot with
+--- the least of this item in it.
+---
+--- These are pattern strings that match the names of items. Be careful not to
+--- make the patterns too broad.
+--- @class DiscardableItems
+--- @field patterns string[]
+
+--- Desired blocks to mine. The blocks contained within should be ordered by
+--- preference, as the blocks at the front of the list will be mined first. Do
+--- note that if you wish to self-refuel it may be a good idea to always put
+--- blocks that can be burnt as fuel at the top of the priority list.
+---
+--- This is an array of blocks, paired with the mining amounts. When the desired
+--- amount of blocks of a kind have been mined, these blocks will no-longer be
+--- passed into recursive_miner, and thus will be skipped over if seen.
+---
+--- For flexibility, the blocks within the array are described in such a way that
+--- you can put multiple blocks into one block, combining names or tags if desired.
+--- Thus you can group together the blocks into groups, and once that group has
+--- seen the specified amount of blocks mined, the entire group will be marked
+--- as finished.
+---
+--- The desired_total is how many blocks total that match this group need to be
+--- mined to mark the group as completed.
+---
+--- `mined` must be set to zero, or not set at all.
+---
+--- @class DesiredBlocks
+--- @field groups {group: BlockGroup, desired_total: number, mined: number|nil}[]
+
+--- Groups of blocks, or singular blocks. See DesiredBlocks for more info.
+---
+--- The array fields must not be nill. Use an empty table instead.
+--- @class BlockGroup
+--- @field names_patterns string[] -- Patterns that will match the names of blocks in the group.
+--- @field tags string[] -- Tags that blocks in this group may have.
+
+--- Incidental blocks are blocks that are allowed to be mined, but are not
+--- searched for during the mining process. IE, while boring tunnels to search
+--- for desired blocks, these are the blocks that are allowed to be mined.
+---
+--- There is no quota for these blocks.
+--- @class IncidentalBlocks
+--- @field groups BlockGroup[]
+
+--- All of the items that the turtle is allowed to burn to refuel itself while
+--- mining.
+---
+--- These are pattern strings that match the names of items. Be careful not to
+--- make the patterns too broad.
+--- @class FuelItems
+--- @field patterns string[]

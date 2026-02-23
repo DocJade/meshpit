@@ -281,4 +281,79 @@ function task_helpers.tryRefuelFromInventory(walkback, fuel_patterns)
     return false
 end
 
+--- Helper function to check that we still have an empty inventory slot, or
+--- discard items if we need to free up slots.
+---
+--- Returns a boolean on wether or not the task can continue.
+--- @param wb WalkbackSelf
+--- @param discardables DiscardableItems
+function task_helpers.inventory_check(wb, discardables)
+    -- If there's a free slot, nothing to do.
+    if wb:haveEmptySlot() then return true end
+
+    local slot_to_discard = nil
+
+    -- Need to discard something.
+    for _, pattern in ipairs(discardables.patterns) do
+        local best_slot = nil
+        local lowest_count = math.huge
+
+        -- First see if that item even exists before looking harder
+        best_slot = wb:inventoryFindPattern(pattern)
+
+        -- No need to go further if this doesn't exist
+        if best_slot == nil then
+            goto skip_filter
+        end
+
+        lowest_count = wb:getItemCount(best_slot)
+
+        -- See if there are any slots better than this
+        for slot = best_slot, 16 do
+            -- Quicker than checking strings
+            local count = wb:getItemCount(slot)
+            if (count >= lowest_count) or count == 0 then
+                goto continue
+            end
+
+            -- Less items, could it be?
+            if wb:compareTwoSlots(best_slot, slot) then
+                -- New PB!
+                lowest_count = count
+                best_slot = slot
+            end
+
+            ::continue::
+        end
+
+        -- This is now the slot we want to toss.
+        slot_to_discard = best_slot
+        break
+
+        ::skip_filter::
+    end
+
+    -- Did we find anything?
+    if slot_to_discard == nil then
+        -- Shucks.
+        return false
+    end
+
+    -- Drop that slot. This is fine to go into a block, i checked. So we always
+    -- just go up.
+    local old_slot = wb:getSelectedSlot()
+    wb:select(slot_to_discard)
+    local dropped = wb:dropUp()
+    wb:select(old_slot)
+
+    if not dropped then
+        -- ???? This should always work.
+        task_helpers.throw("assumptions not met")
+    end
+
+    -- Space is now cleared up.
+    return true
+end
+
+
 return task_helpers

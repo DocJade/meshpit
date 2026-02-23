@@ -74,73 +74,6 @@ local BRANCH_SPACING = 8
 --- @field timeout number? -- Maximum number of seconds to spend in this task. May be nil to continue mining until other limits are hit.
 --- @field trunk_length number? -- Maximum distance to mine forwards. May be nil to continue mining until other limits are hit.
 
-
-
-
---- Desired blocks to mine. The blocks contained within should be ordered by
---- preference, as the blocks at the front of the list will be mined first. Do
---- note that if you wish to self-refuel it may be a good idea to always put
---- blocks that can be burnt as fuel at the top of the priority list.
----
---- This is an array of blocks, paired with the mining amounts. When the desired
---- amount of blocks of a kind have been mined, these blocks will no-longer be
---- passed into recursive_miner, and thus will be skipped over if seen.
----
---- For flexibility, the blocks within the array are described in such a way that
---- you can put multiple blocks into one block, combining names or tags if desired.
---- Thus you can group together the blocks into groups, and once that group has
---- seen the specified amount of blocks mined, the entire group will be marked
---- as finished.
----
---- The desired_total is how many blocks total that match this group need to be
---- mined to mark the group as completed.
----
---- `mined` must be set to zero, or not set at all.
----
---- @class DesiredBlocks
---- @field groups {group: BlockGroup, desired_total: number, mined: number|nil}[]
-
---- Groups of blocks, or singular blocks. See DesiredBlocks for more info.
----
---- The array fields must not be nill. Use an empty table instead.
---- @class BlockGroup
---- @field names_patterns string[] -- Patterns that will match the names of blocks in the group.
---- @field tags string[] -- Tags that blocks in this group may have.
-
---- Incidental blocks are blocks that are allowed to be mined, but are not
---- searched for during the mining process. IE, while boring tunnels to search
---- for desired blocks, these are the blocks that are allowed to be mined.
----
---- There is no quota for these blocks.
---- @class IncidentalBlocks
---- @field groups BlockGroup[]
-
---- This contains all of the items that the mining task is allowed to discard
---- when the inventory of the turtle gets too full. This is a priority list,
---- items first in this list will be discarded first.
----
---- When items are discarded, the turtle will search all of its slots once for
---- every item in this list until it finds some that it can discard. The turtle
---- will then find every slot containing this item, and discard the slot with
---- the least of this item in it, unless `discard_all` is set, in which case it
---- will drop all of them.
----
---- It is recommended to mark `discard_all` on groups of items that are very
---- common, such as cobblestone.
----
---- These are pattern strings that match the names of items. Be careful not to
---- make the patterns too broad.
---- @class DiscardableItems
---- @field patterns string[]
-
---- All of the items that the turtle is allowed to burn to refuel itself while
---- mining.
----
---- These are pattern strings that match the names of items. Be careful not to
---- make the patterns too broad.
---- @class FuelItems
---- @field patterns string[]
-
 --- The result of the branch miner task.
 --- Uses the same MinedBlocks structure from recursive_miner.
 --- Go look over there for how MinedBlocks works. lol.
@@ -197,80 +130,6 @@ local function fuel_check(task, offset)
     -- No fuel to be had.
     return false
 
-end
-
---- Helper function to check that we still have an empty inventory slot, or
---- discard items if we need to free up slots.
----
---- Returns a boolean on wether or not the task can continue.
---- @param wb WalkbackSelf
---- @param discardables DiscardableItems
-local function inventory_check(wb, discardables)
-    -- If there's a free slot, nothing to do.
-    if wb:haveEmptySlot() then return true end
-
-    local slot_to_discard = nil
-
-    -- Need to discard something.
-    for _, pattern in ipairs(discardables.patterns) do
-        local best_slot = nil
-        local lowest_count = math.huge
-
-        -- First see if that item even exists before looking harder
-        best_slot = wb:inventoryFindPattern(pattern)
-
-        -- No need to go further if this doesn't exist
-        if best_slot == nil then
-            goto skip_filter
-        end
-
-        lowest_count = wb:getItemCount(best_slot)
-
-        -- See if there are any slots better than this
-        for slot = best_slot, 16 do
-            -- Quicker than checking strings
-            local count = wb:getItemCount(slot)
-            if (count >= lowest_count) or count == 0 then
-                goto continue
-            end
-
-            -- Less items, could it be?
-            if wb:compareTwoSlots(best_slot, slot) then
-                -- New PB!
-                lowest_count = count
-                best_slot = slot
-            end
-
-            ::continue::
-        end
-
-        -- This is now the slot we want to toss.
-        slot_to_discard = best_slot
-        break
-
-        ::skip_filter::
-    end
-
-    -- Did we find anything?
-    if slot_to_discard == nil then
-        -- Shucks.
-        return false
-    end
-
-    -- Drop that slot. This is fine to go into a block, i checked. So we always
-    -- just go up.
-    local old_slot = wb:getSelectedSlot()
-    wb:select(slot_to_discard)
-    local dropped = wb:dropUp()
-    wb:select(old_slot)
-
-    if not dropped then
-        -- ???? This should always work.
-        task_helpers.throw("assumptions not met")
-    end
-
-    -- Space is now cleared up.
-    return true
 end
 
 --- Filter out the blocks we want to only the ones which have not hit their mined
@@ -371,7 +230,8 @@ local function check_and_recurse(task, task_result, timeout)
         mineable_groups = re_grouping,
         blocks_mined_limit = mine_limit,
         fuel_patterns = task_data.fuel_items.patterns,
-        timeout = timeout
+        timeout = timeout,
+        discardables = task_data.discardables
     }
 
     --- @type TaskDefinition
@@ -686,7 +546,7 @@ local function branch_miner(config)
         end
 
         -- Inventory space?
-        if not inventory_check(wb, discardables) then
+        if not task_helpers.inventory_check(wb, discardables) then
             -- Out of room!
             break
         end
