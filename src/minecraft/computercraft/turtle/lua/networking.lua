@@ -5,7 +5,7 @@ local panic = require("panic")
 local helpers = require("helpers")
 
 -- Should be a good enough seed.
-math.randomseed(os.getComputerID() * os.epoch("utc"))
+math.randomseed(os.getComputerID() * os.epoch())
 
 -- All of our local state.
 NETWORKING = {}
@@ -96,6 +96,8 @@ local function formatPacket(data, type, UUID)
     local packet = {
         id = os.getComputerID(),
         uuid = UUID,
+        -- We use the real UTC epoch here instead of in-game time, since this gets
+        -- sent to the Rust server that doesn't care about in-game time.
         timestamp = os.epoch("utc"),
         packet_type = type or "unknown",
         data = data

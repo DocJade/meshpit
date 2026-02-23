@@ -108,8 +108,11 @@ end
 --- @param seconds number
 function task_helpers.taskSleep(seconds)
     -- Calculate the walkup time.
+    -- Convert from real seconds to in-game seconds.
+    local seconds = helpers.realSecondsToInGameSeconds(seconds * 1000)
+
     ---@diagnostic disable-next-line: undefined-field
-    local wakeup_time = os.epoch("utc") + (seconds * 1000)
+    local wakeup_time = os.epoch() + seconds
 
     -- Queue the event, and yield.
     ---@diagnostic disable-next-line: undefined-field

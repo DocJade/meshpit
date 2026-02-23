@@ -47,8 +47,15 @@ constants.dirs = {"n", "e", "s", "w"}
 constants.dir_to_num = {n = 1, e = 2, s = 3, w = 4}
 
 --- How long debugging wait_step() calls should wait before timing out.
+---
+--- This is in seconds, but unfortunately this refers to _ingame_ seconds, but
+--- since we aren't doing the time deltas ourselves and cannot provide timestamps
+--- instead of raw second durations, if the game is tick sprinting, this will
+--- time out VERY fast. Thus... its a really big value.
+--- assuming we can sprint at 50,000TPS (about 50% faster than I have been able to
+--- run the server at doing nothing), this would be 5 minutes
 ---@type number
-constants.WAIT_STEP_TIMEOUT = 240
+constants.WAIT_STEP_TIMEOUT = 15000000 -- 15,000,000
 
 --- Blocks that the turtle can always move into besides air.
 ---

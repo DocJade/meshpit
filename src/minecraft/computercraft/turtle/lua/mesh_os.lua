@@ -70,7 +70,7 @@ local walkback_queue = {}
 
 --- Track when we want to wake up from sleeping.
 ---
---- Expressed as a UTC timestamp.
+--- Expressed as a in-game epoch timestamp.
 --- @type number|nil
 local wake_up_time = nil
 
@@ -231,7 +231,7 @@ local current_event_timer_resolution = default_event_timer_resolution
 ---
 --- Setting a timer with an end date in the past has no effect. Thus don't do it.
 ---
---- The provided timestamp is in `utc`, and is unconverted (ie its in milliseconds)
+--- The provided timestamp uses in-game time, and is unconverted (ie its in milliseconds).
 --- @class CustomEventSleep
 --- @field [1] "sleep"
 --- @field [2] number -- Time to wake up. This should be an epoch time that has already been offset but the amount you wish to sleep for.
@@ -296,7 +296,7 @@ local function setupNewTask(task_definition, is_sub_task)
         start_facing = walkback.cur_position.facing,
         start_position = helpers.clonePosition(walkback.cur_position.position),
         ---@diagnostic disable-next-line: undefined-field
-        start_time = os.epoch("utc"),
+        start_time = os.epoch(),
         -- TODO: See below todo lol
         ---@diagnostic disable-next-line: assign-type-mismatch
         task_thread = nil,
@@ -712,7 +712,7 @@ function mesh_os.main()
         -- Are we sleeping?
         if wake_up_time ~= nil then
             print("Sleeping...")
-            local now = epochFunction("utc")
+            local now = epochFunction()
             -- Are we done sleeping?
             ---@diagnostic disable-next-line: undefined-field
             if now >= wake_up_time then
@@ -727,6 +727,9 @@ function mesh_os.main()
                 end
             else
                 local time_remaining_seconds = ((wake_up_time - now)/1000.0)
+                -- This is in-game values so we need to convert this to real time
+                -- since the sleep function takes real seconds.
+                time_remaining_seconds = helpers.InGameSecondsToRealSeconds(time_remaining_seconds)
                 print("Time remaining: " .. time_remaining_seconds .. " seconds.")
                 -- We are still sleeping.
                 -- Sleep for half of the remaining time.

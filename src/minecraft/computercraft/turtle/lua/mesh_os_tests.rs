@@ -253,7 +253,7 @@ async fn recursive_miner_test() {
         ---@type RecursiveMinerData
         task_data = {
             name = "recursive_miner",
-            timeout = 60,
+            timeout = nil,
             mineable_groups = {
                 {
                     names_patterns = {"minecraft:stone"},

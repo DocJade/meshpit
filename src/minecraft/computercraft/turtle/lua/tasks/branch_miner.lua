@@ -359,7 +359,7 @@ local function branch_time(task, task_result, timeout)
     for _ = 1, BRANCH_SPACING do
         -- Stop early if needed
         ---@diagnostic disable-next-line: undefined-field
-        if os.epoch("utc") > timeout then
+        if os.epoch() > timeout then
             all_good = false
             break
         end
@@ -474,8 +474,11 @@ local function branch_miner(config)
     ---@diagnostic disable-next-line: undefined-field
     local stop_time = 9999999999999999999999 -- roughly the year 317 million
     if task_data.timeout ~= nil then
+        -- These are real seconds, convert to in-game.
+        local secs = helpers.realSecondsToInGameSeconds(task_data.timeout * 1000)
+
         ---@diagnostic disable-next-line: undefined-field
-        stop_time = os.epoch("utc") + (task_data.timeout * 1000)
+        stop_time = os.epoch() + secs
     end
 
     -- Max trunk length
@@ -529,7 +532,7 @@ local function branch_miner(config)
         end
 
         -- Out of time?
-        if os.epoch("utc") > stop_time then
+        if os.epoch() > stop_time then
             break
         end
 

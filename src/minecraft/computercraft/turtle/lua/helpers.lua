@@ -29,6 +29,36 @@ end
 
 -- === === ===
 -- === === ===
+-- Time helpers
+-- === === ===
+-- === === ===
+
+--- Convert real time milliseconds into in-game milliseconds, as the in-game time
+--- epoch moves faster than real life. Because of course it does.
+---
+--- This does not convert _timestamps_, only durations. You cannot deduce what
+--- in-game time it is based on UTC time, or vice versa.
+--- @param milliseconds number
+--- @return number
+function helpers.realSecondsToInGameSeconds(milliseconds)
+    -- https://tweaked.cc/module/os.html#v:epoch
+    -- "one real second is equal to 72000 in-game milliseconds."
+    -- 1000 real milliseconds is 72000 in-game.
+    return milliseconds * 72
+end
+
+--- Convert in-game milliseconds into real time milliseconds.
+--- @param milliseconds number
+--- @return number
+function helpers.InGameSecondsToRealSeconds(milliseconds)
+    return milliseconds / 72
+end
+
+
+
+
+-- === === ===
+-- === === ===
 -- String helpers
 -- === === ===
 -- === === ===

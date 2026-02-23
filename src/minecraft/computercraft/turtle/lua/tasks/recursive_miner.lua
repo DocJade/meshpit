@@ -780,8 +780,11 @@ local function recursive_miner(config)
     local mineable_groups = task_data.mineable_groups
     local stop_time = 9999999999999999999999; -- roughly the year 317 million
     if task_data.timeout ~= nil then
+        -- These are real seconds, convert to in-game.
+        local secs = helpers.realSecondsToInGameSeconds(task_data.timeout * 1000)
+
         ---@diagnostic disable-next-line: undefined-field
-        stop_time = os.epoch("utc") + (task_data.timeout * 1000)
+        stop_time = os.epoch() + secs
     end
 
     local discardables = task_data.discardables or {}
@@ -848,7 +851,7 @@ local function recursive_miner(config)
         end
 
         -- Are we out of time?
-        if os.epoch("utc") > stop_time then
+        if os.epoch() > stop_time then
             -- Outta time!
             break
         end

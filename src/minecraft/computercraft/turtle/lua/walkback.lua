@@ -66,10 +66,10 @@ local walkback = {
 	--- This is used to throttle the speed of the turtle, since it can cause
 	--- random issues if we're doing stuff too fast.
 	---
-	--- Tracked as milliseconds since utc epoch.
+	--- Stored as the last epoch of when we moved.
 	--- @type number
 	---@diagnostic disable-next-line: undefined-field
-	last_movement_time = os.epoch("utc"),
+	last_movement_time = os.epoch(),
 
 	--- The speed limit of the turtle. IE, how many milliseconds have to pass
 	--- between movements. Turtles seem to be able to move 2 blocks per second,
@@ -695,12 +695,12 @@ local function waitTillCanMove()
 	local when_can_move = walkback.last_movement_time + walkback.speed_limit_milliseconds
 	local quick_yield = helpers.quick_yield
 	---@diagnostic disable-next-line: undefined-field
-	while when_can_move > os.epoch("utc") do
+	while when_can_move > os.epoch() do
 		quick_yield()
 	end
 	-- We moved!
 	---@diagnostic disable-next-line: undefined-field
-	walkback.last_movement_time = os.epoch("utc")
+	walkback.last_movement_time = os.epoch()
 end
 
 --- Move the turtle forwards.

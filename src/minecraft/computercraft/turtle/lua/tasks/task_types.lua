@@ -10,7 +10,8 @@
 --- ensure that the walkback chain you have created will take the turtle back to
 --- where the task started.
 ---
---- start_time: This is set when the task is created, and is a epoch("utc")
+--- start_time: This is set when the task is created, and is a epoch of in-game
+--- time, as we need to allow tick sprinting.
 ---
 --- last_subtask_result: This will store the the result of the most recent
 --- subtask after returning from a sub-task, however, the value contained here will

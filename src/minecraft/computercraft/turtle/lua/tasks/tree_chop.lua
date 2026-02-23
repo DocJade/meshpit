@@ -53,7 +53,7 @@ local function are_we_there_yet(wb, target_logs, task_end_time)
 
     -- Do we still have time?
     ---@diagnostic disable-next-line: undefined-field
-    if os.epoch("utc") >= task_end_time then
+    if os.epoch() >= task_end_time then
         -- Out of time!
         return true
     end
@@ -208,7 +208,7 @@ local function tree_chop(config)
     target_logs = task_data.target_logs or 999999999
     ---@type number
     ---@diagnostic disable-next-line: undefined-field
-    task_end_time = (task_data.timeout * 1000) + os.epoch("utc")
+    task_end_time = (task_data.timeout * 1000) + os.epoch()
     target_saplings = task_data.target_saplings or 16
 
     local mining_result = nil
