@@ -339,61 +339,42 @@ local function fixTaskPosition(task)
     -- Did we end where we started?
     local made_it_home = helpers.coordinatesAreEqual(task.start_position, walkback.cur_position.position)
 
-    -- Are we facing the right way?
-    local right_side_of_the_bed = task.start_facing == walkback.cur_position.facing
-
-    -- Do we meet all of the requirements that were set?
-    --- @type boolean
-    local all_good = true
-    if task.definition.return_to_facing then
-        all_good = all_good and right_side_of_the_bed
-    end
-
-    if task.definition.return_to_start then
-        all_good = all_good and made_it_home
-    end
-
-    local all_good = task.definition.return_to_facing == right_side_of_the_bed
-    all_good = all_good and task.definition.return_to_start == made_it_home
-
     local destination_key = helpers.keyFromTable(task.start_position)
     -- This has to be a string, since we can always make keys from positions.
     --- @cast destination_key string
 
-    -- We're either in the wrong position, or facing the wrong direction.
-    -- Both? Perchance.
-    if task.definition.return_to_facing and not right_side_of_the_bed then
-        -- Lookin the wrong way pal. Easy fix though.
-        task.walkback:turnToFace(task.start_facing)
-    end
-
-    -- We can skip the following if we don't need to return to start, or if we're
-    -- already in the right spot.
-    if (not task.definition.return_to_start) or made_it_home then
-        goto position_good
-    end
-
-    -- Is the start point we want to be at in the chain?
-    if walkback.posQuery(task.walkback, destination_key) then
-        -- Position is in there, assuming we have enough fuel, we can
-        -- step back repeatedly until we reach it. If we run out of fuel,
-        -- we'll have to get help from the rust server TODO: in the future.
-        while not helpers.coordinatesAreEqual(task.start_position, task.walkback.cur_position.position) do
-            -- TODO: This will panic if something is in the way, if we run out
-            -- of fuel, etc.
-            panic.assert(task.walkback:stepBack())
+    -- Fix our position if needed, do this first since this can rotate us.
+    if task.definition.return_to_start and not made_it_home then
+        -- Is the start point we want to be at in the chain?
+        if walkback.posQuery(task.walkback, destination_key) then
+            -- Position is in there, assuming we have enough fuel, we can
+            -- step back repeatedly until we reach it. If we run out of fuel,
+            -- we'll have to get help from the rust server TODO: in the future.
+            while not helpers.coordinatesAreEqual(task.start_position, task.walkback.cur_position.position) do
+                -- TODO: This will panic if something is in the way, if we run out
+                -- of fuel, etc.
+                panic.assert(task.walkback:stepBack())
+            end
+            -- We are now in the right spot.
+        else
+            -- We aren't in the right spot, AND we cant walk back to it.
+            -- If we had some sort of pathfinding, we could do more here, but
+            -- we dont yet. so we die.
+            -- TODO: Backup pathfinding.
+            panic.panic("Task failed to return to its start point, and we have no path back.")
         end
-        -- We are now in the right spot.
-
-        goto position_good
-    else
-        -- We aren't in the right spot, AND we cant walk back to it.
-        -- If we had some sort of pathfinding, we could do more here, but
-        -- we dont yet. so we die.
-        -- TODO: Backup pathfinding.
-        panic.panic("Task failed to return to its start point, and we have no path back.")
     end
-    ::position_good::
+
+    -- Rotate if needed
+    if task.definition.return_to_facing then
+        local right_side_of_the_bed = task.start_facing == walkback.cur_position.facing
+        if not right_side_of_the_bed then
+            -- Lookin the wrong way pal. Easy fix though.
+            -- This can never fail.
+            task.walkback:turnToFace(task.start_facing)
+        end
+    end
+
     return true
 end
 
