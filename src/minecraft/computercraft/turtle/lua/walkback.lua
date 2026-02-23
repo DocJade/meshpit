@@ -574,6 +574,7 @@ function walkback:hardReset()
 	self.all_seen_positions = {}
 	self.chain_seen_positions = {}
 	self.walkback_chain = {}
+	self.all_seen_blocks = {}
 	-- Doesn't remove the current position for hopefully obvious reasons.
 end
 

@@ -42,6 +42,7 @@ local branch_miner_function = require("branch_miner")
 local craft_task_function = require("craft")
 local smelt_task_function = require("smelt")
 local block_search_function = require("block_search")
+local normalize_height_function = require("normalize_height")
 
 -- Bring globals into scope to make them faster
 ---@type function
@@ -485,6 +486,8 @@ function getTaskFunction(data)
         return smelt_task_function
     elseif name == "block_search" then
         return block_search_function
+    elseif name == "normalize_height" then
+        return normalize_height_function
     end
     --????? None of those matched?
     panic.panic("Unknown task!")
