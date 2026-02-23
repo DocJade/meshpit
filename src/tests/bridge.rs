@@ -121,6 +121,10 @@ impl MinecraftEnvironment {
         // attach rcon
         server.attach_rcon().await;
 
+        // Make the server tick sprint, if this fails, thats fine, the tests will
+        // just take much longer.
+        let _ = server.send_rcon("tick rate 1000").await;
+
         server
     }
     /// Check if server is still running
