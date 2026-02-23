@@ -491,53 +491,32 @@ async fn branch_miner_test() {
 
 
     // Make a big stone platform
-    // Do note that these positions are floating, this is intentional.
-    let p1 = CoordinatePosition { x: 1, y: 2, z: 1 };
-    let p2 = CoordinatePosition { x: 17, y: 2, z: 17 };
+    let p1 = CoordinatePosition { x: 1, y: 1, z: 1 };
+    let p2 = CoordinatePosition { x: 17, y: 1, z: 17 };
     let stone = MinecraftBlock::from_string("minecraft:stone").unwrap();
     assert!(test.command(TestCommand::Fill(p1, p2, &stone)).await.success());
 
     // Then disperse some ores in it
-    // Luckily minecraft has a command for this
+    // Minecraft has a command for this:
     // /place feature minecraft:ore_copper_large ~ ~ ~
-    let x_offset = p1.with_offset(test.corner()).x + 1;
-    let x_range = x_offset..x_offset + 17;
-    let z_offset = p1.with_offset(test.corner()).z + 1;
-    let z_range = z_offset..z_offset + 17;
-    let y_level = p1.with_offset(test.corner()).y - 1;
+    // But it fails so often and is so random that it slows down testing, so
+    // we'll disperse them ourselves.
+    let copper_ore = MinecraftBlock::from_string("minecraft:copper_ore").unwrap();
 
-    // This doesnt always work, so we do it a lot of times.
-    let mut features_placed = 0;
     let mut rng = rand::rng();
-    while features_placed <= 25 {
-        let x_pos = rng.random_range(x_range.clone());
-        let z_pos = rng.random_range(z_range.clone());
-        // Run the command. We don't care about the result, but it should output SOMETHING
-        let command = format!("/place feature minecraft:ore_copper_large {x_pos} {y_level} {z_pos}");
-        #[allow(deprecated)] // hhhhh
-        let command = test.command(TestCommand::RawCommand(&command));
-        if !command.await.data().unwrap().contains("Failed") {
-            // Feature placed!
-            features_placed += 1
+    for x in p1.x..p1.x + 17 {
+        for z in p1.z..p1.z + 17 {
+            // Maybe just skip. a 30% fill rate should be enough.
+            if rng.random_ratio(7, 10) {
+                continue;
+            }
+            // Place a copper.
+            let ore_pos = MinecraftPosition { position: CoordinatePosition { x, y: 1, z }, facing: None };
+            assert!(test.command(TestCommand::SetBlock(ore_pos, &copper_ore)).await.success());
         }
-    }
+    };
 
-    // HOWEVER: minecraft is jank and the blocks wont show up until after a block
-    // update, so after adding the ores, we have to clone the blocks back downwards
-    // to make them show up properly.
-    let p1_down = p1.with_offset(CoordinatePosition { x: 0, y: -1, z: 0 });
-
-    let p1_string = p1.with_offset(test.corner()).as_command_string();
-    let p2_string = p2.with_offset(test.corner()).as_command_string();
-    let p1_down_string = p1_down.with_offset(test.corner()).as_command_string();
-
-    let command_string = format!("/clone {p1_string} {p2_string} {p1_down_string} replace move");
-    #[allow(deprecated)]
-    let command = test.command(TestCommand::RawCommand(&command_string));
-    let command_result = command.await.data();
-    assert!(command_result.unwrap().contains("Succ"));
-
-    // Slab has moved down, we can now start mining.
+    // We can now start mining.
     socket.send(str.clone(), 5).await.expect("Should send");
 
     // Wait for the mining to finish.
