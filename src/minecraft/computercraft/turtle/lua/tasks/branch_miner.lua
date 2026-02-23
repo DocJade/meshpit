@@ -522,6 +522,11 @@ local function branch_miner(config)
     local current_trunk_distance = 0
     local discardables = config.definition.task_data.discardables or {}
 
+    -- Before we even loop the first time, we need to check if a wanted block is
+    -- in front of us, since if we start facing one, the incidental check will
+    -- fail and we cant move into it.
+    check_and_recurse(config, branch_miner_result, stop_time)
+
     -- Main loop
     while true do
 
