@@ -1725,6 +1725,40 @@ function walkback:inspectAt(pos)
 	return true, block
 end
 
+--- Inspect an adjacent block. This is a combination of already public methods, but
+--- is a nice alias.
+---
+--- This may rotate the turtle.
+---
+--- Returns a boolean, block|nil pair. Boolean will be false if the position
+--- was not adjacent.
+---@param adjacent CoordPosition
+---@return boolean, Block|nil
+function walkback:inspectAdjacent(adjacent, side, unsafe)
+	-- Confirm this is really adjacent
+	if not isPositionAdjacent(self.cur_position.position, adjacent) then
+		return false, nil
+	end
+
+	local y_delta = adjacent.y - self.cur_position.position.y
+	-- If the block is above or below, no need to turn.
+	if y_delta ~= 0 then
+		-- mine it!
+		if y_delta > 0 then
+			return true, self:inspectUp()
+		else
+			return true, self:inspectDown()
+		end
+	end
+
+	-- Turn to face the block.
+	-- No need to check, already confirmed we are adjacent
+	self:faceAdjacentBlock(adjacent)
+
+	-- Look at it.
+	return true, self:inspect()
+end
+
 -- ============
 -- Mining
 -- ============

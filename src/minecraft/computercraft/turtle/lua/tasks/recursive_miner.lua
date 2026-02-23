@@ -1,6 +1,9 @@
 -- Takes in a list of kinds of blocks to mine, mines them, then returns to where
 -- the task started, regardless if the return parameter is set.
 
+-- TODO: this file became a mess bc of passing around all of the random values
+-- instead of just passing the whole task around...
+
 --- Assumptions this task makes:
 --- - The turtle is equipped with a tool that can break the blocks requested.
 --- - The task is started next to a block (on any side) that matches the requested
@@ -534,15 +537,62 @@ end
 ---
 --- Returns a boolean if something was actually mined.
 --- @param wb WalkbackSelf
+--- @param discardables DiscardableItems
+--- @param groups BlockGroup[]
 --- @param pos CoordPosition
 --- @return boolean
-local function mine_or_die(wb, pos)
+local function mine_or_die(wb, discardables, groups, pos)
     local mine_result, mine_reason = wb:digAdjacent(pos)
 
     -- Check for actually failures, ignore "Nothing to dig here"
     if (not mine_result) and (mine_reason ~= "Nothing to dig here") then
         task_helpers.throw("assumptions not met")
     end
+
+    -- Check if anything fell into that spot.
+    local _, block = wb:inspectAdjacent(pos)
+    if block == nil then
+        -- Nothing more to do.
+        return mine_result
+    end
+    --- @cast block Block
+
+    -- Something is in the way. Falling blocks?
+
+    -- If it is a falling block, we can mine and toss them to get them out of our way.
+    -- This is fairly rare, so we just import the helper in line here.
+    local block_helpers = require("block")
+
+    if not block_helpers.blockCanFall(block) then
+        -- Not a falling block... How did that get there?
+        task_helpers.throw("assumptions not met")
+    end
+
+    -- Mine the falling blocks until they're all gone.
+    -- I doubt we'll have recursion issues with this.
+    mine_or_die(wb, discardables, groups, pos)
+
+    -- The spot should be clear now.
+    local _, nothing = wb:inspectAdjacent(pos)
+    task_helpers.assert(nothing == nil)
+
+    -- Now, if we don't want that falling block, add it to the discardables list
+    -- if it is not already present.
+
+    if not helpers.block_wanted(block, groups) then
+        -- Don't want it. Add it if it doesn't already exist.
+        task_helpers.assert(block.name ~= nil)
+        if not helpers.arrayContains(discardables.patterns, block.name) then
+            -- Add it to the discard list.
+            discardables.patterns[#discardables.patterns + 1] = block.name
+        end
+    else
+        -- We actually wanted this block anyways!
+        -- TODO: This may result in mining more sand than intended when the goal
+        -- block is sand. Not sure how to handle that right now, so I wont. :D
+    end
+
+    -- All done!
     return mine_result
 end
 
@@ -551,14 +601,10 @@ end
 --- @param pos CoordPosition
 local function move_or_die(wb, pos)
     local move_result, move_reason = wb:moveAdjacent(pos)
-
-    -- Check for actually failures, ignore "Nothing to dig here"
-    if (not move_result) and (move_reason ~= "Nothing to dig here") then
-        -- Throw the more specific fuel error if needed.
+    if not move_result then
         if move_reason == "Out of fuel" then
             task_helpers.throw("out of fuel")
         end
-        task_helpers.throw("assumptions not met")
     end
 end
 
@@ -569,10 +615,12 @@ end
 ---
 --- If blocks are mined, to_mine is automatically updated.
 --- @param wb WalkbackSelf
+--- @param discardables DiscardableItems
+--- @param groups BlockGroup[]
 --- @param seen_blocks {[string]: true}
 --- @param to_mine PositionWithReason[]
 --- @param miner_return_value RecursiveMinerResult
-local function post_movement_shortcuts(wb, seen_blocks, to_mine, miner_return_value)
+local function post_movement_shortcuts(wb, discardables, groups, seen_blocks, to_mine, miner_return_value)
     -- Check the shortcut
     local have_shortcut, go_mine = already_facing_shortcut(wb.cur_position, seen_blocks, to_mine)
     if not have_shortcut then
@@ -587,7 +635,7 @@ local function post_movement_shortcuts(wb, seen_blocks, to_mine, miner_return_va
     -- There are shortcuts! Mine them and mark them.
     for _, pos in ipairs(go_mine) do
         -- Mine
-        local mined = mine_or_die(wb, pos)
+        local mined = mine_or_die(wb, discardables, groups, pos)
         -- Mark
         mark_mined(pos, to_mine, miner_return_value, mined)
     end
@@ -787,7 +835,8 @@ local function recursive_miner(config)
         stop_time = os.epoch() + secs
     end
 
-    local discardables = task_data.discardables or {}
+    --- @type DiscardableItems
+    local discardables = task_data.discardables or { patterns = {}}
 
     -- The list of the blocks we have checked. If a block is ever looked at, it
     -- goes in here. This is separate from the wb:all_seen_blocks since we need
@@ -935,7 +984,7 @@ local function recursive_miner(config)
                 -- While moving backwards, we may have a shortcut we can take.
                 -- Shortcuts run _after_ the break check, since if we called this
                 -- first, we could mine what is being looked for before the break.
-                post_movement_shortcuts(wb, seen_blocks, to_mine, miner_return_value)
+                post_movement_shortcuts(wb, discardables, mineable_groups, seen_blocks, to_mine, miner_return_value)
             end
         end
 
@@ -945,13 +994,13 @@ local function recursive_miner(config)
         -- We will mine it, then move into it if moving in would provide information.
         -- Need to keep track if it was actually mined or not so we can update
         -- statistics.
-        local actually_mined = mine_or_die(wb, pos_to_mine.pos)
+        local actually_mined = mine_or_die(wb, discardables, mineable_groups, pos_to_mine.pos)
 
         if moving_would_give_info(pos_to_mine.pos, seen_blocks) then
             -- Its worth moving in here. The scan will happen automatically on
             -- the next loop.
             move_or_die(wb, pos_to_mine.pos)
-            post_movement_shortcuts(wb, seen_blocks, to_mine, miner_return_value)
+            post_movement_shortcuts(wb, discardables, mineable_groups, seen_blocks, to_mine, miner_return_value)
         end
 
         -- Remove the old block from the list, adding it to the tally if we
