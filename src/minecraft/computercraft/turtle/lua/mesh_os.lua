@@ -686,6 +686,13 @@ function mesh_os.startup(pos)
             -- we could, but we dont). So make sure to place the first turtle
             -- facing north!
             walkback:setup(0, -10000, 0, "n")
+
+            -- Refuel, Just munch up the whole inventory.
+            for i = 1, 16 do
+                walkback:select(i)
+                walkback:refuel()
+            end
+
             return
         end
         -- File is not there, and we are not the first turtle.
@@ -716,6 +723,15 @@ function mesh_os.startup(pos)
     local z = minecraft_pos.position.z
     local facing = minecraft_pos.facing
     walkback:setup(x, y, z, facing)
+
+    -- If this is our first time turning on, we need to refuel.
+    -- TODO: This would eat wooden tools if we ever do that.
+    if hello.new then
+        for i = 1, 16 do
+            walkback:select(i)
+            walkback:refuel()
+        end
+    end
 end
 
 --- Before shutting down the turtle, we need to store information about ourselves
