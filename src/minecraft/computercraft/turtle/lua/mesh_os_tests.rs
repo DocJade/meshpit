@@ -53,7 +53,8 @@ async fn run_tree_chop(
             name = "tree_chop",
             timeout = 100,
             target_logs = 1,
-            target_saplings = 1,
+            max_saplings = 8,
+            min_saplings = 1,
         },
     }
 

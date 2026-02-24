@@ -24,11 +24,17 @@
 ---
 
 --- The configuration for the tree_chop task.
+---
+--- max and min saplings are used to set a low and high point of how many saplings
+--- should be kept on hand. Having these set to different values allows the turtle
+--- to skip mining leaves when we already have enough saplings, which saves a
+--- LOT of time.
 --- @class TreeChopTaskData
 --- @field name "tree_chop"
 --- @field timeout number -- Maximum number of seconds to spend in this task.
 --- @field target_logs number? -- Target number of logs to have in the inventory before stopping. Will harvest until time limit is hit if not set. Does not include logs already in the inventory when the task was started.
---- @field target_saplings number? -- Target number of saplings to keep on hand. Extras will be burnt as fuel. Defaults to 16.
+--- @field max_saplings number? -- The maximum number of saplings to keep on hand. Extras will be burnt as fuel. Defaults to 16.
+--- @field min_saplings number? -- The minimum number of saplings to keep on hand. Defaults to 4.
 
 local helpers = require "helpers"
 local task_helpers = require "task_helpers"
@@ -105,7 +111,8 @@ local function tree_chop(config)
     local down_block
     local target_logs
     local task_end_time
-    local target_saplings
+    local saplings_high
+    local saplings_low
     local miner_data
     local mine_tree_sub_task
     local block
@@ -209,7 +216,12 @@ local function tree_chop(config)
     ---@type number
     ---@diagnostic disable-next-line: undefined-field
     task_end_time = (task_data.timeout * 1000) + os.epoch()
-    target_saplings = task_data.target_saplings or 16
+
+    -- Set the high and low water points for saplings
+    -- (is that how you use that term? I've only seen it used for ZFS lol - Doc)
+
+    saplings_high = task_data.max_saplings or 16
+    saplings_low = task_data.min_saplings or 4
 
     local mining_result = nil
     local mining_worked = nil
@@ -218,15 +230,15 @@ local function tree_chop(config)
     -- No timeout, since it should just be one tree... unless it gets stuck
     -- in a forest, which actually is very funny and i do not care, the
     -- inventory will eventually be full.
-    -- TODO: Eventually split logs and leaves into separate groups so we dont
-    -- mine leaves if we dont need saplings.
+
+    -- Tags are added right before the task is called.
     ---@type RecursiveMinerData
     miner_data = {
         name = "recursive_miner",
         mineable_groups = {
             {
                 names_patterns = {},
-                tags = {log_tag, leaves_tag}
+                tags = {}
             }
         },
         -- These patterns are anchored so we only try to mine items that END with
@@ -275,6 +287,17 @@ local function tree_chop(config)
 
 
         -- A tree is present! Mine it!
+
+        -- Only mine leaves if we don't have enough saplings.
+        sapling_count = wb:inventoryCountTag(sapling_tag)
+        if sapling_count <= saplings_low then
+            -- Need more saplings
+            mine_tree_sub_task.task_data.mineable_groups[1].tags = {log_tag, leaves_tag}
+        else
+            -- Logs only
+            mine_tree_sub_task.task_data.mineable_groups[1].tags = {log_tag}
+        end
+
         mining_worked, mining_result = task_helpers.spawnSubTask(config, mine_tree_sub_task)
         -- Tree mined!
 
@@ -320,7 +343,7 @@ local function tree_chop(config)
 
         -- We may now have extra saplings. Burn them.
         sapling_count = wb:inventoryCountTag(sapling_tag)
-        sapling_excess = sapling_count - target_saplings
+        sapling_excess = sapling_count - saplings_high
 
         if sapling_excess > 0 then
             -- Have some to burn!
