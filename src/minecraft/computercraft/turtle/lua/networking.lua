@@ -4,6 +4,14 @@ print("Setting up networking...")
 local panic = require("panic")
 local helpers = require("helpers")
 
+--- Networking disable switch. If this is enabled, all networking related calls
+--- will pretend to work.
+---
+--- This is temporary, since we don't yet have an actual server to communicate
+--- with outside of testing.
+--- TODO: Remove this when we have actual networking.
+local NETWORKING_DISABLED = false
+
 -- Should be a good enough seed.
 math.randomseed(os.getComputerID() * os.epoch())
 
@@ -44,6 +52,11 @@ end
 local function connect()
     -- skip if the websocket is already open, skip.
     if NETWORKING.websocket then
+        return
+    end
+
+    -- Skip if networking is disabled
+    if NETWORKING_DISABLED then
         return
     end
 
@@ -126,6 +139,11 @@ end
 ---@param UUID string
 ---@returns boolean
 local function send(message, type, UUID)
+    -- Skip if networking is disabled
+    if NETWORKING_DISABLED then
+        return true
+    end
+
     if not NETWORKING.websocket then
         -- No websocket to send on!
         -- We cannot run healthy here. We assume
@@ -145,6 +163,10 @@ end
 ---@param timeout number|nil
 ---@returns boolean, any
 local function receive(timeout)
+    -- Skip if networking is disabled
+    if NETWORKING_DISABLED then
+        return false, "ooga booga grug no have wifi"
+    end
     local timeout = timeout
     if timeout == nil then
         print("Please specify timeouts!")
@@ -202,6 +224,11 @@ end
 function NETWORKING.debugSend(message)
     -- Check that the socket is ready first.
     -- healthy() --TODO: Do this in a better way.
+
+    -- Skip if networking is disabled
+    if NETWORKING_DISABLED then
+        return
+    end
 
     -- Create a UUID for this message
     local UUID = getUUID()

@@ -201,3 +201,23 @@
 --- make the patterns too broad.
 --- @class FuelItems
 --- @field patterns string[]
+
+
+--- ===============
+--- MeshOS startup related
+--- ===============
+
+--- The table that is stored into a brand new turtle before turning it on for
+--- the first time. The contents of this table will be cast to JSON before saving
+--- the result into `hello_world.json`
+---
+--- new:
+--- Used to mark if this is the first time we have ever been turned on. Is only set
+--- when a turtle places another turtle. Otherwise, on shutdown, this should be
+--- marked as false.
+---
+--- position:
+--- The MinecraftPosition of the turtle. We assume this is 100% accurate.
+--- @class HelloWorld
+--- @field new boolean
+--- @field position MinecraftPosition
