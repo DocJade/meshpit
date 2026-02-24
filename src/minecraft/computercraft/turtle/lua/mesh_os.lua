@@ -43,6 +43,7 @@ local craft_task_function = require("craft")
 local smelt_task_function = require("smelt")
 local block_search_function = require("block_search")
 local normalize_height_function = require("normalize_height")
+local mitosis_function = require("mitosis")
 
 -- Bring globals into scope to make them faster
 ---@type function
@@ -289,9 +290,11 @@ local function getTaskFunction(data)
         return block_search_function
     elseif name == "normalize_height" then
         return normalize_height_function
+    elseif name == "mitosis_task" then
+        return mitosis_function
     end
     --????? None of those matched?
-    panic.panic("Unknown task!")
+    panic.panic("Unknown task! " .. name)
     -- This is unreachable.
     ---@diagnostic disable-next-line: return-type-mismatch
     return nil
@@ -665,9 +668,12 @@ end
 --- @param pos MinecraftPosition?
 function mesh_os.startup(pos)
     -- If the position was directly passed in, we can skip the complicated bit.
+    -- This is only mean for use in test cases. When normally starting up, we would
+    -- call this method with no position.
     if pos ~= nil then
         -- Setup the walkback.
         walkback:setup(pos.position.x, pos.position.y, pos.position.z, pos.facing)
+        return
     end
 
     -- No position was provided. We need to read it in from the hello_world file.
@@ -749,7 +755,7 @@ local function shutdown()
     pcall(fs.delete, "hello_world.json")
 
     ---@diagnostic disable-next-line: undefined-global
-    local file = fs.open("hello_world.json", "wa")
+    local file = fs.open("hello_world.json", "a")
 
     file.write(cereal)
     file.flush()

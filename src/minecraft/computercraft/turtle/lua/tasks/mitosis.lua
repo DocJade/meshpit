@@ -15,6 +15,7 @@ local helpers = require("helpers")
 --- - The turtle has all of the required items to create the new turtle in its
 ---   inventory.
 ---   - A turtle, diamond pickaxe, one of the allowed fuels, a disk drive
+--- - The turtle has a tool equipped that can break turtles and disk drives.
 ---
 --- Task completion states:
 --- - Huzzah! A turtle is born!
@@ -26,7 +27,7 @@ local helpers = require("helpers")
 --- - No timeout.
 --- - Returns NoneResult.
 --- @class MitosisData
---- @field name "mine_to_level"
+--- @field name "mitosis_task"
 
 
 --- Fuels that can be used for the new turtle, and their fuel values. Ordered by
@@ -65,7 +66,7 @@ local function mitosis(config)
     local wb = config.walkback
     -- local task_data = config.definition.task_data
     -- Right task?
-    if config.definition.task_data.name ~= "mine_to_level" then
+    if config.definition.task_data.name ~= "mitosis_task" then
         task_helpers.throw("bad config")
     end
     -- --- @cast task_data MineToLevelData
@@ -120,7 +121,9 @@ local function mitosis(config)
     task_helpers.assert(a ~= nil)
     -- Turn it on and off again.
     a.turnOn()
-    a.shutdown()
+
+    -- Wait a moment for it to start up.
+    task_helpers.taskSleep(10)
 
     -- Now we can pick it up. Unsafe needs to be set since we're breaking a turtle.
     a = nil
@@ -137,7 +140,7 @@ local function mitosis(config)
     task_helpers.assert(wb:place())
 
     -- Put in the turtle
-    slot = wb:inventoryFindPattern("computercraft:disk_drive")
+    slot = wb:inventoryFindPattern("computercraft:turtle_normal")
     task_helpers.assert(slot ~= nil)
     --- @cast slot number
 
@@ -191,7 +194,7 @@ local function mitosis(config)
     local cereal = helpers.serializeJSON(hello)
 
     ---@diagnostic disable-next-line: undefined-global
-    local file = fs.open(mount_point .. "/" .. "hello_world.json", "wa")
+    local file = fs.open(mount_point .. "/" .. "hello_world.json", "a")
 
     file.write(cereal)
     file.flush()
@@ -252,7 +255,7 @@ local function mitosis(config)
     task_helpers.assert(turtle_peripheral ~= nil)
     --- @cast turtle_peripheral table
 
-    turtle_peripheral.a.turnOn()
+    turtle_peripheral.turnOn()
 
     -- All done!
     return task_helpers.try_finish_task(config, {name = "none"})

@@ -123,7 +123,7 @@ impl MinecraftEnvironment {
 
         // Make the server tick sprint, if this fails, thats fine, the tests will
         // just take much longer.
-        let _ = server.send_rcon("tick rate 1000").await;
+        // let _ = server.send_rcon("tick rate 1000").await;
 
         server
     }

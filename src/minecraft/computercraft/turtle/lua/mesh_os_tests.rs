@@ -1791,3 +1791,124 @@ async fn recursive_miner_falling_test() {
 
     assert!(winner_winner_chicken_dinner)
 }
+
+/// Attempt mitosis. Very basic test that just assumes that any failure in the
+/// task is a failure of the test.
+#[tokio::test]
+async fn mitosis_basic() {
+    let area = TestArea {
+        size_x: 3,
+        size_z: 3,
+    };
+
+    let mut test = MinecraftTestHandle::new(area, "mitosis basic test").await;
+    let position = MinecraftPosition {
+        position: CoordinatePosition { x: 1, y: 1, z: 1 },
+        facing: Some(MinecraftCardinalDirection::North),
+    };
+
+    let test_script = r#"
+    local mesh_os = require("mesh_os")
+    local panic = require("panic")
+    require("networking")
+    local debugging = require("debugging")
+
+    ---@type MinecraftPosition
+    local start_position = {
+        position = { x = 1, y = 1, z = 1 },
+        facing = "n"
+    }
+
+    debugging.wait_step()
+
+    turtle.equipLeft()
+
+    debugging.wait_step()
+
+    mesh_os.startup(start_position)
+
+    -- The task
+    local mitosis_task = {
+        fuel_buffer = 0,
+        return_to_facing = true,
+        return_to_start = true,
+        task_data = {
+            name = "mitosis_task",
+        },
+    }
+
+    mesh_os.testAddTask(mitosis_task)
+
+    -- Run
+    local _, _ = pcall(mesh_os.main)
+
+    -- Done
+    debugging.wait_step()
+    "#;
+
+    let libraries = MeshpitLibraries {
+        walkback: Some(true),
+        networking: Some(true),
+        panic: Some(true),
+        helpers: Some(true),
+        block: Some(true),
+        item: Some(true),
+        mesh_os: Some(true),
+        debugging: Some(true),
+    };
+
+    let config = ComputerConfigs::StartupIncludingLibraries(test_script.to_string(), libraries);
+    let setup = ComputerSetup::new(ComputerKind::Turtle(Some(2000)), config);
+    let computer = test.build_computer(&position, setup).await;
+    let mut socket = TestWebsocket::new(computer.id())
+        .await
+        .expect("Should be able to get a websocket.");
+
+    // Give the turtle everything it needs
+    let pick = test.command(
+        TestCommand::InsertItem(position.position, &MinecraftItem::from_string("diamond_pickaxe").unwrap(), 1, 0)
+    ).await;
+
+    let pick_two = test.command(
+        TestCommand::InsertItem(position.position, &MinecraftItem::from_string("diamond_pickaxe").unwrap(), 1, 1)
+    ).await;
+
+    let turtle_item = test.command(
+        TestCommand::InsertItem(position.position, &MinecraftItem::from_string("turtle_normal").unwrap(), 1, 2)
+    ).await;
+
+    let drive = test.command(
+        TestCommand::InsertItem(position.position, &MinecraftItem::from_string("disk_drive").unwrap(), 1, 3)
+    ).await;
+
+    let coal = test.command(
+        TestCommand::InsertItem(position.position, &MinecraftItem::from_string("coal").unwrap(), 64, 4)
+    ).await;
+
+    assert!(pick.success() && pick_two.success() && turtle_item.success() && drive.success() && coal.success());
+
+    computer.turn_on(&mut test).await;
+
+    let go = String::from("go");
+
+    socket.receive(10).await.expect("Should receive");
+    socket.send(go.clone(), 10).await.expect("Should send");
+
+    socket.receive(10).await.expect("Should receive");
+    socket.send(go.clone(), 10).await.expect("Should send");
+
+    socket.receive(600).await.expect("Should receive");
+    socket.send(go.clone(), 10).await.expect("Should send");
+
+    // It should have placed the other turtle.
+    let turt_pos = position.with_offset(CoordinatePosition { x: 0, y: 0, z: -1 }).position;
+
+    let got_turnt = test.command(TestCommand::TestForBlock(
+        turt_pos,
+        &MinecraftBlock::from_string("turtle_normal").unwrap(),
+    )).await.success();
+    info!("Turtle placed? : {got_turnt}");
+
+    test.stop(got_turnt).await;
+    assert!(got_turnt);
+}
