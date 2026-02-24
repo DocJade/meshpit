@@ -197,6 +197,7 @@ end
 ---@return TaskCompletion
 function task_helpers.try_finish_task(turtle_task, result_data)
     -- Run walkback if needed.
+    local backoff_delay = 1
     if turtle_task.definition.return_to_start then
         -- Is there any walkback to do?
         local cost = turtle_task.walkback:cost()
@@ -211,10 +212,23 @@ function task_helpers.try_finish_task(turtle_task, result_data)
         end
 
         -- Do the walkback
-        -- TODO: Retry the walkback after some delay.
-        local walkback_result, fail_message = turtle_task.walkback:rewind()
-        if not walkback_result then
-            task_helpers.throw("walkback rewind failure")
+        while true do
+            -- We try several times just in case something moved in the way
+            -- such as a another turtle. We will exponentially back off.
+            local walkback_result, fail_message = turtle_task.walkback:rewind()
+            if walkback_result then
+                -- Done!
+                break
+            end
+
+            -- That didn't work. We will retry.
+            if backoff_delay > 32 then
+                -- Out of attempts
+                task_helpers.throw("walkback rewind failure")
+            end
+            task_helpers.taskSleep(backoff_delay)
+            -- Double it for the next run
+            backoff_delay = backoff_delay * 2
         end
 
         -- Double check that we ended where we started. This should be the case

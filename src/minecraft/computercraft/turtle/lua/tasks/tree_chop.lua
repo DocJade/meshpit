@@ -17,9 +17,11 @@
 ---
 --- Task failures states:
 --- - The turtle runs out of saplings and is unable to continue chopping.
---- - - The turtle will collect its own saplings while chopping, but there is
+---   - The turtle will collect its own saplings while chopping, but there is
 ---     always a chance there just won't be a new sapling from the tree. This
 ---     should be relatively rare.
+---   - However, if you set max_saplings to zero, it will eat all of them and die.
+---     So don't do that.
 --- - The inventory of the turtle can't hold any more items.
 ---
 
@@ -327,6 +329,9 @@ local function tree_chop(config)
 
         if where_sapling == nil then
             -- Ran out of saplings!
+            -- This can only happen if we somehow manage to harvest 0 saplings
+            -- from a tree several times in a row, or if the max sapling count
+            -- was zero.
             task_helpers.throw("assertion failed")
         end
         -- We must have a slot with saplings then.
