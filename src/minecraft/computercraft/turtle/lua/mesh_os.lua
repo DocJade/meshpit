@@ -232,7 +232,7 @@ local current_event_timer_resolution = default_event_timer_resolution
 ---
 --- Setting a timer with an end date in the past has no effect. Thus don't do it.
 ---
---- The provided timestamp uses in-game time, and is unconverted (ie its in milliseconds).
+--- The provided timestamp uses in-game time, and is unconverted (IE: its in milliseconds).
 --- @class CustomEventSleep
 --- @field [1] "sleep"
 --- @field [2] number -- Time to wake up. This should be an epoch time that has already been offset but the amount you wish to sleep for.
@@ -268,6 +268,33 @@ local function request_new_tasks()
     -- TODO: Default tasks!
     ---@diagnostic disable-next-line: undefined-field, missing-return
     os.shutdown()
+end
+
+--- Get the function associated with a task data
+--- @param data TaskDataType
+--- @return function
+local function getTaskFunction(data)
+    local name = data.name
+    if name == "tree_chop" then
+        return tree_chop_function
+    elseif name =="recursive_miner" then
+        return recursive_miner_function
+    elseif name == "branch_miner" then
+        return branch_miner_function
+    elseif name == "craft_task" then
+        return craft_task_function
+    elseif name == "smelt_task" then
+        return smelt_task_function
+    elseif name == "block_search" then
+        return block_search_function
+    elseif name == "normalize_height" then
+        return normalize_height_function
+    end
+    --????? None of those matched?
+    panic.panic("Unknown task!")
+    -- This is unreachable.
+    ---@diagnostic disable-next-line: return-type-mismatch
+    return nil
 end
 
 --- Sets up an incoming task. TODO: We assume that this is valid right now,
@@ -332,7 +359,7 @@ end
 --- Returns a boolean on wether or not we could end up at either the starting position,
 --- or always true if the criteria are ignored anyways.
 ---
---- TODO: Currently this always returns true since there isnt any real error handling
+--- TODO: Currently this always returns true since there isn't any real error handling
 --- yet. Somebody should fix that.
 --- @param task TurtleTask
 --- @return boolean
@@ -359,9 +386,9 @@ local function fixTaskPosition(task)
             -- We are now in the right spot.
         else
             -- We aren't in the right spot, AND we cant walk back to it.
-            -- If we had some sort of pathfinding, we could do more here, but
+            -- If we had some sort of path finding, we could do more here, but
             -- we dont yet. so we die.
-            -- TODO: Backup pathfinding.
+            -- TODO: Backup path finding.
             panic.panic("Task failed to return to its start point, and we have no path back.")
         end
     end
@@ -370,7 +397,7 @@ local function fixTaskPosition(task)
     if task.definition.return_to_facing then
         local right_side_of_the_bed = task.start_facing == walkback.cur_position.facing
         if not right_side_of_the_bed then
-            -- Lookin the wrong way pal. Easy fix though.
+            -- Looking the wrong way pal. Easy fix though.
             -- This can never fail.
             task.walkback:turnToFace(task.start_facing)
         end
@@ -469,40 +496,13 @@ function mesh_os.testAddTask(task_definition)
     setupNewTask(task_definition, false)
 end
 
---- Get the function associated with a task data
---- @param data TaskDataType
---- @return function
-function getTaskFunction(data)
-    local name = data.name
-    if name == "tree_chop" then
-        return tree_chop_function
-    elseif name =="recursive_miner" then
-        return recursive_miner_function
-    elseif name == "branch_miner" then
-        return branch_miner_function
-    elseif name == "craft_task" then
-        return craft_task_function
-    elseif name == "smelt_task" then
-        return smelt_task_function
-    elseif name == "block_search" then
-        return block_search_function
-    elseif name == "normalize_height" then
-        return normalize_height_function
-    end
-    --????? None of those matched?
-    panic.panic("Unknown task!")
-    -- This is unreachable.
-    ---@diagnostic disable-next-line: return-type-mismatch
-    return nil
-end
-
 --- Set a timer for one second and sleep for it.
 ---
 --- We only sleep for one second at a time, as we still want to wake up and handle
 --- other events regardless if the current task is running. This delay may be
 --- increased in the future if needed.
 --- @param seconds number -- The number of seconds to sleep for. Can be fractional.
-function os_sleep(seconds)
+local function os_sleep(seconds)
 
     -- TODO: This somehow the old timer ID is not being cleaned up properly
 
@@ -653,18 +653,95 @@ local function handle_events()
 end
 
 -- =========
--- Startup
+-- Startup and shutdown
 -- =========
 
 --- Things that need to be done before entering the main loop for the first time.
 ---
---- Requires a position to start the walkback at.
+--- Can take in a position for where the walkback will start, otherwise will attempt
+--- to look for the `hello_world.json` file for a position.
 ---
 --- Does not call the main loop after startup finishes.
---- @param pos MinecraftPosition
+--- @param pos MinecraftPosition?
 function mesh_os.startup(pos)
-    -- Setup the walkback.
-    walkback:setup(pos.position.x, pos.position.y, pos.position.z, pos.facing)
+    -- If the position was directly passed in, we can skip the complicated bit.
+    if pos ~= nil then
+        -- Setup the walkback.
+        walkback:setup(pos.position.x, pos.position.y, pos.position.z, pos.facing)
+    end
+
+    -- No position was provided. We need to read it in from the hello_world file.
+    -- The root directory should contain `hello_world.json`
+    ---@diagnostic disable-next-line: undefined-global
+    if #fs.find("hello_world.json") == 0 then
+        -- File is not present. Are we the first turtle ever?
+        ---@diagnostic disable-next-line: undefined-field
+        if os.getComputerID() == 0 then
+            -- We have no idea where we are. So we will assume we are at 0,0. But
+            -- since we have no idea what our vertical position is yet, we will
+            -- set it to -10,000 to make it VERY clear that we have no idea where
+            -- we are.
+            -- Additionally, we assume that we were placed facing North. We have
+            -- no immediate way to deduce this (if we had a stair or something
+            -- we could, but we dont). So make sure to place the first turtle
+            -- facing north!
+            walkback:setup(0, -10000, 0, "n")
+            return
+        end
+        -- File is not there, and we are not the first turtle.
+        -- Really nothing we can do.
+        panic.panic("Startup called with no position or hello_world file!")
+    end
+
+    -- File exists, read in the file and parse the json.
+    --- @type table|nil
+    ---@diagnostic disable-next-line: undefined-global
+    local file = fs.open("hello_world.json", "r")
+    file = panic.unwrap(file)
+
+    -- Read everything out
+    local contents = file.readAll()
+    file.close()
+
+    -- Cast that from json back into the HelloWorld table.
+    --- @type boolean, HelloWorld
+    local worked, hello = helpers.deserializeJSON(contents)
+
+    panic.assert(worked, "Failed to deserialize hello world!")
+
+    -- Set up the walkback based on the stored position.
+    local minecraft_pos = hello.position
+    local x = minecraft_pos.position.x
+    local y = minecraft_pos.position.y
+    local z = minecraft_pos.position.z
+    local facing = minecraft_pos.facing
+    walkback:setup(x, y, z, facing)
+end
+
+--- Before shutting down the turtle, we need to store information about ourselves
+--- in hello_world.json so we can load it back up when we're turned back on.
+local function shutdown()
+    --- @type HelloWorld
+    local hello = {
+        new = false, -- We've shut down, therefore we ain't new
+        position = walkback.cur_position
+    }
+
+    -- Serialize and store.
+    local cereal = helpers.serializeJSON(hello)
+    ---@diagnostic disable-next-line: undefined-global
+    pcall(fs.delete, "hello_world.json")
+
+    ---@diagnostic disable-next-line: undefined-global
+    local file = fs.open("hello_world.json", "wa")
+
+    file.write(cereal)
+    file.flush()
+    file.close()
+
+    -- Good night!
+    ---@diagnostic disable-next-line: undefined-field
+    os.shutdown()
 end
 
 -- =========
