@@ -48,7 +48,7 @@ local function mine_to_level(config)
 
 
     -- Enough fuel?
-    if not wb:getFuelLevel() >= math.abs(wb.cur_position.position.y - level) then
+    if wb:getFuelLevel() < math.abs(wb.cur_position.position.y - level) then
         task_helpers.throw("bad config")
     end
 
