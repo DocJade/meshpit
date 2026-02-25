@@ -43,7 +43,7 @@ local function normalize_height(config)
     end
 
     -- Enough fuel?
-    if not wb:getFuelLevel() >= 800 then
+    if wb:getFuelLevel() < 800 then
         task_helpers.throw("bad config")
     end
 
