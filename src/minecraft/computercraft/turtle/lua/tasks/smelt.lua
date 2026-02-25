@@ -372,12 +372,18 @@ local function smelt_task(config)
         end
     end
 
-    -- For fuels we have no count, we just check that they exist
+    -- For fuels, make sure we have at least one of the ones passed in.
+    local good_fuel = false
     for _, fuel in ipairs(task_data.fuels) do
-        if not wb:inventoryFindPattern(fuel) then
-           -- Fuel missing. You can only pass fuels you have.
-           task_helpers.throw("bad config")
+        if wb:inventoryFindPattern(fuel) ~= nil then
+            good_fuel = true
+            break
         end
+    end
+
+    if not good_fuel then
+        -- No fuels to use in the furnace.
+        task_helpers.throw("bad config")
     end
 
     -- We have the items and fuel.
@@ -468,6 +474,13 @@ local function smelt_task(config)
             end
             --- @cast result_count number
             -- There are resulting items.
+
+            -- Did we run out of fuel?
+            if furnace_slot_count(2) or 0 == 0 then
+                -- Ran out of fuel, need to refuel and continue.
+                goto continue
+            end
+
             -- Maybe we somehow added too many items.
             if (furnace_slot_count(1) or 0) + result_count > 64 then
                 -- IDK how we did that, but pull out the ingredients then pull
@@ -491,7 +504,7 @@ local function smelt_task(config)
             -- ??? no idea
             task_helpers.throw("assumptions not met")
         end
-
+        ::continue::
         -- Loop!
     end
 
