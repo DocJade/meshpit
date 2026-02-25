@@ -2037,6 +2037,7 @@ end
 --- Panics on attempts to equip invalid items.
 ---@return nil
 function walkback:equipLeft()
+	-- TODO: These should not panic lmao they should return a boolean
 	---@diagnostic disable-next-line: undefined-global
 	local a, b = turtle.equipLeft()
 	if b then
@@ -2058,6 +2059,7 @@ end
 --- Panics on attempts to equip invalid items.
 ---@return nil
 function walkback:equipRight()
+	-- TODO: These should not panic lmao they should return a boolean
 	---@diagnostic disable-next-line: undefined-global
 	local a, b = turtle.equipRight()
 	if b then

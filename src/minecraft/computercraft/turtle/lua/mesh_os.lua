@@ -737,6 +737,13 @@ function mesh_os.startup(pos)
             walkback:select(i)
             walkback:refuel()
         end
+
+        -- Additionally, search for and equip the diamond pickaxe.
+        local pick_slot = walkback:inventoryFindPattern("pickaxe")
+        pick_slot = panic.unwrap(pick_slot)
+
+        walkback:select(pick_slot)
+        walkback:equipRight()
     end
 end
 
