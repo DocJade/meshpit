@@ -1532,7 +1532,18 @@ end
 --- will return false on fluids, as we can move through those.
 ---@return boolean
 function walkback:detect()
-	return self:inspect() ~= nil
+	local inspected = self:inspect()
+
+	if inspected == nil then
+		return false
+	end
+
+	-- Ignore lava and water
+	if inspected.name == "minecraft:water" or inspected.name == "minecraft:lava" then
+		return false
+	end
+
+	return true
 end
 
 --- Check if there is a solid block in front of the turtle. Solid refers to
@@ -1540,7 +1551,18 @@ end
 --- will return false on fluids, as we can move through those.
 ---@return boolean
 function walkback:detectUp()
-	return self:inspectUp() ~= nil
+	local inspected = self:inspectUp()
+
+	if inspected == nil then
+		return false
+	end
+
+	-- Ignore lava and water
+	if inspected.name == "minecraft:water" or inspected.name == "minecraft:lava" then
+		return false
+	end
+
+	return true
 end
 
 --- Check if there is a solid block in front of the turtle. Solid refers to
@@ -1548,7 +1570,18 @@ end
 --- will return false on fluids, as we can move through those.
 ---@return boolean
 function walkback:detectDown()
-	return self:inspectDown() ~= nil
+	local inspected = self:inspectDown()
+
+	if inspected == nil then
+		return false
+	end
+
+	-- Ignore lava and water
+	if inspected.name == "minecraft:water" or inspected.name == "minecraft:lava" then
+		return false
+	end
+
+	return true
 end
 
 -- ======
@@ -1561,7 +1594,18 @@ end
 ---@param pos CoordPosition
 ---@return boolean|nil
 function walkback:detectAt(pos)
-	return self:blockQuery(pos) ~= nil
+	local inspected = self:blockQuery(pos)
+
+	if inspected == nil then
+		return false
+	end
+
+	-- Ignore lava and water
+	if inspected.name == "minecraft:water" or inspected.name == "minecraft:lava" then
+		return false
+	end
+
+	return true
 end
 
 -- ============
