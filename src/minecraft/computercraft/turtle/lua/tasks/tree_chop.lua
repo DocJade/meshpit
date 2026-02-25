@@ -305,8 +305,11 @@ local function tree_chop(config)
 
         -- But did that actually work correctly?
         if mining_worked then
-            -- Make sure we at least mined a log.
+            --- @cast mining_result TaskCompletion
+            mining_result = mining_result.result
             ---@cast mining_result RecursiveMinerResult
+
+            -- Make sure we at least mined a log.
             -- Only one group (right now at least. todo moment), so group 1
             local logs_and_leaves_chopped = mining_result.mined_blocks.counts[1]
             -- We won't use this number at all since the recursive miner may have
@@ -386,6 +389,7 @@ local function tree_chop(config)
         -- Place the next sapling!
         -- We for sure have a sapling at this point, this could only fail if there
         -- is somehow a block in front of us after cutting down the tree.
+        wb:select(1)
         task_helpers.assert(wb:place())
 
         -- Time to wait for the next tree to grow!
