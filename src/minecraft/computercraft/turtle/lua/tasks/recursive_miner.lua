@@ -892,11 +892,16 @@ local function recursiveMiner(config)
     while true do
         -- Calculate our current movement budget. We cannot update this
         -- manually, as we do not get informed when walkback trims occur.
+
         local movement_budget = wb:getFuelLevel() - fuel_buffer - wb:cost()
         -- Are we out of fuel?
-        if movement_budget == 0 then
+        if movement_budget <= 0 then
+            -- Try refueling
             -- Done mining!
-            break
+            if not task_helpers.tryRefuelFromInventory(wb, fuel_patterns) then
+                -- No fuels to burn. Giving up.
+                break
+            end
         end
 
         -- Are we out of time?
@@ -1006,12 +1011,6 @@ local function recursiveMiner(config)
         -- Remove the old block from the list, adding it to the tally if we
         -- did actually mine something.
         markMined(pos_to_mine.pos, to_mine, miner_return_value, actually_mined)
-
-        -- If we are running low on fuel, try to refuel from the inventory if we're allowed to.
-        -- We always burn only one item per cycle to keep usage minimal and not overshoot.
-        if movement_budget - 1 <= 0 then
-            task_helpers.tryRefuelFromInventory(wb, fuel_patterns)
-        end
 
         -- Loop! The next iteration will scan for more blocks and continue the
         -- recursion. Although it't not _really_ recursion, but shush.

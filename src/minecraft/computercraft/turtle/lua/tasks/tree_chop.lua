@@ -246,7 +246,7 @@ local function treeChop(config)
         -- These patterns are anchored so we only try to mine items that END with
         -- these names. Otherwise `stick` would match `sticky_piston` for example.
         -- We also want to burn sticks before logs.
-        fuel_patterns = {"stick$", "log$"}
+        fuel_patterns = {"stick$", "log"}
     }
 
     -- Each tree is expected to give us at least 4 logs, which at 15 fuel per
