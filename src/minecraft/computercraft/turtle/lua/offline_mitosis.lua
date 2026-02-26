@@ -9,8 +9,7 @@ local task_helpers = require("task_helpers")
 --- Returns task in the order that they should be completed, IE: 1, 2, 3.
 --- @param wb WalkbackSelf
 --- @return TaskDefinition[]
-function deduce_next_task(wb)
-    print("deducing...")
+local function deduce_next_task(wb)
     -- A bunch of booleans to gate possible actions to take.
     local knows_y
     local has_disk_drive
@@ -90,7 +89,6 @@ function deduce_next_task(wb)
 
 
     -- Mitosis
-    print("mitosis")
     -- We want to start the new turtle facing a tree because we're nice.
     if looking_at_log and has_disk_drive and has_turtle and has_diamond_pick and has_32_charcoal and has_2_crafting_table and knows_y then
         -- We can make a turtle!
@@ -113,7 +111,6 @@ function deduce_next_task(wb)
     end
 
     -- Fix the Y level?
-    print("fixy")
     -- We need at least 50 logs to do this
     local log_number = wb:inventoryCountPattern("log")
     if (not knows_y) and (log_number > 64) then
@@ -135,7 +132,6 @@ function deduce_next_task(wb)
     end
 
     -- Make the turtle?
-    print("make turtle")
     if (not has_turtle) and has_turtle_ingredients and has_2_chest then
         --- @type TaskDefinition
         local craft_turtle = {
@@ -155,12 +151,10 @@ function deduce_next_task(wb)
                 }
             }
         }
-        print("trying")
         return {craft_turtle}
     end
 
     -- Make the computer?
-    print("make computer")
     if (not has_computer) and has_computer_ingredients and has_2_chest then
         --- @type TaskDefinition
         local craft_computer = {
@@ -184,7 +178,6 @@ function deduce_next_task(wb)
     end
 
     -- Make the diamond pickaxe?
-    print("make pick")
     if (not has_diamond_pick) and has_diamond_pick_ingredients and has_2_chest then
         --- @type TaskDefinition
         local craft_pick = {
@@ -208,7 +201,6 @@ function deduce_next_task(wb)
     end
 
     -- Make sticks?
-    print("make sticks")
     if (not has_2_sticks) and has_2_planks and has_2_chest and has_3_diamonds and (not has_diamond_pick) then
         --- @type TaskDefinition
         local craft_stick = {
@@ -232,7 +224,6 @@ function deduce_next_task(wb)
     end
 
     -- Make planks?
-    print("make planks")
     if (not has_2_planks) and has_2_log and has_2_chest then
         --- @type TaskDefinition
         local craft_planks = {
@@ -256,7 +247,6 @@ function deduce_next_task(wb)
     end
 
     -- Make the disk drive?
-    print("make disk drive")
     if (not has_disk_drive) and has_disk_drive_ingredients and has_2_chest then
         --- @type TaskDefinition
         local craft_drive = {
@@ -280,7 +270,6 @@ function deduce_next_task(wb)
     end
 
     -- Make glass panes?
-    print("glass panes")
     if (not has_glass_pane) and has_6_glass and has_2_chest then
         --- @type TaskDefinition
         -- RIP Otto.
@@ -305,7 +294,6 @@ function deduce_next_task(wb)
     end
 
     -- Make crafting table?
-    print("crafting table")
     if (not has_2_crafting_table) and has_2_log then
         -- Make 2 crafting tables
         --- @type TaskDefinition
@@ -351,7 +339,6 @@ function deduce_next_task(wb)
     end
 
     -- Have smooth stone for crafting?
-    print("smooth stone")
     if (not has_7_stone) and has_cobblestone and has_furnace and has_32_charcoal then
         --- @type TaskDefinition
         local smelt_stone = {
@@ -375,7 +362,6 @@ function deduce_next_task(wb)
     end
 
     -- Have furnace for smelting?
-    print("make furnace")
     if (not has_furnace) and has_cobblestone and has_2_chest then
         -- Craft one
         --- @type TaskDefinition
@@ -400,7 +386,6 @@ function deduce_next_task(wb)
     end
 
     -- Have chest for crafting / turtle?
-    print("make chest")
     if (not has_2_chest) and has_2_log then
         -- This is the only crafting task that doesn't check for a chest to
         -- craft with, since it needs to be able to bootstrap.
@@ -448,7 +433,6 @@ function deduce_next_task(wb)
     end
 
     -- Iron to smelt?
-    print("smelt iron")
     if (not has_7_iron_ingot) and has_raw_iron and has_furnace and has_32_charcoal then
         --- @type TaskDefinition
         local smelt_iron = {
@@ -471,7 +455,6 @@ function deduce_next_task(wb)
     end
 
     -- Smelt glass?
-    print("smelt glass")
     if (not has_6_glass) and has_sand and has_32_charcoal then
         --- @type TaskDefinition
         local smelt_glass = {
@@ -494,7 +477,6 @@ function deduce_next_task(wb)
     end
 
     -- Make charcoal?
-    print("make charcoal")
     if (not has_32_charcoal) and has_furnace and has_2_log then
         --- @type TaskDefinition
         local make_charcoal = {
@@ -517,7 +499,6 @@ function deduce_next_task(wb)
     end
 
     -- Gather logs?
-    print("gather logs")
     if not has_2_log then
         -- Need to find a tree.
         if not looking_at_log then
@@ -596,7 +577,6 @@ function deduce_next_task(wb)
     -- cobblestone from the digging.
 
     -- Go mining for ores?
-    print("ore mining")
     if (((not has_7_iron_ingot) and not has_raw_iron) or (not has_2_redstone) or (not has_3_diamonds)) and knows_y then
         -- We wanna mine for something.
         -- Fly down to the proper Y level if we need to.
@@ -734,7 +714,6 @@ function deduce_next_task(wb)
     end
 
     -- Get sand.
-    print("get sand")
     if (not has_sand) and (not has_glass_pane) and (not has_6_glass) and knows_y then
         -- Find it
         --- @type TaskDefinition
@@ -783,7 +762,6 @@ function deduce_next_task(wb)
     end
 
     -- If there's nothing else to do, just go find a tree I guess.
-    print("No idea what to do. Tree time.")
     if wb.cur_position.position.y < 100 and knows_y then
         -- Go up
         --- @type TaskDefinition

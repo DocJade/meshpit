@@ -106,7 +106,7 @@ end
 --- Hashmap of blocks that can fall
 ---@alias FallingBlocks {BlocksThatCanFall: boolean}
 ---@type FallingBlocks
-fallingBlocks = {
+local fallingBlocks = {
 	["minecraft:sand"] = true,
 	["minecraft:red_sand"] = true,
 	["minecraft:gravel"] = true,
@@ -152,7 +152,7 @@ end
 --- Field notes: (Ha!)
 --- - Inspecting air ALWAYS returns `nil, "no block to inspect"`, thus
 --- this is automatically converted.
---- - Name is always prefixed with their namespace, ie
+--- - Name is always prefixed with their namespace, IE
 --- "minecraft:grass_block", so checks based off of block names will need
 --- to split on the semicolon.
 --- - Inspecting always returns a table of state{[string]: any}.

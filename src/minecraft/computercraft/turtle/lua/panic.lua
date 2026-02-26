@@ -7,9 +7,43 @@ local panic = {}
 -- Keep track if we are already panicking to prevent panic loops.
 CURRENTLY_PANICKING = false
 
+-- Functions for getting local and global variables
+-- https://stackoverflow.com/questions/2834579/print-all-local-variables-accessible-to-the-current-scope-in-lua
+local function panicLocals()
+    local variables = {}
+    local thingy = 1
+    while true do
+        local ln, lv = debug.getlocal(2, thingy)
+        if ln ~= nil then
+            variables[ln] = lv
+        else
+            break
+        end
+        thingy = 1 + thingy
+    end
+    return variables
+end
+
+local function panicUpValues()
+    local variables = {}
+    local thingy = 1
+    local func = debug.getinfo(2, "f").func
+    while true do
+            local ln, lv = debug.getupvalue(func, thingy)
+            if ln ~= nil then
+            variables[ln] = lv
+        else
+            break
+        end
+        thingy = 1 + thingy
+    end
+    return variables
+end
+
+
 --- The panic method. Takes in a panic message.
 ---
---- Tthe computer is assumed to be in an un-recoverable state,
+--- The computer is assumed to be in an unrecoverable state,
 --- and thus will completely rebooting as soon as it is able
 --- to relay all of its panic data.
 ---
@@ -46,7 +80,7 @@ function panic.panic(message, message_only)
 
     ---@alias PanicData {stack_trace: string, locals: table, up_values: table}
     ---@type PanicData
-    panic_data = {
+    local panic_data = {
         -- A stack trace of where the panic was called.
         stack_trace = trace,
 
@@ -99,39 +133,6 @@ function panic.unwrap(value)
     -- Tell linter this must no longer be nil.
     ---@cast value -nil
     return value
-end
-
--- Functions for getting local and global variables
--- https://stackoverflow.com/questions/2834579/print-all-local-variables-accessible-to-the-current-scope-in-lua
-function panicLocals()
-    local variables = {}
-    local idx = 1
-    while true do
-        local ln, lv = debug.getlocal(2, idx)
-        if ln ~= nil then
-            variables[ln] = lv
-        else
-            break
-        end
-        idx = 1 + idx
-    end
-    return variables
-end
-
-function panicUpValues()
-    local variables = {}
-    local idx = 1
-    local func = debug.getinfo(2, "f").func
-    while true do
-            local ln, lv = debug.getupvalue(func, idx)
-            if ln ~= nil then
-            variables[ln] = lv
-        else
-            break
-        end
-        idx = 1 + idx
-    end
-    return variables
 end
 
 -- Additionally, it is possible that a failure prevents us from sending anything out the

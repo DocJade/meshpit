@@ -133,6 +133,18 @@ end
 -- === === ===
 -- === === ===
 
+--- Cast a table into a string, no matter the internal data. Will NOT recurse into
+--- sub tables. Meant for debugging only, as the ordering here is not stable.
+---@param table table
+---@return string
+local function forceStringTable(table)
+    local final_string = "Data of table (" .. tostring(table) .. "): "
+    for key, value in pairs(table) do
+        final_string = final_string .. "[key: (" .. tostring(key) .. "), value: (" .. tostring(value) .. ")]"
+    end
+    return final_string
+end
+
 -- Table types for linting to prevent returning the wrong things.
 
 --- @class SeenCleaned table
@@ -140,7 +152,7 @@ end
 
 
 --- Clean up a type for JSON export. Will panic if the type or any sub-tables
---- contain mixed table types (ie a table that is both an array and kv pairs) and
+--- contain mixed table types (IE a table that is both an array and Key:Value pairs) and
 --- will also panic if any of the keys used are not strings.
 ---
 --- Since mixed table types panic, you make opt-in to completely discarding these
@@ -154,7 +166,7 @@ end
 ---@param seen_cleaned SeenCleaned? an empty table please
 ---@param skip_invalid_tables boolean?
 ---@return any, SeenCleaned
-function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
+local function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     local skip_invalid_tables = skip_invalid_tables or false
     -- This can take a long time, so we yield a lot.
     helpers.quick_yield()
@@ -334,7 +346,7 @@ end
 
 --- The built-in json serializer is not good enough.
 ---
---- The textutils.serialiseJSON() method does not work with:
+--- The textutils.serializeJSON() method does not work with:
 --- - Mixed tables
 --- - Non-integer keys into tables
 --- - Recursion within tables
@@ -366,7 +378,7 @@ end
 --- It is the Rust-side's job to ensure we never send malformed json.
 ---
 --- Returns a true, any pair when successful.
---- Returns a false, string with an error message from unserializeJSON on failure.
+--- Returns a false, string with an error message from unserializeJSON (sic) on failure.
 ---@param json string
 ---@return boolean, any -- A success / fail, and the result of deserialization. You should hopefully know the type.
 function helpers.deserializeJSON(json)
@@ -489,18 +501,6 @@ function helpers.keyFromTable(input_table)
     return table.concat(ordered_pairs, "|")
 end
 
---- Cast a table into a string, no matter the internal data. Will NOT recurse into
---- sub tables. Meant for debugging only, as the ordering here is not stable.
----@param table table
----@return string
-function forceStringTable(table)
-    local final_string = "Data of table (" .. tostring(table) .. "): "
-    for key, value in pairs(table) do
-        final_string = final_string .. "[key: (" .. tostring(key) .. "), value: (" .. tostring(value) .. ")]"
-    end
-    return final_string
-end
-
 --- Check if two values are exactly the same by value. Also checks if they are
 --- the same type. This will be very slow on large tables or tables that use
 --- other tables as keys.
@@ -573,37 +573,37 @@ function helpers.deepEquals(a, b, seen)
     --
     -- This also checks if the keys used to index into the tables are the same,
     -- which makes this slow for hashmaps, but this is a deep check after all.
-    for ka, va in pairs(a) do
-        local vb = b[ka]
+    for k_a, v_a in pairs(a) do
+        local v_b = b[k_a]
 
         -- if vb is nil, it could be due to indexing with tables, thus having
         -- different key references while the insides of the keys are actually
         -- still the same. We must recurse into the keys if so.
-        if vb ~= nil then
+        if v_b ~= nil then
             -- Some value, either a non-table index, or a matching reference index.
-            if not helpers.deepEquals(va, vb, seen) then
+            if not helpers.deepEquals(v_a, v_b, seen) then
                 return false
             end
-        elseif type(ka) == "table" then
+        elseif type(k_a) == "table" then
             -- Table did not match on reference, but could still have the
             -- same content deep-down.
 
             -- Need to check if `b` has a key that matches deeply.
             local found_match = false
-            for kb, new_vb in pairs(b) do
+            for k_b, new_v_b in pairs(b) do
                 -- Only need to check table keys
-                if type(kb) ~= "table" then
+                if type(k_b) ~= "table" then
                     goto skip
                 end
 
                 -- New table key, check
-                if not helpers.deepEquals(ka, kb, seen) then
+                if not helpers.deepEquals(k_a, k_b, seen) then
                     -- wrong table
                     goto skip
                 end
 
                 -- Tables match, do keys match?
-                if not helpers.deepEquals(va, new_vb, seen) then
+                if not helpers.deepEquals(v_a, new_v_b, seen) then
                     -- Values did not match! Equal keys, but not equal values
                     -- However, its possible (although very gross) that there
                     -- could be multiple keys with the same underlying values
@@ -611,7 +611,7 @@ function helpers.deepEquals(a, b, seen)
                     goto skip
                 end
 
-                -- Everything checks ou!
+                -- Everything checks out!
                 found_match = true
                 ::skip::
             end

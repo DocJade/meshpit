@@ -8,7 +8,7 @@ local helpers = require("helpers")
 --- The layout for a crafting recipe. Uses pattern matching for the names of the
 --- items.
 ---
---- Recipies must have no nil slots. If the length of the array is NOT 9, the
+--- Recipes must have no nil slots. If the length of the array is NOT 9, the
 --- recipe will be assumed invalid. If you need a blank spot, use "BLANK"
 ---
 --- @class CraftingRecipe
@@ -56,7 +56,7 @@ local CRAFTING_TABLE_PATTERN = "minecraft:crafting_table"
 --- the chest depending on how poor we are.
 --- @param wb WalkbackSelf
 --- @param slot number
-function store_slot(wb, slot)
+local function store_slot(wb, slot)
     -- This is always just dropDown since that would either drop it, or put it
     -- into the chest below us
     wb:select(slot)
@@ -71,7 +71,7 @@ end
 --- This assumes that there are empty slots in the chest.
 --- @param slot1 number
 --- @param slot2 number
-function swap_chest_slots(slot1, slot2)
+local function swap_chest_slots(slot1, slot2)
     -- Search through the chest for the first empty slot.
     local empty_slot = nil
     ---@diagnostic disable-next-line: need-check-nil, undefined-field
@@ -108,7 +108,7 @@ end
 --- @param wb WalkbackSelf
 --- @param pattern string
 --- @return boolean
-function find_item(wb, pattern)
+local function find_item(wb, pattern)
     if wb:getItemCount(4) > 0 then
         -- cant move into a full slot
         return false
@@ -138,7 +138,7 @@ function find_item(wb, pattern)
     end
 
     -- Item not present.
-    -- Need a block here or lua gets pissy
+    -- Need a block here or lua gets pissed
     if true then
         return false
     end
@@ -179,7 +179,7 @@ end
 
 --- Get all of our items back from wherever we stored them
 --- @param wb WalkbackSelf
-function sigma_hoarder_grindset(wb)
+local function hoarding(wb)
     -- Just suck till we cannot suck no more :FreakyCanny:
     while wb:suckDown() do
         -- run it again lol
@@ -194,7 +194,7 @@ end
 --- @param ingredient_pattern string
 --- @param count number -- How many items to place in the slot
 --- @return boolean
-function place_slot(wb, ingredient_pattern, destination_slot, count)
+local function place_slot(wb, ingredient_pattern, destination_slot, count)
     -- Do we have what we need?
     local go_fish = false
     local slot_4 = wb:getItemDetail(4)
@@ -236,7 +236,7 @@ end
 --- Returns a none result unless it fails.
 ---
 --- This may equip a crafting table if needed, and the crafting table will NOT
---- be automatically un-equipped.
+--- be automatically unequipped.
 --- @param config TurtleTask
 --- @return TaskCompletion|TaskFailure
 local function craft_task(config)
@@ -351,7 +351,7 @@ local function craft_task(config)
     end
 
     -- Assemble ingredients
-    -- yes im lazy and don't wanna think about the math right now
+    -- yes I'm lazy and don't wanna think about the math right now
 
     for i=1, 3 do
         local pattern = task_data.recipe.shape[i]
@@ -387,7 +387,7 @@ local function craft_task(config)
     wb:swapSlots(wb:getSelectedSlot(), 1)
 
     -- Get all of our stuff back
-    sigma_hoarder_grindset(wb)
+    hoarding(wb)
 
     -- Pick up our chest if needed.
     if not squalor then

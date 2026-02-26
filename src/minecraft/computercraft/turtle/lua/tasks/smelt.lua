@@ -98,7 +98,7 @@ local FURNACE_PERIPHERAL = nil
 --- 3: Result
 --- @param slot number
 --- @return number|nil
-function furnace_slot_count(slot)
+local function furnace_slot_count(slot)
     ---@diagnostic disable-next-line: need-check-nil, undefined-field
     local list = FURNACE_PERIPHERAL.list()
     return (list[slot] or {count = nil}).count
@@ -109,7 +109,7 @@ end
 --- Returns false if the ingredient slot already has items in it.
 --- @param wb WalkbackSelf
 --- @return boolean
-function insert_ingredient(wb)
+local function insert_ingredient(wb)
     -- Is the ingredient slot open?
     if furnace_slot_count(1) ~= nil then
         return false
@@ -130,7 +130,7 @@ end
 ---
 --- @param wb WalkbackSelf
 --- @return boolean
-function pull_result(wb)
+local function pull_result(wb)
     -- Nothing to do if slot is empty
     if furnace_slot_count(3) == nil then
         return false
@@ -153,7 +153,7 @@ end
 --- Inserts fuel into the furnace from the currently selected slot.
 --- Shuffles items around if needed.
 --- @param wb WalkbackSelf
-function insert_fuel_item(wb)
+local function insert_fuel_item(wb)
     local original_slot = wb:getSelectedSlot()
     local ingredient_swap_slot = nil
 
@@ -198,7 +198,7 @@ end
 --- @param task TurtleTask
 --- @param indexes SmeltingIndexes
 --- @return boolean
-function add_next_item(task, indexes)
+local function add_next_item(task, indexes)
     local wb = task.walkback
     local task_data = task.definition.task_data
     local current_index = indexes.current_item_index
@@ -260,7 +260,7 @@ end
 --- @param task TurtleTask
 --- @param indexes SmeltingIndexes
 --- @return boolean
-function maybe_refuel(task, indexes)
+local function maybe_refuel(task, indexes)
     local wb = task.walkback
     local task_data = task.definition.task_data
     local current_index = indexes.current_fuel_index
@@ -339,7 +339,7 @@ local function smelt_task(config)
 
     -- Need a fuel source
     if #task_data.fuels == 0 then
-        -- Can't smelt nothin!
+        -- Can't smelt nothing!
         task_helpers.throw("bad config")
     end
 
@@ -425,7 +425,7 @@ local function smelt_task(config)
     -- We do not know the fuel values of items, so we will just add the entire
     -- stack of fuel into the fuel slot
 
-    -- TODO: Check if we are trying to smelt something un-smelt-able.
+    -- TODO: Check if we are trying to smelt an item that cannot be smelt.
 
     -- Now for the fun part.
     while true do
@@ -465,7 +465,7 @@ local function smelt_task(config)
         if not pull_result(wb) then
             -- Ingredients are still smelting after waiting the full period of time.
             -- If we're lagging maybe? But anyways, if there are no resulting
-            -- items at all, this item is un-smelt-able.
+            -- items at all, this item cannot be smelted.
             local result_count = furnace_slot_count(3)
             if result_count == nil then
                 -- Bad!

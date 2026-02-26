@@ -4,6 +4,17 @@ local task_helpers = {}
 --- We also use the other helpers to help our helper. Yeah.
 local helpers = require("helpers")
 
+--- Queue a event. This is a wrapper around the inner computercraft call, as
+--- it doesn't have the type hinting that we want. You can only queue the
+--- custom events that the OS adds.
+---
+--- This is meant to be a private method, tasks are not to queue events themselves.
+---@param event CustomEvent
+local function taskQueueEvent(event)
+    ---@diagnostic disable-next-line: undefined-field
+    os.queueEvent(table.unpack(event))
+end
+
 --- Attempt to spawn a sub-task from the current task.
 ---
 --- This will yield the current task until the sub-task completes.
@@ -46,17 +57,6 @@ function task_helpers.spawnSubTask(current_task, subtask)
     --- @cast sub_task_result TaskCompletion|TaskFailure
     current_task.last_subtask_result = nil
     return true, sub_task_result
-end
-
---- Queue a event. This is a wrapper around the inner computercraft call, as
---- it doesn't have the type hinting that we want. You can only queue the
---- custom events that the OS adds.
----
---- This is meant to be a private method, tasks are not to queue events themselves.
----@param event CustomEvent
-function taskQueueEvent(event)
-    ---@diagnostic disable-next-line: undefined-field
-    os.queueEvent(table.unpack(event))
 end
 
 --- Assert something as true.
@@ -112,11 +112,11 @@ function task_helpers.taskSleep(seconds)
     local seconds = helpers.realSecondsToInGameSeconds(seconds * 1000)
 
     ---@diagnostic disable-next-line: undefined-field
-    local wakeup_time = os.epoch() + seconds
+    local wake_time = os.epoch() + seconds
 
     -- Queue the event, and yield.
     ---@diagnostic disable-next-line: undefined-field
-    os.queueEvent("sleep", wakeup_time)
+    os.queueEvent("sleep", wake_time)
     task_helpers.taskYield()
 end
 
@@ -190,7 +190,7 @@ end
 --- !! This will throw if the finish requirements cannot be met. !!
 ---
 --- Returns a boolean TaskCompletion pair. If the task cannot be completed due
---- to some un-met constraint, then this will return false.
+--- to some unmet constraint, then this will return false.
 ---
 ---@param turtle_task TurtleTask
 ---@param result_data TaskResultData

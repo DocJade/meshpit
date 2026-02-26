@@ -60,7 +60,7 @@ local found_block = nil
 --- Also returns true if found_block is already set.
 --- @param task TurtleTask
 --- @return boolean
-function check_neighbors(task)
+local function check_neighbors(task)
     if found_block ~= nil then
         return true
     end
@@ -96,7 +96,7 @@ end
 --- before we would either have to refuel or take a shortcut.
 --- @param task TurtleTask
 --- @return number
-function get_budget(task)
+local function get_budget(task)
     local wb = task.walkback
     local budget = wb:getFuelLevel()
     local wb_cost = wb:cost()
@@ -118,7 +118,7 @@ end
 --- Returns false if we were unable to refuel or reduce the cost of the walkback.
 --- @param task TurtleTask
 --- @return boolean
-function shortcut_or_refuel(task)
+local function shortcut_or_refuel(task)
     local wb = task.walkback
     local task_data = task.definition.task_data
     --- @cast task_data BlockSearchData
@@ -158,7 +158,7 @@ end
 --- to the floor due to running out of budget, even with refueling and shortcuts.
 --- @param task TurtleTask
 --- @return boolean
-function fall_down(task)
+local function fall_down(task)
     local wb = task.walkback
     while true do
         local pos = wb.cur_position.position
@@ -215,7 +215,7 @@ end
 --- out of fuel, even when taking into account automatic refueling and trimming.
 --- @param task TurtleTask
 --- @return boolean
-function forward_step(task)
+local function forward_step(task)
     local wb = task.walkback
 
     -- We check neighbors as we move and bail early if we find something.
@@ -233,7 +233,7 @@ function forward_step(task)
         return true
     end
 
-    -- Something in the way... hnnnNNNNNN
+    -- Something in the way...
     -- Its climbing time
 
     -- How many times we've moved backwards, since we need to compensate by moving
