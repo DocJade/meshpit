@@ -44,6 +44,8 @@ local smelt_task_function = require("smelt")
 local block_search_function = require("block_search")
 local normalize_height_function = require("normalize_height")
 local mitosis_function = require("mitosis")
+local mine_to_level_function = require("mine_to_level")
+
 
 -- Bring globals into scope to make them faster
 ---@type function
@@ -254,23 +256,6 @@ local current_event_timer_resolution = default_event_timer_resolution
 -- Task functions
 -- =========
 
---- Requests new tasks. Adds all of the new tasks to the queue and returns the
---- last one.
----
---- This will always return a task, it may be a wait task if there is nothing to do.
---- @return TurtleTask
-local function request_new_tasks()
-    -- If we are in test mode, we will throw an error to completely exit the OS
-    -- giving us a path back to the startup script.
-    ---@diagnostic disable-next-line: undefined-field
-    if test_mode then error("request_new_tasks") end
-
-    -- Currently does nothing.
-    -- TODO: Default tasks!
-    ---@diagnostic disable-next-line: undefined-field, missing-return
-    os.shutdown()
-end
-
 --- Get the function associated with a task data
 --- @param data TaskDataType
 --- @return function
@@ -292,6 +277,8 @@ local function getTaskFunction(data)
         return normalize_height_function
     elseif name == "mitosis_task" then
         return mitosis_function
+    elseif name == "mine_to_level" then
+        return mine_to_level_function
     end
     --????? None of those matched?
     panic.panic("Unknown task! " .. name)
@@ -355,6 +342,36 @@ local function setupNewTask(task_definition, is_sub_task)
 
     -- Add task to the end of the task queue.
     task_queue[#task_queue+1] = new_task
+end
+
+--- Requests new tasks. Adds all of the new tasks to the queue and returns the
+--- last one.
+---
+--- This will always return a task, it may be a wait task if there is nothing to do.
+--- @return TurtleTask
+local function request_new_tasks()
+    -- If we are in test mode, we will throw an error to completely exit the OS
+    -- giving us a path back to the startup script.
+    ---@diagnostic disable-next-line: undefined-field
+    -- if test_mode then error("request_new_tasks") end
+
+    -- TODO: This is just for the demo for video one.
+    local mitosis = require("offline_mitosis")
+
+    -- get new tasks
+    local new = mitosis(walkback)
+
+    -- Add them to the queue. Reverse order.
+    for i=#new, 1, -1 do
+        setupNewTask(new[i], false)
+    end
+    if true then return task_queue[#task_queue] end
+
+
+    -- Currently does nothing.
+    -- TODO: Default tasks!
+    ---@diagnostic disable-next-line: undefined-field, missing-return
+    panic.panic("Nothing to do!")
 end
 
 --- Fixes the end position of a task if needed.
@@ -672,9 +689,35 @@ function mesh_os.startup(pos)
     -- call this method with no position.
     if pos ~= nil then
         -- Setup the walkback.
+        -- This does not equip the pickaxe, since that's the job of the test
+        -- calling startup.
         walkback:setup(pos.position.x, pos.position.y, pos.position.z, pos.facing)
         return
     end
+
+    -- Equip the pickaxe if it exists, and if we don't already have it equipped.
+    local l = walkback:getEquippedLeft()
+    local r = walkback:getEquippedRight()
+    local pick_slot = walkback:inventoryFindPattern("pickaxe")
+    if l ~= nil or r ~= nil then
+        -- We have _something_ equipped, check if its a pick
+        l = l or {name="no"}
+        r = r or {name="no"}
+        if helpers.findString(l.name "pickaxe") or helpers.findString(r.name "pickaxe") then
+            -- We already have one equipped.
+            goto skip_equip
+        end
+    end
+
+    -- No pick equipped, equip it.
+    -- We expect to always have a pick.
+    pick_slot = panic.unwrap(pick_slot)
+
+    walkback:select(pick_slot)
+    walkback:equipRight()
+
+    ::skip_equip::
+    -- Pick equipped.
 
     -- No position was provided. We need to read it in from the hello_world file.
     -- The root directory should contain `hello_world.json`
@@ -696,9 +739,16 @@ function mesh_os.startup(pos)
             -- Refuel, Just munch up the whole inventory.
             for i = 1, 16 do
                 walkback:select(i)
+                -- Skip if this is a crafting table. That would be bad lmao.
+                local slot = walkback:getItemDetail()
+                if slot ~= nil then
+                    if helpers.findString(slot.name, "minecraft:crafting_table") then
+                        goto skip_burn
+                    end
+                end
                 walkback:refuel()
+                ::skip_burn::
             end
-
             return
         end
         -- File is not there, and we are not the first turtle.
@@ -735,21 +785,21 @@ function mesh_os.startup(pos)
     if hello.new then
         for i = 1, 16 do
             walkback:select(i)
+            -- Skip crafting tables
+            local slot = walkback:getItemDetail()
+            if slot ~= nil then
+                if helpers.findString(slot.name, "minecraft:crafting_table") then
+                    goto skip_burn
+                end
+            end
             walkback:refuel()
+            ::skip_burn::
         end
-
-        -- Additionally, search for and equip the diamond pickaxe.
-        local pick_slot = walkback:inventoryFindPattern("pickaxe")
-        pick_slot = panic.unwrap(pick_slot)
-
-        walkback:select(pick_slot)
-        walkback:equipRight()
     end
 end
 
---- Before shutting down the turtle, we need to store information about ourselves
---- in hello_world.json so we can load it back up when we're turned back on.
-local function shutdown()
+--- Save our state to hello_world.json
+local function save_state()
     --- @type HelloWorld
     local hello = {
         new = false, -- We've shut down, therefore we ain't new
@@ -767,10 +817,27 @@ local function shutdown()
     file.write(cereal)
     file.flush()
     file.close()
+end
+
+--- Before shutting down the turtle, we need to store information about ourselves
+--- in hello_world.json so we can load it back up when we're turned back on.
+function mesh_os.shutdown()
+    -- Save where we are
+    save_state()
 
     -- Good night!
     ---@diagnostic disable-next-line: undefined-field
     os.shutdown()
+end
+
+--- Reboot the turtle. Saves state before reboot.
+function mesh_os.reboot()
+    -- Save where we are
+    save_state()
+
+    -- Reboot!
+    ---@diagnostic disable-next-line: undefined-field
+    os.reboot()
 end
 
 -- =========

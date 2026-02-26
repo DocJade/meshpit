@@ -72,8 +72,11 @@ function panic.panic(message, message_only)
     print("Rebooting in 30 seconds.")
     ---@diagnostic disable-next-line: undefined-field
     os.sleep(30)
-    ---@diagnostic disable-next-line: undefined-field
-    os.reboot();
+
+    -- We use the MeshOS reboot here to save our state instead of just forgetting
+    -- everything.
+    local mesh = require("mesh_os")
+    mesh.reboot();
 end
 
 --- Assert a condition to be true, otherwise panic.
@@ -153,8 +156,11 @@ function panic.force_reboot(message)
 
     ---@diagnostic disable-next-line: undefined-field
     os.sleep(300)
-    ---@diagnostic disable-next-line: undefined-field
-    os.reboot()
+
+    -- We use the MeshOS reboot here to save our state instead of just forgetting
+    -- everything.
+    local mesh = require("mesh_os")
+    mesh.reboot();
 end
 
 return panic
