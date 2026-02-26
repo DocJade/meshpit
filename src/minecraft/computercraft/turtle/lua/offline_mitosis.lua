@@ -177,6 +177,10 @@ local function deduceNextTask(wb)
         if not fueled then break end -- If we have nothing to refuel with then we have to just give up
     end
 
+    -- This is stupid, but we will always break the block above us to be able to
+    -- craft or smelt anywhere
+    wb:digUp()
+
     -- Mitosis
     -- We want to start the new turtle facing a tree because we're nice.
     if has_disk_drive and has_turtle and has_diamond_pick and has_32_charcoal and has_2_crafting_table and knows_y then
