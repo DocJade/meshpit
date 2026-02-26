@@ -6,6 +6,8 @@
 local helpers = require("helpers")
 local task_helpers = require("task_helpers")
 
+local did_nothing = false
+
 --- Returns task in the order that they should be completed, IE: 1, 2, 3.
 --- @param wb WalkbackSelf
 --- @return TaskDefinition[]
@@ -146,6 +148,24 @@ local function deduceNextTask(wb)
     -- Don't care if this actually does anything or not, we just want to at least
     -- try it.
     task_helpers.compactInventory(wb)
+
+    -- Discard random crap we don't need if our inventory is full
+    task_helpers.inventoryCheck(wb, {
+        patterns = {
+            "gravel",
+            "diorite",
+            "andesite",
+            "granite",
+            "dirt",
+            "deepslate",
+            -- Last resorts
+            "cobblestone",
+            "stick",
+            "planks",
+            "log",
+            "sapling",
+        }
+    })
 
 
     -- Now actually for some task stuff.
@@ -487,7 +507,6 @@ local function deduceNextTask(wb)
         if wb:inventoryCountPattern("planks") < 8 then
             -- Craft twice.
             stuff_to_do[#stuff_to_do+1] = craft_planks
-            stuff_to_do[#stuff_to_do+1] = craft_planks
         end
 
         -- Make the chest.
@@ -564,6 +583,9 @@ local function deduceNextTask(wb)
 
     -- Make charcoal?
     if (not has_32_charcoal) and has_furnace and has_2_log then
+        -- We can only smelt as many logs as we have.
+        local num_o_logs = wb:inventoryCountPattern("log")
+
         --- @type TaskDefinition
         local make_charcoal = {
             fuel_buffer = 100,
@@ -575,7 +597,7 @@ local function deduceNextTask(wb)
                 to_smelt = {
                     {
                         name_pattern = "log",
-                        limit = 16, -- Only make 16 at a time.
+                        limit = math.min(16, num_o_logs), -- Only make 16 at a time maximum.
                     }
                 },
                 fuels = {"coal", "plank", "log"}
@@ -585,8 +607,24 @@ local function deduceNextTask(wb)
     end
 
     -- Gather logs?
-    if not has_2_log then
-        -- Need to find a tree.
+    -- We will also do this if we just happened to not do anything in the last run.
+    if not has_2_log or did_nothing then
+        did_nothing = false
+
+        -- Maybe we are next to a log but just not facing it?
+        if not looking_at_log then
+            local rotations = 4
+            while rotations ~= 0 and not looking_at_log do
+                wb:turnRight()
+                local front_block = wb:inspect()
+                if front_block ~= nil then
+                    looking_at_log = helpers.findString(front_block.name, "log")
+                end
+                rotations = rotations - 1
+            end
+        end
+
+        -- Need to find a tree if we weren't already next to one.
         if not looking_at_log then
 
             -- To prevent searching underground, we first want to make sure we're
@@ -635,7 +673,7 @@ local function deduceNextTask(wb)
         -- On the floor in front of a log, we can tree it now.
         --- @type TaskDefinition
             local tree_chop = {
-            fuel_buffer = 100,
+            fuel_buffer = 200,
             return_to_facing = false,
             return_to_start = false,
             --- @type TreeChopTaskData
@@ -643,6 +681,8 @@ local function deduceNextTask(wb)
                 name = "tree_chop",
                 timeout = 10000000000000, -- 'till you're done bud.
                 target_logs = 32,
+                max_saplings = 16,
+                min_saplings = 3
             }
         }
         return {tree_chop}
@@ -652,7 +692,7 @@ local function deduceNextTask(wb)
     -- cobblestone from the digging.
 
     -- Go mining for ores?
-    if (((not has_7_iron_ingot) and not has_raw_iron) or (not has_2_redstone) or (not has_3_diamonds)) and knows_y then
+    if (((not has_7_iron_ingot) and not has_raw_iron) or (not has_2_redstone) or (not has_3_diamonds)) and (not has_diamond_pick) and knows_y then
         -- We wanna mine for something.
         -- Fly down to the proper Y level if we need to.
         if wb.cur_position.position.y ~= 3 then
@@ -830,7 +870,8 @@ local function deduceNextTask(wb)
     -- We have nothing to do.
     -- This shouldn't be possible.
     -- Find another tree i guess
-    return find_log
+    did_nothing = true
+    return {find_log}
 
 end
 

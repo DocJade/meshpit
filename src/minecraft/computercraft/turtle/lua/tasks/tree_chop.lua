@@ -238,15 +238,22 @@ local function treeChop(config)
     miner_data = {
         name = "recursive_miner",
         mineable_groups = {
-            {
-                names_patterns = {},
-                tags = {}
-            }
+
         },
         -- These patterns are anchored so we only try to mine items that END with
         -- these names. Otherwise `stick` would match `sticky_piston` for example.
         -- We also want to burn sticks before logs.
-        fuel_patterns = {"stick$", "log"}
+        fuel_patterns = {"stick$", "log", "planks"}
+    }
+
+    -- The two groups we add later.
+    local log_group = {
+        names_patterns = {},
+        tags = {log_tag},
+    }
+    local leave_group = {
+        names_patterns = {},
+        tags = {leaves_tag},
     }
 
     -- Each tree is expected to give us at least 4 logs, which at 15 fuel per
@@ -255,7 +262,7 @@ local function treeChop(config)
     -- same as the incoming task.
     ---@type TaskDefinition
     mine_tree_sub_task = {
-        fuel_buffer = config.definition.fuel_buffer,
+        fuel_buffer = config.definition.fuel_buffer - 10,
         return_to_facing = true,
         return_to_start = true,
         task_data = miner_data
@@ -265,6 +272,14 @@ local function treeChop(config)
     while true do
         -- Yield to the OS
         task_helpers.taskYield()
+
+        -- Refuel if we need to
+        while config.definition.fuel_buffer + 50 > wb:getFuelLevel() do
+            if not task_helpers.tryRefuelFromInventory(wb, {"coal", "stick", "plank", "log"}) then
+                -- Nothing to burn. We just have to bail and die elsewhere.
+                break
+            end
+        end
 
         -- Bail early if we're already done.
         if areWeThereYet(wb, target_logs, task_end_time) then break end
@@ -291,13 +306,12 @@ local function treeChop(config)
         -- A tree is present! Mine it!
 
         -- Only mine leaves if we don't have enough saplings.
-        sapling_count = wb:inventoryCountTag(sapling_tag)
-        if sapling_count <= saplings_low then
+        mine_tree_sub_task.task_data.mineable_groups = {}
+        mine_tree_sub_task.task_data.mineable_groups[1] = log_group
+        sapling_count = wb:inventoryCountPattern("sapling")
+        if sapling_count < saplings_low then
             -- Need more saplings
-            mine_tree_sub_task.task_data.mineable_groups[1].tags = {log_tag, leaves_tag}
-        else
-            -- Logs only
-            mine_tree_sub_task.task_data.mineable_groups[1].tags = {log_tag}
+            mine_tree_sub_task.task_data.mineable_groups[2] = leave_group
         end
 
         mining_worked, mining_result = task_helpers.spawnSubTask(config, mine_tree_sub_task)

@@ -49,6 +49,7 @@ local function normalizeHeight(config)
 
     -- its fly time
     while true do
+        wb:digUp() -- TEMP FOR THE DEMO
         local moved, reason = wb:up()
 
         if moved then
