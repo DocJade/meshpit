@@ -355,19 +355,16 @@ local function branchTime(task, task_result, timeout)
     -- The branch depth is the same as the spacing.
     -- TODO: This should have a setting in the future.
     local steps_forward = 0
-    local all_good = true
     for _ = 1, BRANCH_SPACING do
         -- Stop early if needed
         ---@diagnostic disable-next-line: undefined-field
         if os.epoch() > timeout then
-            all_good = false
             break
         end
 
         -- Make sure we still have stuff to do
         if #filterWantedBlocks(task.definition.task_data.desired).groups == 0 then
             -- We're done! no need to go deeper down this line
-            all_good = false
             break
         end
 
@@ -375,7 +372,6 @@ local function branchTime(task, task_result, timeout)
         if not tryForwards(task, task_result) then
             -- Something we cannot break in our way, or we are out of fuel.
             -- However, branches are allowed to just end early if they cannot go any further.
-            all_good = false
             break
         end
         -- Recurse if needed.
@@ -388,8 +384,10 @@ local function branchTime(task, task_result, timeout)
         task.walkback:back()
     end
 
-    -- Went as far as we could, or as deep as requested.
-    return all_good
+    -- Either we finished the branch, or we had to stop. Either case is fine as
+    -- we have "finished" the branch. The main loop will figure it out if something
+    -- is broken lol.
+    return true
 end
 
 
