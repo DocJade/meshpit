@@ -29,7 +29,7 @@ async fn run_tree_chop(
     }
 
     -- Sync yield
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- Equip the axe
     turtle.equipRight()
@@ -38,7 +38,7 @@ async fn run_tree_chop(
     turtle.back()
 
     -- Yield to let the test know we are ready to start
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- setup the OS
     mesh_os.startup(start_position)
@@ -66,7 +66,7 @@ async fn run_tree_chop(
     local _, _ = pcall(mesh_os.main)
 
     -- Tell the os we are done.
-    debugging.wait_step()
+    debugging.waitStep()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -231,7 +231,7 @@ async fn recursive_miner_test() {
     }
 
     -- Sync yield
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- Equip the pickaxe
     turtle.equipRight()
@@ -241,7 +241,7 @@ async fn recursive_miner_test() {
     turtle.back()
 
     -- Yield to let the test know we are ready to start
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- setup the OS
     mesh_os.startup(start_position)
@@ -393,13 +393,13 @@ async fn branch_miner_test() {
     }
 
     -- Sync yield
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- Equip the pickaxe
     turtle.equipRight()
 
     -- Yield to let the test know we are ready to start
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- setup the OS
     mesh_os.startup(start_position)
@@ -575,11 +575,11 @@ async fn lectern_from_scratch_test() {
         facing = "n"
     }
 
-    debugging.wait_step()
+    debugging.waitStep()
 
     turtle.equipLeft()
 
-    debugging.wait_step()
+    debugging.waitStep()
 
     mesh_os.startup(start_position)
 
@@ -704,7 +704,7 @@ async fn lectern_from_scratch_test() {
     turtle.placeUp()
 
     -- Done
-    debugging.wait_step()
+    debugging.waitStep()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -792,10 +792,10 @@ async fn crafting_test() {
     }
 
     -- Sync yield
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- Signal ready to start
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- Equip the axe
     turtle.equipLeft()
@@ -833,7 +833,7 @@ async fn crafting_test() {
     turtle.placeUp()
 
     -- Tell the test we are done
-    debugging.wait_step()
+    debugging.waitStep()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -922,10 +922,10 @@ async fn smelting_test() {
     }
 
     -- Sync yield
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- Signal ready to start
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- Equip the axe
     turtle.equipLeft()
@@ -1070,7 +1070,7 @@ async fn block_search_task_test() {
         facing = "n"
     }
 
-    debugging.wait_step()
+    debugging.waitStep()
 
     mesh_os.startup(start_position)
 
@@ -1203,7 +1203,7 @@ async fn block_search_no_fly_test() {
         facing = "n"
     }
 
-    debugging.wait_step()
+    debugging.waitStep()
 
     mesh_os.startup(start_position)
 
@@ -1320,7 +1320,7 @@ async fn block_search_back_and_forth_test() {
         facing = "n"
     }
 
-    debugging.wait_step()
+    debugging.waitStep()
 
     mesh_os.startup(start_position)
 
@@ -1441,7 +1441,7 @@ async fn block_search_4_step_loop() {
         facing = "n"
     }
 
-    debugging.wait_step()
+    debugging.waitStep()
 
     mesh_os.startup(start_position)
 
@@ -1564,7 +1564,7 @@ async fn block_search_overhang() {
         facing = "n"
     }
 
-    debugging.wait_step()
+    debugging.waitStep()
 
     mesh_os.startup(start_position)
 
@@ -1670,7 +1670,7 @@ async fn recursive_miner_falling_test() {
     }
 
     -- Sync yield
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- Equip the pickaxe
     turtle.equipRight()
@@ -1680,7 +1680,7 @@ async fn recursive_miner_falling_test() {
     turtle.back()
 
     -- Yield to let the test know we are ready to start
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- setup the OS
     mesh_os.startup(start_position)
@@ -1819,11 +1819,11 @@ async fn mitosis_basic() {
         facing = "n"
     }
 
-    debugging.wait_step()
+    debugging.waitStep()
 
     turtle.equipLeft()
 
-    debugging.wait_step()
+    debugging.waitStep()
 
     mesh_os.startup(start_position)
 
@@ -1843,7 +1843,7 @@ async fn mitosis_basic() {
     local _, _ = pcall(mesh_os.main)
 
     -- Done
-    debugging.wait_step()
+    debugging.waitStep()
     "#;
 
     let libraries = MeshpitLibraries {

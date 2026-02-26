@@ -66,7 +66,7 @@ local function connect()
 
     -- If that didn't work, give up.
     if not socket then
-        panic.force_reboot("Failed to connect to websocket! " .. tostring(error_string))
+        panic.forceReboot("Failed to connect to websocket! " .. tostring(error_string))
     end
 
     -- Got a websocket!
@@ -148,7 +148,7 @@ local function send(message, type, UUID)
         -- No websocket to send on!
         -- We cannot run healthy here. We assume
         -- callers have already ran healthy. The is nothing we can do.
-        panic.force_reboot("Tried to send a message without a websocket!")
+        panic.forceReboot("Tried to send a message without a websocket!")
         return false -- this never gets returned
     end
     -- diagnostic disables since i am casting in place.
@@ -174,7 +174,7 @@ local function receive(timeout)
     end
     if not NETWORKING.websocket then
         -- No websocket to listen on!
-        panic.force_reboot("Cannot listen without a websocket!")
+        panic.forceReboot("Cannot listen without a websocket!")
         return false, "impossible" -- this never gets returned
     end
     -- Wait for a message
@@ -204,7 +204,7 @@ local function receive(timeout)
     local ok, result_or_failure = helpers.deserializeJSON(message_or_pcall_error)
     if not ok then
         -- Unpacking failed for some reason!
-        panic.force_reboot("Failed to unpack received packet! : " .. tostring(result_or_failure))
+        panic.forceReboot("Failed to unpack received packet! : " .. tostring(result_or_failure))
     end
 
     return true, result_or_failure
@@ -242,7 +242,7 @@ function NETWORKING.debugSend(message)
     end
 
     -- Failed to send all 5 times. This should not happen.
-    panic.force_reboot("Failed to send a message after 5 attempts!")
+    panic.forceReboot("Failed to send a message after 5 attempts!")
 end
 
 --- Block and wait for any incoming message.

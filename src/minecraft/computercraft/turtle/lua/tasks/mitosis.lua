@@ -275,7 +275,7 @@ local function mitosis(config)
     turtle_peripheral.turnOn()
 
     -- All done!
-    return task_helpers.try_finish_task(config, {name = "none"})
+    return task_helpers.tryFinishTask(config, {name = "none"})
 end
 
 

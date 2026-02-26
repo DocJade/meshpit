@@ -169,7 +169,7 @@ function walkback:trimPosition()
     -- We have already visited this position, we will remove all movement
     -- that occurs after it. (so we add one to skip the current position).
 	-- If the index is past the end of the table,
-    local slice = helpers.slice_array(self.walkback_chain, index + 1, #self.walkback_chain)
+    local slice = helpers.sliceArray(self.walkback_chain, index + 1, #self.walkback_chain)
     for i, pos in ipairs(slice) do
         -- Remove from the hashset
 		local key = helpers.keyFromTable(pos)
@@ -330,7 +330,7 @@ end
 --- @param walkback WalkbackSelf
 --- @param side MovementDirection
 --- @return boolean
-local function been_direction(walkback, side)
+local function beenDirection(walkback, side)
 	-- Deduce the position
 	local pos, facing = walkback.cur_position.position, walkback.cur_position.facing
 	local forward_position = helpers.getAdjacentBlock(pos, facing, side)
@@ -345,7 +345,7 @@ end
 --- Returns true if we've already seen this position.
 --- @return boolean
 function walkback:beenForward()
-	return been_direction(self, "f")
+	return beenDirection(self, "f")
 end
 
 --- Check if the position behind the turtle is currently in the walkback
@@ -355,7 +355,7 @@ end
 --- Returns true if we've already seen this position.
 --- @return boolean
 function walkback:beenBack()
-	return been_direction(self, "b")
+	return beenDirection(self, "b")
 end
 
 --- Check if the position above the turtle is currently in the walkback
@@ -365,7 +365,7 @@ end
 --- Returns true if we've already seen this position.
 --- @return boolean
 function walkback:beenUp()
-	return been_direction(self, "u")
+	return beenDirection(self, "u")
 end
 
 --- Check if the position below the turtle is currently in the walkback
@@ -375,7 +375,7 @@ end
 --- Returns true if we've already seen this position.
 --- @return boolean
 function walkback:beenDown()
-	return been_direction(self, "d")
+	return beenDirection(self, "d")
 end
 
 --- Check if the position to the left of the turtle is currently in the walkback
@@ -385,7 +385,7 @@ end
 --- Returns true if we've already seen this position.
 --- @return boolean
 function walkback:beenLeft()
-	return been_direction(self, "l")
+	return beenDirection(self, "l")
 end
 
 --- Check if the position to the left of the turtle is currently in the walkback
@@ -395,7 +395,7 @@ end
 --- Returns true if we've already seen this position.
 --- @return boolean
 function walkback:beenRight()
-	return been_direction(self, "r")
+	return beenDirection(self, "r")
 end
 
 
@@ -694,7 +694,7 @@ local function waitTillCanMove()
 	-- TODO:
 
 	local when_can_move = walkback.last_movement_time + walkback.speed_limit_milliseconds
-	local quick_yield = helpers.quick_yield
+	local quick_yield = helpers.quickYield
 	---@diagnostic disable-next-line: undefined-field
 	while when_can_move > os.epoch() do
 		quick_yield()
@@ -2383,7 +2383,7 @@ function walkback:makeShortcut()
 
 	while checked < budget do
 		-- This is intense so we yield
-		helpers.quick_yield()
+		helpers.quickYield()
 
 		--- @type CoordPosition
 		local head = shortcut_chain[#shortcut_chain]
@@ -2529,7 +2529,7 @@ function walkback:makeShortcut()
 				-- Tiebreaker.
 				-- We don't take the square root since we just need to compare
 				-- which one is bigger. We dont need the real internal value.
-				local function true_distance_sq(a, b)
+				local function trueDistance(a, b)
 					local dx = a.x - b.x
 					local dy = a.y - b.y
 					local dz = a.z - b.z
@@ -2544,7 +2544,7 @@ function walkback:makeShortcut()
 					local t_b = taxicab(b, target)
 					if t_a ~= t_b then return t_a < t_b end
 					-- Need more accuracy
-					return true_distance_sq(a, target) < true_distance_sq(b, target)
+					return trueDistance(a, target) < trueDistance(b, target)
 				end)
 			end
 

@@ -349,11 +349,11 @@ end
 ---
 --- This will always return a task, it may be a wait task if there is nothing to do.
 --- @return TurtleTask
-local function request_new_tasks()
+local function requestNewTasks()
     -- If we are in test mode, we will throw an error to completely exit the OS
     -- giving us a path back to the startup script.
     ---@diagnostic disable-next-line: undefined-field
-    -- if test_mode then error("request_new_tasks") end
+    -- if test_mode then error("requestNewTasks") end
 
     -- TODO: This is just for the demo for video one.
     local mitosis = require("offline_mitosis")
@@ -522,7 +522,7 @@ end
 --- other events regardless if the current task is running. This delay may be
 --- increased in the future if needed.
 --- @param seconds number -- The number of seconds to sleep for. Can be fractional.
-local function os_sleep(seconds)
+local function osSleep(seconds)
 
     -- TODO: This somehow the old timer ID is not being cleaned up properly
 
@@ -555,7 +555,7 @@ end
 --- Handle timer events. This is also used to finish sleeping and reset the
 --- event resolution after sleeping.
 --- @param timer_id number
-local function handle_timer_event(timer_id)
+local function handleTimerEvent(timer_id)
     -- Are we sleeping? And is this our wake-up call?
     if sleeping_timer_id ~= nil and timer_id == sleeping_timer_id then
         -- Our sleep has ended.
@@ -592,7 +592,7 @@ end
 --- We only handle one event at a time, as looping would require to always wait
 --- for a timer to complete. The timer is only a backup to prevent being stuck
 --- if the queue is actually empty.
-local function handle_events()
+local function handleEvents()
 
     -- TODO: Make this pull events and put them into buckets based on event name
     -- so events can be pulled safely later, and we wont have to re-push events
@@ -648,7 +648,7 @@ local function handle_events()
         end
 
         -- Not the watchdog, handle it normally.
-        handle_timer_event(timer_id)
+        handleTimerEvent(timer_id)
 
     elseif event_name == "turtle_inventory" then
         -- TODO: Do something with this event
@@ -799,7 +799,7 @@ function mesh_os.startup(pos)
 end
 
 --- Save our state to hello_world.json
-local function save_state()
+local function saveState()
     --- @type HelloWorld
     local hello = {
         new = false, -- We've shut down, therefore we ain't new
@@ -823,7 +823,7 @@ end
 --- in hello_world.json so we can load it back up when we're turned back on.
 function mesh_os.shutdown()
     -- Save where we are
-    save_state()
+    saveState()
 
     -- Good night!
     ---@diagnostic disable-next-line: undefined-field
@@ -833,7 +833,7 @@ end
 --- Reboot the turtle. Saves state before reboot.
 function mesh_os.reboot()
     -- Save where we are
-    save_state()
+    saveState()
 
     -- Reboot!
     ---@diagnostic disable-next-line: undefined-field
@@ -909,7 +909,7 @@ function mesh_os.main()
                 print("Time remaining: " .. time_remaining_seconds .. " seconds.")
                 -- We are still sleeping.
                 -- Sleep for half of the remaining time.
-                os_sleep(time_remaining_seconds / 2)
+                osSleep(time_remaining_seconds / 2)
                 goto skip_task
             end
         end
@@ -920,7 +920,7 @@ function mesh_os.main()
 
         -- If there is no task, get new tasks.
         if not task then
-            task = request_new_tasks()
+            task = requestNewTasks()
             -- Double check
             panic.assert(task ~= nil, "Received no new tasks!")
         end
@@ -967,7 +967,7 @@ function mesh_os.main()
         ::skip_task::
 
         -- Handle events
-        handle_events()
+        handleEvents()
 
         -- Keep going!
     end

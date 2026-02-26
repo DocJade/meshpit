@@ -94,7 +94,7 @@ local BRANCH_SPACING = 8
 --- @param task TurtleTask
 --- @param offset number?
 --- @return boolean
-local function fuel_check(task, offset)
+local function fuelCheck(task, offset)
     local wb = task.walkback
     local inner_data = task.definition.task_data
     ---@cast inner_data BranchMinerData
@@ -140,7 +140,7 @@ end
 --- in the main table if needed.
 --- @param wanted_blocks DesiredBlocks
 --- @return DesiredBlocks
-local function filter_wanted_blocks(wanted_blocks)
+local function filterWantedBlocks(wanted_blocks)
     --- @type DesiredBlocks
     local copy = {
         groups = {}
@@ -168,14 +168,14 @@ end
 --- @param task TurtleTask
 --- @param task_result BranchMinerResult
 --- @param timeout number
-local function check_and_recurse(task, task_result, timeout)
+local function checkAndRecurse(task, task_result, timeout)
     local task_data = task.definition.task_data
     --- @cast task_data BranchMinerData
 
     local wb = task.walkback
 
     -- Filter out for the blocks we still want
-    local filtered = filter_wanted_blocks(task_data.desired)
+    local filtered = filterWantedBlocks(task_data.desired)
 
     -- If no blocks are desired, we have no need to recurse. Plus this should
     -- have been caught in the main loop anyways.
@@ -205,7 +205,7 @@ local function check_and_recurse(task, task_result, timeout)
     for _, neighbor in ipairs(neighbors) do
         local the_block = wb:blockQuery(neighbor)
         -- This checks for nil for us.
-        if helpers.block_wanted(the_block, re_grouping) then
+        if helpers.blockWanted(the_block, re_grouping) then
             found_something = true
             break
         end
@@ -284,7 +284,7 @@ end
 --- @param task TurtleTask
 --- @param task_result BranchMinerResult
 --- @return boolean
-local function try_forwards(task, task_result)
+local function tryForwards(task, task_result)
     local wb = task.walkback
     local task_data = task.definition.task_data
     --- @cast task_data BranchMinerData
@@ -297,7 +297,7 @@ local function try_forwards(task, task_result)
 
     -- Pre-check that we have enough fuel to move into the new position, regardless
     -- if we can or not.
-    if not fuel_check(task, 1) then
+    if not fuelCheck(task, 1) then
         -- Move cannot be afforded.
         return false
     end
@@ -309,7 +309,7 @@ local function try_forwards(task, task_result)
     end
 
     -- There is a block in front of us, can we mine it?
-    if helpers.block_wanted(block, incidentals.groups) then
+    if helpers.blockWanted(block, incidentals.groups) then
         -- We can mine it. Go for it.
         if not wb:dig() then
             -- Failed to mine it! Must be something up with either the list or
@@ -348,7 +348,7 @@ end
 --- @param task_result BranchMinerResult
 --- @param timeout number
 --- @return boolean
-local function branch_time(task, task_result, timeout)
+local function branchTime(task, task_result, timeout)
     -- We assume the first block we look at would have already been
     -- recursively mined if it matched our list.
 
@@ -365,21 +365,21 @@ local function branch_time(task, task_result, timeout)
         end
 
         -- Make sure we still have stuff to do
-        if #filter_wanted_blocks(task.definition.task_data.desired).groups == 0 then
+        if #filterWantedBlocks(task.definition.task_data.desired).groups == 0 then
             -- We're done! no need to go deeper down this line
             all_good = false
             break
         end
 
         -- Just move forwards.
-        if not try_forwards(task, task_result) then
+        if not tryForwards(task, task_result) then
             -- Something we cannot break in our way, or we are out of fuel.
             -- However, branches are allowed to just end early if they cannot go any further.
             all_good = false
             break
         end
         -- Recurse if needed.
-        check_and_recurse(task, task_result, timeout)
+        checkAndRecurse(task, task_result, timeout)
         steps_forward = steps_forward + 1
     end
 
@@ -403,11 +403,11 @@ end
 --- @param task_result BranchMinerResult
 --- @param timeout number
 --- @return boolean
-local function do_branches(task, task_result, timeout)
+local function doBranches(task, task_result, timeout)
     local wb = task.walkback
     -- Right branch first
     wb:turnRight()
-    if not branch_time(task, task_result, timeout) then
+    if not branchTime(task, task_result, timeout) then
         -- Failed, or done.
         wb:turnLeft()
         return false
@@ -415,7 +415,7 @@ local function do_branches(task, task_result, timeout)
     -- Turn around, and do the other side
     wb:turnRight()
     wb:turnRight()
-    if not branch_time(task, task_result, timeout) then
+    if not branchTime(task, task_result, timeout) then
         wb:turnRight()
         return false
     end
@@ -446,7 +446,7 @@ end
 --- Takes in a TurtleTask. See BranchMinerData for the sub-config.
 --- @param config TurtleTask
 --- @return TaskCompletion|TaskFailure
-local function branch_miner(config)
+local function branchMiner(config)
     local wb = config.walkback
 
     -- Pre-checks.
@@ -466,7 +466,7 @@ local function branch_miner(config)
     end
 
     -- Enough fuel?
-    if not fuel_check(config) then
+    if not fuelCheck(config) then
         task_helpers.throw("out of fuel")
     end
 
@@ -525,13 +525,13 @@ local function branch_miner(config)
     -- Before we even loop the first time, we need to check if a wanted block is
     -- in front of us, since if we start facing one, the incidental check will
     -- fail and we cant move into it.
-    check_and_recurse(config, branch_miner_result, stop_time)
+    checkAndRecurse(config, branch_miner_result, stop_time)
 
     -- Main loop
     while true do
 
         -- Is there still stuff to do?
-        if #filter_wanted_blocks(desired_blocks).groups == 0 then
+        if #filterWantedBlocks(desired_blocks).groups == 0 then
             -- All done!
             break
         end
@@ -548,13 +548,13 @@ local function branch_miner(config)
 
         -- Do we have enough fuel?
         -- This will automatically refuel if needed.
-        if not fuel_check(config) then
+        if not fuelCheck(config) then
             -- Out of fuel!
             break
         end
 
         -- Inventory space?
-        if not task_helpers.inventory_check(wb, discardables) then
+        if not task_helpers.inventoryCheck(wb, discardables) then
             -- Out of room!
             break
         end
@@ -562,7 +562,7 @@ local function branch_miner(config)
         -- We can keep going. Move forward unless its time for a branch.
         if current_trunk_distance % BRANCH_SPACING == 0 then
             -- Do the branch!
-            if not do_branches(config, branch_miner_result, stop_time) then
+            if not doBranches(config, branch_miner_result, stop_time) then
                 -- We're out of fuel, or something VERY wrong happened
                 -- to the branches. So we're done.
                 break
@@ -573,13 +573,13 @@ local function branch_miner(config)
             --
             -- Without this check, the try forwards would run and break a random
             -- ass block.
-            if #filter_wanted_blocks(desired_blocks).groups == 0 then
+            if #filterWantedBlocks(desired_blocks).groups == 0 then
                 break
             end
         end
 
         -- Move forwards.
-        if not try_forwards(config, branch_miner_result) then
+        if not tryForwards(config, branch_miner_result) then
             -- Something we cannot break in our way. Must give up.
             break
         end
@@ -588,7 +588,7 @@ local function branch_miner(config)
 
         -- See if there's anything we want to recurse into. This will
         -- automatically recurse for us.
-        check_and_recurse(config, branch_miner_result, stop_time)
+        checkAndRecurse(config, branch_miner_result, stop_time)
 
         -- Loop!
     end
@@ -600,9 +600,9 @@ local function branch_miner(config)
     end
 
     ---@diagnostic disable-next-line: param-type-mismatch
-    return task_helpers.try_finish_task(config, branch_miner_result)
+    return task_helpers.tryFinishTask(config, branch_miner_result)
 end
 
 
 
-return branch_miner
+return branchMiner

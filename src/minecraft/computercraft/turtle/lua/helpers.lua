@@ -20,7 +20,7 @@ local movement_vectors = constants.movement_vectors
 -- === === ===
 
 --- Yield, does not yield from a coroutine.
-function helpers.quick_yield()
+function helpers.quickYield()
     ---@diagnostic disable-next-line: undefined-field
     os.queueEvent("yield")
     ---@diagnostic disable-next-line: undefined-field
@@ -98,7 +98,7 @@ end
 ---@param slice_start number? Defaults to 1
 ---@param slice_end number? Defaults to the end of the table
 ---@return T[]
-function helpers.slice_array(input_table, slice_start, slice_end)
+function helpers.sliceArray(input_table, slice_start, slice_end)
     local slice = {}
     local slice_start = slice_start or 1
     for i= slice_start, slice_end do
@@ -169,7 +169,7 @@ end
 local function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     local skip_invalid_tables = skip_invalid_tables or false
     -- This can take a long time, so we yield a lot.
-    helpers.quick_yield()
+    helpers.quickYield()
 
     ---@diagnostic disable-next-line: undefined-global
     local json_null = textutils.json_null
@@ -244,7 +244,7 @@ local function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     -- cant count the hashmap alone, this will also count the array side.
     local combined_item_count = 0
 
-    helpers.quick_yield()
+    helpers.quickYield()
     for _, _ in ipairs(value) do
         array_item_count = array_item_count + 1
     end
@@ -252,7 +252,7 @@ local function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     for _, _ in pairs(value) do
         combined_item_count = combined_item_count + 1
     end
-    helpers.quick_yield()
+    helpers.quickYield()
 
     -- Check if table is completely empty, we can skip if so!
     if (array_item_count == 0) and (combined_item_count == 0) then
@@ -293,7 +293,7 @@ local function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     local total_items = 0
 
     for k, v in pairs(value) do
-        helpers.quick_yield()
+        helpers.quickYield()
         total_items = total_items + 1
         if is_array then
             -- Array handling
@@ -406,7 +406,7 @@ end
 ---@return table any a deep copy of the input
 function helpers.deepCopy(input, seen)
     -- Each iteration of the loop yields, as this is an intensive function.
-    helpers.quick_yield()
+    helpers.quickYield()
 
     -- No need to deep copy if this is not a table.
     if type(input) ~= "table" then
@@ -520,7 +520,7 @@ end
 ---@return boolean
 function helpers.deepEquals(a, b, seen)
     -- This is an expensive function.
-    helpers.quick_yield()
+    helpers.quickYield()
 
     -- types are the same
     local t_a = type(a)
@@ -1003,7 +1003,7 @@ end
 --- @param block Block|nil
 --- @param groups BlockGroup[]
 --- @return boolean, number|nil
-function helpers.block_wanted(block, groups)
+function helpers.blockWanted(block, groups)
     -- If the block is air, we do not care.
     if block == nil then return false, nil end
 
@@ -1036,7 +1036,7 @@ end
 --- Check if a kind of block can be stood in. Accepts nil for air.
 --- @param block Block|nil
 --- @return boolean
-function helpers.can_stand_in(block)
+function helpers.canStandIn(block)
     if block == nil then
         -- Can stand in air
         return true

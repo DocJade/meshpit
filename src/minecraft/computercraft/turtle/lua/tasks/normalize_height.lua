@@ -34,7 +34,7 @@ local task_helpers = require("task_helpers")
 --- FLy up to 319 and back down to set walkback's vertical position.
 --- @param config TurtleTask
 --- @return TaskCompletion|TaskFailure
-local function normalize_height(config)
+local function normalizeHeight(config)
     local wb = config.walkback
 
     -- Right task?
@@ -96,7 +96,7 @@ local function normalize_height(config)
 
     ---@type NoneResult
     local result = { name = "none" }
-    return task_helpers.try_finish_task(config, result)
+    return task_helpers.tryFinishTask(config, result)
 end
 
-return normalize_height
+return normalizeHeight

@@ -144,7 +144,7 @@ end
 ---
 --- Use this when you know the networking is completely unreachable and you cannot recover.
 --- @param message string
-function panic.force_reboot(message)
+function panic.forceReboot(message)
     print("Forced reboot panic! : " .. message)
     -- Not much we can do here, but to prevent fast boot-looping, we will stall for 30 seconds.
     -- We will also shout out the message on as many outputs as we can.

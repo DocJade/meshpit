@@ -52,7 +52,7 @@ local stick_name = "minecraft:stick"
 --- @param target_logs number
 --- @param task_end_time number
 --- @return boolean
-local function are_we_there_yet(wb, target_logs, task_end_time)
+local function areWeThereYet(wb, target_logs, task_end_time)
     -- Have we met our log goal?
     if wb:inventoryCountPattern("log") >= target_logs then
         -- Goal met!
@@ -79,7 +79,7 @@ end
 --- Takes in a TurtleTask. see TreeChopTaskData for the sub-config.
 ---@param config TurtleTask
 ---@return TaskCompletion|TaskFailure
-local function tree_chop(config)
+local function treeChop(config)
     local wb = config.walkback
     -- Make sure the task name is correct
     if config.definition.task_data.name ~= "tree_chop" then
@@ -267,7 +267,7 @@ local function tree_chop(config)
         task_helpers.taskYield()
 
         -- Bail early if we're already done.
-        if are_we_there_yet(wb, target_logs, task_end_time) then break end
+        if areWeThereYet(wb, target_logs, task_end_time) then break end
 
         -- Is there a log in front of us?
         block = wb:inspect()
@@ -384,7 +384,7 @@ local function tree_chop(config)
 
         -- We might be done. Don't place the sapling if we've met the end
         -- criteria.
-        if are_we_there_yet(wb, target_logs, task_end_time) then break end
+        if areWeThereYet(wb, target_logs, task_end_time) then break end
 
         -- Place the next sapling!
         -- We for sure have a sapling at this point, this could only fail if there
@@ -409,7 +409,7 @@ local function tree_chop(config)
     local none_result = {
         name = "none"
     }
-    return task_helpers.try_finish_task(config, none_result)
+    return task_helpers.tryFinishTask(config, none_result)
 end
 
-return tree_chop
+return treeChop

@@ -195,7 +195,7 @@ end
 ---@param turtle_task TurtleTask
 ---@param result_data TaskResultData
 ---@return TaskCompletion
-function task_helpers.try_finish_task(turtle_task, result_data)
+function task_helpers.tryFinishTask(turtle_task, result_data)
     -- Run walkback if needed.
     local backoff_delay = 1
     if turtle_task.definition.return_to_start then
@@ -304,7 +304,7 @@ end
 --- Returns a boolean on wether or not the task can continue.
 --- @param wb WalkbackSelf
 --- @param discardables DiscardableItems
-function task_helpers.inventory_check(wb, discardables)
+function task_helpers.inventoryCheck(wb, discardables)
     -- If there's a free slot, nothing to do.
     if wb:haveEmptySlot() then return true end
 

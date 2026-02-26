@@ -9,7 +9,7 @@ local task_helpers = require("task_helpers")
 --- Returns task in the order that they should be completed, IE: 1, 2, 3.
 --- @param wb WalkbackSelf
 --- @return TaskDefinition[]
-local function deduce_next_task(wb)
+local function deduceNextTask(wb)
     -- A bunch of booleans to gate possible actions to take.
     local knows_y
     local has_disk_drive
@@ -802,4 +802,4 @@ local function deduce_next_task(wb)
 
 end
 
-return deduce_next_task
+return deduceNextTask

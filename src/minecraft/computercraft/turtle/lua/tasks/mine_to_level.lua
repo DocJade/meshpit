@@ -36,7 +36,7 @@ local helpers = require("helpers")
 --- Mine through the world till a desired Y level is hit.
 --- @param config TurtleTask
 --- @return TaskCompletion|TaskFailure
-local function mine_to_level(config)
+local function mineToLevel(config)
     local wb = config.walkback
     local task_data = config.definition.task_data
     -- Right task?
@@ -93,7 +93,7 @@ local function mine_to_level(config)
 
     ---@type NoneResult
     local result = { name = "none" }
-    return task_helpers.try_finish_task(config, result)
+    return task_helpers.tryFinishTask(config, result)
 end
 
-return mine_to_level
+return mineToLevel

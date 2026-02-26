@@ -6,7 +6,7 @@ local constants = require("constants")
 local debugging = {}
 
 --- Step-locked syncing with the test harness.
-function debugging.wait_step()
+function debugging.waitStep()
     NETWORKING.debugSend("wait")
     if NETWORKING.waitForPacket(constants.WAIT_STEP_TIMEOUT) then
         return

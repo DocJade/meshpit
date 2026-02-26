@@ -77,7 +77,7 @@ local GetNeighborBlocks = helpers.GetNeighborBlocks
 --- @param position_to_check CoordPosition
 --- @param seen_blocks {[string]: true}
 --- @return boolean
-local function have_seen_position(position_to_check, seen_blocks)
+local function haveSeenPosition(position_to_check, seen_blocks)
     -- Key the position we're at
     local key = keyFromTable(position_to_check)
 
@@ -94,14 +94,14 @@ end
 --- @param facing CardinalDirection
 --- @param seen_blocks {[string]: true}
 --- @return CoordPosition[]
-local function get_unseen_neighbor_blocks(position, facing, seen_blocks)
+local function getUnseenNeighborBlocks(position, facing, seen_blocks)
     local all_neighbors = GetNeighborBlocks(position, facing)
 
     ---@type CoordPosition[]
     local kept_neighbors = {}
     -- Discard the ones we've seen.
     for _, n in ipairs(all_neighbors) do
-        if not have_seen_position(n, seen_blocks) then
+        if not haveSeenPosition(n, seen_blocks) then
             -- Haven't seen this one yet!
             kept_neighbors[#kept_neighbors+1] = n
         end
@@ -120,7 +120,7 @@ end
 --- @param maybe_move_here CoordPosition
 --- @param seen_blocks {[string]: true}
 --- @return boolean
-local function moving_would_give_info(maybe_move_here, seen_blocks)
+local function movingWouldGiveInfo(maybe_move_here, seen_blocks)
     -- If there is at least one block that has not been seen that you would be
     -- able to see from that maybe position, then its worth moving into.
     -- No need to provide accurate facing info.
@@ -128,7 +128,7 @@ local function moving_would_give_info(maybe_move_here, seen_blocks)
     -- TODO: Improve this to split this check up to also allow for moving into
     -- positions that have no new info, but would allow for taking a shortcut.
 
-    return #(get_unseen_neighbor_blocks(maybe_move_here, "n", seen_blocks) or {}) > 0
+    return #(getUnseenNeighborBlocks(maybe_move_here, "n", seen_blocks) or {}) > 0
 end
 
 --- Check if a position wants to be mined.
@@ -140,7 +140,7 @@ end
 --- @param check_position CoordPosition
 --- @param to_mine PositionWithReason[]
 --- @return boolean, number|nil
-local function position_wants_to_be_mined(check_position, to_mine)
+local function positionWantsToBeMined(check_position, to_mine)
     local saw_position = false
     local index_seen = nil
 
@@ -190,7 +190,7 @@ end
 --- @param seen_blocks {[string]: true}
 --- @param to_mine PositionWithReason[]
 --- @return boolean, CoordPosition[]
-local function already_facing_shortcut(cur_position, seen_blocks, to_mine)
+local function alreadyFacingShortcut(cur_position, seen_blocks, to_mine)
     local our_pos, our_facing = cur_position.position, cur_position.facing
 
     -- We only need to check forwards, up and down. However, the order here
@@ -228,7 +228,7 @@ local function already_facing_shortcut(cur_position, seen_blocks, to_mine)
     local no_info = {}
     for _, pos in ipairs(check_positions) do
         -- The ordering that we get from this does not matter, we only care if
-        if not moving_would_give_info(pos, seen_blocks) then
+        if not movingWouldGiveInfo(pos, seen_blocks) then
             -- This is shortcut-able.
             no_info[#no_info+1] = pos
         end
@@ -245,7 +245,7 @@ local function already_facing_shortcut(cur_position, seen_blocks, to_mine)
     local good_shortcuts = {}
     for _, pos in ipairs(no_info) do
         -- Check if we want to mine this block at all.
-        if position_wants_to_be_mined(pos, to_mine) then
+        if positionWantsToBeMined(pos, to_mine) then
             -- Wanted! Return it!
             good_shortcuts[#good_shortcuts+1] = pos
         end
@@ -265,10 +265,10 @@ end
 --- @param to_mine PositionWithReason[]
 --- @param miner_return_value RecursiveMinerResult
 --- @param did_you_break_it boolean
-local function mark_mined(mined_position, to_mine, miner_return_value, did_you_break_it)
+local function markMined(mined_position, to_mine, miner_return_value, did_you_break_it)
 
     -- Check if we actually needed to mine that position
-    local wanted, index = position_wants_to_be_mined(mined_position, to_mine)
+    local wanted, index = positionWantsToBeMined(mined_position, to_mine)
 
     -- We should never mine a block we did not want.
     task_helpers.assert(wanted)
@@ -299,7 +299,7 @@ end
 --- @param starting CardinalDirection
 --- @param directions table<CoordPosition, CardinalDirection>[]
 --- @return number
-local function calculate_turn_cost(starting, directions)
+local function calculateTurnCost(starting, directions)
     local total = 0
     -- Needs to take into account the new facing direction after a turn.
     local current_facing = starting
@@ -321,10 +321,10 @@ end
 --- @param wb WalkbackSelf
 --- @param seen_blocks {[string]: true}
 --- @return Block[], CoordPosition[]
-local function smart_scan(wb, seen_blocks)
+local function smartScan(wb, seen_blocks)
     local p, f = wb.cur_position.position, wb.cur_position.facing
     -- Find the directions that need to be scanned.
-    local to_see = get_unseen_neighbor_blocks(p, f, seen_blocks)
+    local to_see = getUnseenNeighborBlocks(p, f, seen_blocks)
     -- Bail if there is nothing to look at.
     if #to_see == 0 then
         return {}, {}
@@ -456,7 +456,7 @@ local function smart_scan(wb, seen_blocks)
 
 
     -- Now we can permutate the array until we see the cost we want.
-    current_cost = calculate_turn_cost(f, t)
+    current_cost = calculateTurnCost(f, t)
 
     -- We might not need to sort.
     if target_cost == current_cost then
@@ -541,7 +541,7 @@ end
 --- @param groups BlockGroup[]
 --- @param pos CoordPosition
 --- @return boolean
-local function mine_or_die(wb, discardables, groups, pos)
+local function mineOrDie(wb, discardables, groups, pos)
     local mine_result, mine_reason = wb:digAdjacent(pos)
 
     -- Check for actually failures, ignore "Nothing to dig here"
@@ -570,7 +570,7 @@ local function mine_or_die(wb, discardables, groups, pos)
 
     -- Mine the falling blocks until they're all gone.
     -- I doubt we'll have recursion issues with this.
-    mine_or_die(wb, discardables, groups, pos)
+    mineOrDie(wb, discardables, groups, pos)
 
     -- The spot should be clear now.
     local _, nothing = wb:inspectAdjacent(pos)
@@ -579,7 +579,7 @@ local function mine_or_die(wb, discardables, groups, pos)
     -- Now, if we don't want that falling block, add it to the discardables list
     -- if it is not already present.
 
-    if not helpers.block_wanted(block, groups) then
+    if not helpers.blockWanted(block, groups) then
         -- Don't want it. Add it if it doesn't already exist.
         task_helpers.assert(block.name ~= nil)
         if not helpers.arrayContains(discardables.patterns, block.name) then
@@ -599,7 +599,7 @@ end
 --- Move into an adjacent position, and if that fails, die.
 --- @param wb WalkbackSelf
 --- @param pos CoordPosition
-local function move_or_die(wb, pos)
+local function moveOrDie(wb, pos)
     local move_result, move_reason = wb:moveAdjacent(pos)
     if not move_result then
         if move_reason == "Out of fuel" then
@@ -620,9 +620,9 @@ end
 --- @param seen_blocks {[string]: true}
 --- @param to_mine PositionWithReason[]
 --- @param miner_return_value RecursiveMinerResult
-local function post_movement_shortcuts(wb, discardables, groups, seen_blocks, to_mine, miner_return_value)
+local function postMovementShortcut(wb, discardables, groups, seen_blocks, to_mine, miner_return_value)
     -- Check the shortcut
-    local have_shortcut, go_mine = already_facing_shortcut(wb.cur_position, seen_blocks, to_mine)
+    local have_shortcut, go_mine = alreadyFacingShortcut(wb.cur_position, seen_blocks, to_mine)
     if not have_shortcut then
         -- nothing to do
         return
@@ -635,9 +635,9 @@ local function post_movement_shortcuts(wb, discardables, groups, seen_blocks, to
     -- There are shortcuts! Mine them and mark them.
     for _, pos in ipairs(go_mine) do
         -- Mine
-        local mined = mine_or_die(wb, discardables, groups, pos)
+        local mined = mineOrDie(wb, discardables, groups, pos)
         -- Mark
-        mark_mined(pos, to_mine, miner_return_value, mined)
+        markMined(pos, to_mine, miner_return_value, mined)
     end
 end
 
@@ -655,7 +655,7 @@ end
 --- @param seen_blocks {[string]: true}
 --- @param mineable_groups BlockGroup[]
 --- @return PositionWithReason
-local function pick_next_mine(wb, to_mine, seen_blocks, mineable_groups)
+local function pickNextMine(wb, to_mine, seen_blocks, mineable_groups)
     local p, f = wb.cur_position.position, wb.cur_position.facing
 
     -- Bail if there is nothing to do, or only one thing to do. As re-ordering
@@ -714,7 +714,7 @@ local function pick_next_mine(wb, to_mine, seen_blocks, mineable_groups)
     -- Luckily we already have get_unseen_neighbor_blocks, so we can use that.
     for _, pop_pos in ipairs(popped) do
         -- Direction does not matter, since we're just counting.
-        local revealed = get_unseen_neighbor_blocks(pop_pos.pwr.pos, "n", seen_blocks) or {}
+        local revealed = getUnseenNeighborBlocks(pop_pos.pwr.pos, "n", seen_blocks) or {}
         pop_pos.score = pop_pos.score + #revealed
     end
 
@@ -773,7 +773,7 @@ end
 --- Takes in a TurtleTask. See RecursiveMinerTask for the sub-config.
 ---@param config TurtleTask
 ---@return TaskCompletion|TaskFailure
-local function recursive_miner(config)
+local function recursiveMiner(config)
     local wb = config.walkback
     -- Make sure the task name is correct
     if config.definition.task_data.name ~= "recursive_miner" then
@@ -912,7 +912,7 @@ local function recursive_miner(config)
         end
 
         -- Check if we have room in our inventory, or make room if needed.
-        if not task_helpers.inventory_check(wb, discardables) then
+        if not task_helpers.inventoryCheck(wb, discardables) then
             -- Out of free slots!
             task_helpers.throw("inventory full")
         end
@@ -920,7 +920,7 @@ local function recursive_miner(config)
         -- Checks pass, keep going.
 
         -- Scan the neighboring blocks
-        local neighbor_blocks, neighbor_positions = smart_scan(wb, seen_blocks)
+        local neighbor_blocks, neighbor_positions = smartScan(wb, seen_blocks)
 
         -- Skip if there is no blocks to mark
         if #neighbor_blocks == 0 then
@@ -929,7 +929,7 @@ local function recursive_miner(config)
 
         -- Mark the blocks as wanted if needed.
         for i = 1, #neighbor_blocks do
-            local bool, group_index = helpers.block_wanted(neighbor_blocks[i], mineable_groups)
+            local bool, group_index = helpers.blockWanted(neighbor_blocks[i], mineable_groups)
             if bool then
                 -- We want this.
                 -- No need to clone on the way in, as the positions are not borrowed
@@ -962,7 +962,7 @@ local function recursive_miner(config)
 
         -- There is something to mine!
         -- Mine the first thing as usual.
-        local pos_to_mine = pick_next_mine(wb, to_mine, seen_blocks, mineable_groups)
+        local pos_to_mine = pickNextMine(wb, to_mine, seen_blocks, mineable_groups)
 
         -- Peek at the top block, are we next to it?
         if not isPositionAdjacent(wb.cur_position.position, pos_to_mine.pos) then
@@ -975,7 +975,7 @@ local function recursive_miner(config)
                 task_helpers.assert(r)
 
                 -- Every time we step back, the priorities will change.
-                pos_to_mine = pick_next_mine(wb, to_mine, seen_blocks, mineable_groups)
+                pos_to_mine = pickNextMine(wb, to_mine, seen_blocks, mineable_groups)
 
                 if isPositionAdjacent(wb.cur_position.position, pos_to_mine.pos) then
                     break
@@ -984,7 +984,7 @@ local function recursive_miner(config)
                 -- While moving backwards, we may have a shortcut we can take.
                 -- Shortcuts run _after_ the break check, since if we called this
                 -- first, we could mine what is being looked for before the break.
-                post_movement_shortcuts(wb, discardables, mineable_groups, seen_blocks, to_mine, miner_return_value)
+                postMovementShortcut(wb, discardables, mineable_groups, seen_blocks, to_mine, miner_return_value)
             end
         end
 
@@ -994,18 +994,18 @@ local function recursive_miner(config)
         -- We will mine it, then move into it if moving in would provide information.
         -- Need to keep track if it was actually mined or not so we can update
         -- statistics.
-        local actually_mined = mine_or_die(wb, discardables, mineable_groups, pos_to_mine.pos)
+        local actually_mined = mineOrDie(wb, discardables, mineable_groups, pos_to_mine.pos)
 
-        if moving_would_give_info(pos_to_mine.pos, seen_blocks) then
+        if movingWouldGiveInfo(pos_to_mine.pos, seen_blocks) then
             -- Its worth moving in here. The scan will happen automatically on
             -- the next loop.
-            move_or_die(wb, pos_to_mine.pos)
-            post_movement_shortcuts(wb, discardables, mineable_groups, seen_blocks, to_mine, miner_return_value)
+            moveOrDie(wb, pos_to_mine.pos)
+            postMovementShortcut(wb, discardables, mineable_groups, seen_blocks, to_mine, miner_return_value)
         end
 
         -- Remove the old block from the list, adding it to the tally if we
         -- did actually mine something.
-        mark_mined(pos_to_mine.pos, to_mine, miner_return_value, actually_mined)
+        markMined(pos_to_mine.pos, to_mine, miner_return_value, actually_mined)
 
         -- If we are running low on fuel, try to refuel from the inventory if we're allowed to.
         -- We always burn only one item per cycle to keep usage minimal and not overshoot.
@@ -1019,9 +1019,9 @@ local function recursive_miner(config)
 
     -- Loop broken, its time to perform the walkback.
     -- The walkback is automatically preformed by try_finish_task.
-    return task_helpers.try_finish_task(config, miner_return_value)
+    return task_helpers.tryFinishTask(config, miner_return_value)
 end
 
 
 
-return recursive_miner
+return recursiveMiner
