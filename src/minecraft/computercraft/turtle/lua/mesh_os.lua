@@ -703,7 +703,7 @@ function mesh_os.startup(pos)
         -- We have _something_ equipped, check if its a pick
         l = l or {name="no"}
         r = r or {name="no"}
-        if helpers.findString(l.name "pickaxe") or helpers.findString(r.name "pickaxe") then
+        if helpers.findString(l.name, "pickaxe") or helpers.findString(r.name, "pickaxe") then
             -- We already have one equipped.
             goto skip_equip
         end

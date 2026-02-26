@@ -370,15 +370,18 @@ function task_helpers.compactInventory(wb)
         index = range_end
     end
 
-    -- Now this may have created new partial stacks, so we recurse.
-    -- This will exit higher up once there is nothing to do, IE there are no
-    -- stacks to combine or all of the stacks cannot hold more items.
-    task_helpers.compactInventory(wb)
-
     -- Now count up how many items changed and see if we actually made more room.
     local made_room = old_free_slots < wb:countEmptySlots()
-
-    return made_room
+    -- If we didn't make room, we're immediately done.
+    if not made_room then
+        return false
+    else
+        -- We improved the inventory for sure, but we can run the compaction again
+        -- since the compaction may have made new partial slots to re-compact again.
+        task_helpers.compactInventory(wb)
+    end
+    -- We must have made room at this point!
+    return true
 end
 
 --- Helper function to check that we still have an empty inventory slot, or
