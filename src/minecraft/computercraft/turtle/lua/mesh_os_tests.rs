@@ -1885,7 +1885,11 @@ async fn mitosis_basic() {
         TestCommand::InsertItem(position.position, &MinecraftItem::from_string("coal").unwrap(), 64, 4)
     ).await;
 
-    assert!(pick.success() && pick_two.success() && turtle_item.success() && drive.success() && coal.success());
+    let crafting_tables = test.command(
+        TestCommand::InsertItem(position.position, &MinecraftItem::from_string("crafting_table").unwrap(), 64, 5)
+    ).await;
+
+    assert!(pick.success() && pick_two.success() && turtle_item.success() && drive.success() && coal.success() && crafting_tables.success());
 
     computer.turn_on(&mut test).await;
 
