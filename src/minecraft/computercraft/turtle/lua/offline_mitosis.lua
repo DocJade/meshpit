@@ -142,7 +142,10 @@ local function deduceNextTask(wb)
     }
 
 
-
+    -- Pre-compact the inventory to try and keep things clean.
+    -- Don't care if this actually does anything or not, we just want to at least
+    -- try it.
+    task_helpers.compactInventory(wb)
 
 
     -- Now actually for some task stuff.

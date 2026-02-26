@@ -298,15 +298,105 @@ function task_helpers.tryRefuelFromInventory(walkback, fuel_patterns)
     return false
 end
 
+--- Attempt to compact the inventory by consolidating items.
+---
+--- Returns true if any slots were freed up from compaction
+--- @param wb WalkbackSelf
+--- @return boolean
+function task_helpers.compactInventory(wb)
+    -- Loop over the slots, looking for partial stacks
+    --- @type {count: number, name: string, slot: number}[]
+    local partial_stacks = {}
+    local old_free_slots = wb:countEmptySlots()
+    for slot = 1, 16 do
+        local count = wb:getItemCount(slot)
+        -- Check if the stack can hold more items, and that the stack is not empty.
+        -- We check if we can actually hold more items in the stack directly since
+        -- we need to handle un-stackable items.
+
+        if (count ~= 0) and (wb:getItemSpace(slot) > 0) then
+            -- Partial stack that can hold more items. Worth tracking.
+            local item = wb:getItemDetail(slot)
+            -- This has to have something in it.
+            --- @cast item Item
+            local name = item.name
+            partial_stacks[#partial_stacks+1] = {
+                count = count,
+                name = name,
+                slot = slot
+            }
+        end
+    end
+
+    -- Is there anything to compact?
+    if #partial_stacks == 0 then
+        -- Nothing we can do
+        return false
+    end
+
+    -- Sort the array to put the biggest stacks first
+    table.sort(partial_stacks, function (a, b)
+        -- Group by name first, then by count descending
+        if a.name ~= b.name then return a.name < b.name end
+        return a.count > b.count
+    end)
+
+    -- Merge adjacent same-name stacks
+    local index = 1
+    while index < #partial_stacks do
+        local range_end = index + 1
+        -- Find the range in the array where the names are the same and need to be merged
+        while range_end <= #partial_stacks and partial_stacks[range_end].name == partial_stacks[index].name do
+            range_end = range_end + 1
+        end
+        -- Now [index, range_end - 1] have to have the same name. Which could just
+        -- be one item, but that would be immediately skipped by the while condition.
+        -- Merge items from back to front
+        local low, high = index, range_end - 1
+        while low < high do
+            wb:select(partial_stacks[high].slot)
+            wb:transferTo(partial_stacks[low].slot)
+            -- Now if the slot is full, we move to the next slot to move items
+            -- into.
+            if wb:getItemSpace(partial_stacks[low].slot) == 0 then
+                low = low + 1
+            end
+            -- If the stack we were pulling from is now empty, move back to the
+            -- next stack.
+            if wb:getItemCount(partial_stacks[high].slot) == 0 then
+                high = high - 1
+            end
+        end
+        index = range_end
+    end
+
+    -- Now this may have created new partial stacks, so we recurse.
+    -- This will exit higher up once there is nothing to do, IE there are no
+    -- stacks to combine or all of the stacks cannot hold more items.
+    task_helpers.compactInventory(wb)
+
+    -- Now count up how many items changed and see if we actually made more room.
+    local made_room = old_free_slots < wb:countEmptySlots()
+
+    return made_room
+end
+
 --- Helper function to check that we still have an empty inventory slot, or
 --- discard items if we need to free up slots.
 ---
 --- Returns a boolean on wether or not the task can continue.
 --- @param wb WalkbackSelf
 --- @param discardables DiscardableItems
+--- @return boolean
 function task_helpers.inventoryCheck(wb, discardables)
     -- If there's a free slot, nothing to do.
     if wb:haveEmptySlot() then return true end
+
+    -- Try compacting the inventory before discarding stuff
+    if task_helpers.compactInventory(wb) then
+        -- That made room.
+        return true
+    end
 
     local slot_to_discard = nil
 
