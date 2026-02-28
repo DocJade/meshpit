@@ -287,9 +287,12 @@ function task_helpers.tryRefuelFromInventory(wb, fuel_patterns)
             -- Good item.
             -- If this is a log, we should craft it into planks first before
             -- burning it. This quadruples their fuel value.
+            -- TODO: Is there a nicer way we can factor this? This feels like a
+            -- weird place to put this.
             if helpers.findString(pattern, "log") then
                 -- Log. Can we craft it down?
                 -- Need: Room for chest, a chest, and room in our inventory (with safety margin).
+                -- Need the chest as we don't wanna accidentally craft mid-air and drop stuff.
                 if (not wb:detectDown()) and
                         wb:countEmptySlots() >= 3 and
                         wb:inventoryCountPattern("chest") > 0 and
