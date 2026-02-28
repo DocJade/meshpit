@@ -255,35 +255,105 @@ end
 --- on string patterns. These patterns only match names. Be careful to not use
 --- patterns that are too broad.
 ---
+--- May spawn a crafting task to make planks.
+---
 --- Iterates the inventory front to back for items to burn, after finding a match,
 --- one item from that matching slot will be consumed as fuel.
 ---
 --- Preserves what inventory slot was selected before the call.
 ---
 --- Returns true if an item was burnt.
---- @param walkback WalkbackSelf
+--- @param wb WalkbackSelf
 --- @param fuel_patterns string[]
 --- @return boolean
-function task_helpers.tryRefuelFromInventory(walkback, fuel_patterns)
+function task_helpers.tryRefuelFromInventory(wb, fuel_patterns)
     -- Can't burn no options!
     if #fuel_patterns == 0 then return false end
 
-    local original_slot = walkback:getSelectedSlot()
+    local original_slot = wb:getSelectedSlot()
 
     -- Front to back since when mining those are the stacks added to first.
     for i = 1, 16 do
-        local item = walkback:getItemDetail(i)
+        local item = wb:getItemDetail(i)
         -- Skip empty slots
         if not item then goto continue end
 
         -- Check if the item matches any pattern
         for _, pattern in pairs(fuel_patterns) do
             if not helpers.findString(item.name, pattern) then goto bad_pattern end
+            local select_me = i
+            local amount_to_burn = 1
 
-            -- Good item, try burning it
-            walkback:select(i)
-            local did_refuel = walkback:refuel(1)
-            walkback:select(original_slot)
+            -- Good item.
+            -- If this is a log, we should craft it into planks first before
+            -- burning it. This quadruples their fuel value.
+            if helpers.findString(pattern, "log") then
+                -- Log. Can we craft it down?
+                -- Need: Room for chest, a chest, and room in our inventory (with safety margin).
+                if (not wb:detectDown()) and
+                        wb:countEmptySlots() >= 3 and
+                        wb:inventoryCountPattern("chest") > 0 and
+                        wb:inventoryCountPattern("crafting_table") > 0
+                    then
+                    -- We can plank it.
+                    --- @type TaskDefinition
+                    local makie_da_plankie = {
+                        fuel_buffer = 0,
+                        return_to_facing = true,
+                        return_to_start = true,
+                        --- @type CraftingData
+                        task_data = {
+                            name = "craft_task",
+                            count = 1,
+                            recipe = {
+                                shape = {
+                                    "log",   "BLANK", "BLANK",
+                                    "BLANK", "BLANK", "BLANK",
+                                    "BLANK", "BLANK", "BLANK"
+                                }
+                            }
+                        }
+                    }
+
+                    -- Since we may not be inside of a task, we need to just spawn the task
+                    -- normally. This is disgusting, but I have no idea how to factor
+                    -- this better right now.
+                    -- We cannot mark this as a sub task, as we may not be currently within a task.
+                    -- Thus we get no result from running this. We will just have to
+                    -- count the plank delta to see if it worked.
+
+                    local pre_craft_planks = wb:inventoryCountPattern("planks")
+
+                    ---@type CustomEventSpawnTask
+                    local sub_task = {"spawn_task", makie_da_plankie, false}
+
+                    taskQueueEvent(sub_task)
+
+                    -- Yield to the OS to run the new task. lol.
+                    task_helpers.taskYield()
+
+                    local worked = pre_craft_planks < wb:inventoryCountPattern("planks")
+                    -- This should always work, but if it didn't, then we will just not change the slot to eat
+                    if worked then
+                        -- Find the planks
+                        local plank_slot = wb:inventoryFindPattern("planks")
+                        -- This should exist.
+                        task_helpers.assert(plank_slot ~= nil)
+                        --- @cast plank_slot number
+                        -- Make sure there are 4 planks in that slot to burn
+                        if wb:getItemCount(plank_slot) >= 4 then
+                            -- Tell the next section to select and burn all 4.
+                            select_me = plank_slot
+                            amount_to_burn = 4
+                        end
+                    end
+                end
+            end
+
+            -- Burn it.
+            wb:select(select_me)
+            local did_refuel = wb:refuel(amount_to_burn)
+            wb:select(original_slot)
 
             -- Did that work?
             if did_refuel then return true end
@@ -294,7 +364,7 @@ function task_helpers.tryRefuelFromInventory(walkback, fuel_patterns)
     end
 
     -- Just in case...
-    walkback:select(original_slot)
+    wb:select(original_slot)
     return false
 end
 

@@ -8,6 +8,21 @@ local task_helpers = require("task_helpers")
 
 local did_nothing = false
 
+--- Spins up to 4 times trying to find a log in front of the turtle.
+--- Returns true if now facing a log, false otherwise.
+--- @param wb WalkbackSelf
+--- @return boolean
+local function tryFaceLog(wb)
+    for _ = 1, 4 do
+        local front_block = wb:inspect()
+        if front_block ~= nil and helpers.findString(front_block.name, "log") then
+            return true
+        end
+        wb:turnRight()
+    end
+    return false
+end
+
 --- Returns task in the order that they should be completed, IE: 1, 2, 3.
 --- @param wb WalkbackSelf
 --- @return TaskDefinition[]
@@ -188,16 +203,7 @@ local function deduceNextTask(wb)
         -- Make sure we're facing a tree, otherwise go find one.
         if not looking_at_log then
             -- Maybe we're just not facing it?
-            local rotations = 4
-            while rotations ~= 0 and not looking_at_log do
-                wb:turnRight()
-                local front_block = wb:inspect()
-                if front_block ~= nil then
-                    looking_at_log = helpers.findString(front_block.name, "log")
-                end
-                rotations = rotations - 1
-            end
-            -- Did we find one?
+            looking_at_log = tryFaceLog(wb)
             if not looking_at_log then
                 -- Need to go actually stand next to a tree.
                 return {find_log}
@@ -617,15 +623,8 @@ local function deduceNextTask(wb)
 
         -- Maybe we are next to a log but just not facing it?
         if not looking_at_log then
-            local rotations = 4
-            while rotations ~= 0 and not looking_at_log do
-                wb:turnRight()
-                local front_block = wb:inspect()
-                if front_block ~= nil then
-                    looking_at_log = helpers.findString(front_block.name, "log")
-                end
-                rotations = rotations - 1
-            end
+            -- Maybe we're just not facing it?
+            looking_at_log = tryFaceLog(wb)
         end
 
         -- Need to find a tree if we weren't already next to one.
