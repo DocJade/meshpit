@@ -254,21 +254,67 @@ local function deduceNextTask(wb)
     -- try it.
     task_helpers.compactInventory(wb)
 
+    --- @type string[]
+    local things_we_want = {
+        "log",
+        "planks",
+        "iron_ingot",
+        "raw_iron",
+        "diamond",
+        "turtle",
+        "computer_normal",
+        "disk_drive",
+        "chest",
+        "crafting_table",
+        "furnace",
+        "charcoal",
+        ":stone$",
+        "glass",
+        "redstone",
+        "sapling",
+    }
+
+
+    -- Only want sand if we dont got glass pane
+    if glass_pane_count == 0 then
+        things_we_want[#things_we_want+1] = "sand"
+    end
+
+    -- Only want cobble if we dont already have stone or a furnace
+    if stone_count < 7 or not has_furnace then
+        things_we_want[#things_we_want+1] = "cobblestone"
+    end
+
+    -- Only want sticks if we dont already have a pickaxe
+    if not has_diamond_pick then
+        things_we_want[#things_we_want+1] = "stick"
+    end
+
     -- Throw away anything we don't need, as inventory space is at a premium.
     -- We will try burning the items first, since we would be throwing them
     -- on the floor anyways.
-    -- TODO: That.
+    for i=1, 16 do
+        local item = wb:getItemDetail(i)
+        if item == nil then goto continue end
+        for _, pattern in ipairs(things_we_want) do
+            if helpers.findString(item.name, pattern) then
+                goto continue
+            end
+        end
+        -- don't need this.
+        wb:select(i)
+        wb:refuel()
+        wb:dropUp()
+
+        ::continue::
+    end
 
 
     -- Now actually for some task stuff.
 
     -- Refuel if we need to, and if we can.
-    -- We don't buffer as much while bootstrapping otherwise we would waste a LOT
-    -- of time chopping trees.
-    local desired_fuel_level = 300
-    if finished_bootstrap then desired_fuel_level = 850 end
     while true do
-        if wb:getFuelLevel() > desired_fuel_level then break end
+        if wb:getFuelLevel() > 640 then break end
         local fueled = task_helpers.tryRefuelFromInventory(wb, {"coal", "plank", "log", "stick"})
         if not fueled then break end -- If we have nothing to refuel with then we have to just give up
     end
@@ -305,7 +351,7 @@ local function deduceNextTask(wb)
     if not knows_y then
 
         -- Do we have enough fuel to normalize?
-        if fuel_level >= 300 then
+        if fuel_level >= 640 then
             -- Yep! Time to fly.
             --- @type TaskDefinition
             local up_we_go = {
@@ -590,11 +636,11 @@ local function deduceNextTask(wb)
                         "andesite",
                         "granite",
                         "tuff",
-                        "deepslate$",
+                        "deepslate",
                         "amethyst",
                         "calcite",
                         "basalt",
-                        "cobblestone", -- Discard last since we might still want it.
+                        "cobble", -- Discard last since we might still want it.
                     } },
                     fuel_items = { patterns = {"coal"} }, -- This matches charcoal
                     incidental = {
@@ -636,6 +682,7 @@ local function deduceNextTask(wb)
         stone_count >= 7 and
         redstone_dust_count >= 1 and
         glass_pane_count == 0 and
+        glass_count < 6 and
         sand_count < 6
     then
         -- find
@@ -677,6 +724,21 @@ local function deduceNextTask(wb)
                         tags = {},
                     }
                 },
+                discardables = {
+                    patterns = {
+                        "dirt",
+                        "gravel",
+                        "diorite",
+                        "andesite",
+                        "granite",
+                        "tuff",
+                        "deepslate",
+                        "amethyst",
+                        "calcite",
+                        "basalt",
+                        "cobble",
+                    }
+                }
             },
         }
 
@@ -761,27 +823,27 @@ local function deduceNextTask(wb)
     end
 
     -- Disk Drive
-    if has_disk_drive_ingredients then
+    if has_disk_drive_ingredients and not has_disk_drive then
         craft_template.task_data.recipe.shape = {
-            "stone$", "stone$", "stone$",
-            "stone$", "redstone", "stone$",
-            "stone$", "redstone", "stone$"
+            ":stone", ":stone", ":stone",
+            ":stone", "redstone", ":stone",
+            ":stone", "redstone", ":stone"
         }
         return {craft_template}
     end
 
     -- Computer
-    if has_computer_ingredients then
+    if has_computer_ingredients and not has_computer then
         craft_template.task_data.recipe.shape = {
-            "stone$", "stone$", "stone$",
-            "stone$", "redstone", "stone$",
-            "stone$", "glass_pane", "stone$"
+            ":stone", ":stone", ":stone",
+            ":stone", "redstone", ":stone",
+            ":stone", "glass_pane", ":stone"
         }
         return {craft_template}
     end
 
     -- Turtle
-    if has_turtle_ingredients then
+    if has_turtle_ingredients and not has_turtle then
         craft_template.task_data.recipe.shape = {
             "iron_ingot$", "iron_ingot$", "iron_ingot$",
             "iron_ingot$", "computer_normal$", "iron_ingot$",

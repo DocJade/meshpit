@@ -739,10 +739,14 @@ function mesh_os.startup(pos)
             -- Refuel, Just munch up the whole inventory.
             for i = 1, 16 do
                 walkback:select(i)
-                -- Skip if this is a crafting table. That would be bad lmao.
+                -- Skip crafting tables, chests, and saplings.
                 local slot = walkback:getItemDetail()
                 if slot ~= nil then
-                    if helpers.findString(slot.name, "minecraft:crafting_table") then
+                    if
+                        helpers.findString(slot.name, "minecraft:crafting_table") or
+                        helpers.findString(slot.name, "minecraft:chest") or
+                        helpers.findString(slot.name, "sapling")
+                    then
                         goto skip_burn
                     end
                 end

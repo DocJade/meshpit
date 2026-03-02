@@ -216,6 +216,12 @@ local function checkAndRecurse(task, task_result, timeout)
 
     -- Yes! Run the recursive miner.
 
+    -- Make sure we have a slot open
+    if not task_helpers.inventoryCheck(wb, task.definition.task_data.discardables) then
+        -- Cant do anything
+        return
+    end
+
     -- Sum up all of the blocks we want to mine to set a hard limit on recursive_miner
     local mine_limit = 0
     for _, group in ipairs(filtered.groups) do
@@ -309,7 +315,13 @@ local function tryForwards(task, task_result)
     end
 
     -- There is a block in front of us, can we mine it?
-    if helpers.blockWanted(block, incidentals.groups) then
+    if
+        helpers.blockWanted(block, incidentals.groups) or
+        -- Ignore lava and water
+        -- TODO: make this not stupid and not increment the total mined.
+        helpers.findString(block.name, "water") or
+        helpers.findString(block.name, "lava")
+    then
         -- We can mine it. Go for it.
         if not wb:dig() then
             -- Failed to mine it! Must be something up with either the list or
@@ -528,6 +540,12 @@ local function branchMiner(config)
     -- Main loop
     while true do
 
+        -- Inventory space?
+        if not task_helpers.inventoryCheck(wb, discardables) then
+            -- Out of room!
+            break
+        end
+
         -- Is there still stuff to do?
         if #filterWantedBlocks(desired_blocks).groups == 0 then
             -- All done!
@@ -548,12 +566,6 @@ local function branchMiner(config)
         -- This will automatically refuel if needed.
         if not fuelCheck(config) then
             -- Out of fuel!
-            break
-        end
-
-        -- Inventory space?
-        if not task_helpers.inventoryCheck(wb, discardables) then
-            -- Out of room!
             break
         end
 

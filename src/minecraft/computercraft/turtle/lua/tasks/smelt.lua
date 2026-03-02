@@ -389,9 +389,9 @@ local function smeltTask(config)
     -- We have the items and fuel.
     -- Place the furnace. Any movement will be automatically walked if needed
     -- back when the test ends
-    if wb:inspectDown() then
+    if wb:detectDown() then
         -- Need to go up.
-        if wb:inspectUp() then
+        if wb:detectUp() then
             -- ...But we cant.
             task_helpers.throw("assumptions not met")
         end

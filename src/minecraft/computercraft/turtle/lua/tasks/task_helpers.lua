@@ -295,8 +295,7 @@ function task_helpers.tryRefuelFromInventory(wb, fuel_patterns)
                 -- Need the chest as we don't wanna accidentally craft mid-air and drop stuff.
                 if (not wb:detectDown()) and
                         wb:countEmptySlots() >= 3 and
-                        wb:inventoryCountPattern("chest") > 0 and
-                        wb:inventoryCountPattern("crafting_table") > 0
+                        wb:inventoryCountPattern("chest") > 0
                     then
                     -- We can plank it.
                     --- @type TaskDefinition

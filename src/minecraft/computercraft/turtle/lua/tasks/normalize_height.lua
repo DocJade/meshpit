@@ -43,13 +43,13 @@ local function normalizeHeight(config)
     end
 
     -- Enough fuel?
-    if wb:getFuelLevel() < 800 then
+    if wb:getFuelLevel() < 640 then
         task_helpers.throw("bad config")
     end
 
     -- its fly time
     while true do
-        wb:digUp() -- TEMP FOR THE DEMO
+        wb:digUp() -- TODO: TEMP FOR THE DEMO
         local moved, reason = wb:up()
 
         if moved then
