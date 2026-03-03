@@ -10,7 +10,8 @@ local helpers = require("helpers")
 --- This is temporary, since we don't yet have an actual server to communicate
 --- with outside of testing.
 --- TODO: Remove this when we have actual networking.
-local NETWORKING_DISABLED = false
+--- -- TODO: Turn this back on or test cases will all fail lol.
+local NETWORKING_DISABLED = true
 
 -- Should be a good enough seed.
 math.randomseed(os.getComputerID() * os.epoch())

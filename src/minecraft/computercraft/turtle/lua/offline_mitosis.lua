@@ -38,7 +38,7 @@ local tree_chop = {
     task_data = {
         name = "tree_chop",
         timeout = 10000000000000, -- 'till you're done bud.
-        target_logs = 64, -- a whole stack pwease.
+        target_logs = 16,
         max_saplings = 16,
         min_saplings = 3
     }

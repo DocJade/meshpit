@@ -40,6 +40,60 @@ local function panicUpValues()
     return variables
 end
 
+--- Create the panic data with stack trace.
+--- @param message string
+--- @param message_only boolean?
+--- @return PanicData
+local function makePanicData(message, message_only)
+    -- Traceback automatically adds the message to the top.
+    local trace = debug.traceback(message, 3)
+    -- Print that for debugging too
+    print(trace)
+    -- Only grab the variables if needed.
+    local local_vars, the_up_values = {"variables disabled"}, {"variables disabled"}
+    if not message_only then
+        local_vars = panicLocals()
+        the_up_values = panicUpValues()
+    end
+
+    ---@alias PanicData {stack_trace: string, locals: table, up_values: table}
+    ---@type PanicData
+    local panic_data = {
+        -- A stack trace of where the panic was called.
+        stack_trace = trace,
+
+        -- Every local variable.
+        -- In the format of an array of pairs.
+        locals = local_vars,
+
+        -- Every external variable we are referencing. This table has no overlap with locals.
+        -- In the format of an array of pairs.
+        -- up_values = the_up_values,\
+        -- TODO: this is for debugging
+        up_values = {}
+    }
+
+    return panic_data
+end
+
+--- Write down information about a panic into a file.
+--- @param panic_data PanicData
+local function writePanicFile(panic_data)
+    -- Get the current timestamp for the file name
+    ---@diagnostic disable-next-line: undefined-field
+    local da_time = os.epoch("utc")
+
+    ---@diagnostic disable-next-line: undefined-global
+    local file = fs.open("panic_" .. tostring(da_time).. ".json", "a")
+
+    local helpers = require("helpers")
+    local cereal = helpers.serializeJSON(panic_data)
+
+    file.write(cereal)
+    file.flush()
+    file.close()
+end
+
 
 --- The panic method. Takes in a panic message.
 ---
@@ -67,33 +121,11 @@ function panic.panic(message, message_only)
     end
     -- mark the panic as started
     CURRENTLY_PANICKING = true
-    -- Traceback automatically adds the message to the top.
-    local trace = debug.traceback(message, 2)
-    -- Print that for debugging too
-    print(trace)
-    -- Only grab the variables if needed.
-    local local_vars, the_up_values = {"variables disabled"}, {"variables disabled"}
-    if not message_only then
-        local_vars = panicLocals()
-        the_up_values = panicUpValues()
-    end
 
-    ---@alias PanicData {stack_trace: string, locals: table, up_values: table}
-    ---@type PanicData
-    local panic_data = {
-        -- A stack trace of where the panic was called.
-        stack_trace = trace,
+    local panic_data = makePanicData(message, message_only)
 
-        -- Every local variable.
-        -- In the format of an array of pairs.
-        locals = local_vars,
-
-        -- Every external variable we are referencing. This table has no overlap with locals.
-        -- In the format of an array of pairs.
-        -- up_values = the_up_values,\
-        -- TODO: this is for debugging
-        up_values = {}
-    }
+    -- Write it down
+    writePanicFile(panic_data)
 
     -- Transmit that table to control.
     -- This will automatically turn the table into json.
