@@ -148,8 +148,11 @@ local function faceBaseLog(wb)
         wb:down()
     end
 
-    -- Are we still next to a log?
-    return tryFaceLog(wb)
+    -- Move back upwards to find the base of the log
+    while not tryFaceLog(wb) do
+        wb:up()
+    end
+    return true
 end
 
 --- Returns tasks needed to find and chop a tree.
@@ -955,6 +958,8 @@ local function deduceNextTask(wb)
         wb:dig()
         wb:turnRight()
         wb:turnRight()
+        -- Move back so there is space to place stuff
+        wb:back()
         return {mitosis}
     else
         -- Not next to a tree yet. Go find one.
