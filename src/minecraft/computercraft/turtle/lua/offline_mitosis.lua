@@ -91,7 +91,7 @@ local fly_down = {
     --- @type MineToLevelData
     task_data = {
         name = "mine_to_level",
-        level = 3,
+        level = -50,
     }
 }
 
