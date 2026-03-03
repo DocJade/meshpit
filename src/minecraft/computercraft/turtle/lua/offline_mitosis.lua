@@ -337,6 +337,13 @@ local function deduceNextTask(wb)
     -- Now actually for some task stuff.
 
     -- Refuel if we need to, and if we can.
+    -- Try to move upwards so we have an open spot below us for crafting planks.
+    local went_up = false
+    if not wb:detectUp() then
+        wb:up()
+        went_up = true
+    end
+
     while true do
         if wb:getFuelLevel() > 640 then break end
         local fueled = task_helpers.tryRefuelFromInventory(wb, {"coal", "plank", "log", "stick"})
@@ -344,6 +351,10 @@ local function deduceNextTask(wb)
     end
 
     local fuel_level = wb:getFuelLevel()
+
+    if went_up then
+        wb:down()
+    end
 
 
 
