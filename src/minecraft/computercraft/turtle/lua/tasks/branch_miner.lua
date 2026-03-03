@@ -308,20 +308,18 @@ local function tryForwards(task, task_result)
         return false
     end
 
+    -- The kind of block
     local block = wb:inspect()
-    if block == nil then
+    -- If we can move through it
+    local non_solid = not wb:detect()
+
+    if block == nil or non_solid then
         -- Open space, skip mining
         goto done_mining
     end
 
     -- There is a block in front of us, can we mine it?
-    if
-        helpers.blockWanted(block, incidentals.groups) or
-        -- Ignore lava and water
-        -- TODO: make this not stupid and not increment the total mined.
-        helpers.findString(block.name, "water") or
-        helpers.findString(block.name, "lava")
-    then
+    if helpers.blockWanted(block, incidentals.groups) then
         -- We can mine it. Go for it.
         if not wb:dig() then
             -- Failed to mine it! Must be something up with either the list or

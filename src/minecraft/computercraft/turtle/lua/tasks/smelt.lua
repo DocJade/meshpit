@@ -443,8 +443,11 @@ local function smeltTask(config)
         -- Refuel if needed.
         if not maybeRefuel(config, indexes) then
             -- Out of fuels. We cannot continue.
-            task_helpers.assert(wb:digDown())
-            task_helpers.throw("assumptions not met")
+            -- TODO: Have some nice way to say what failed. For now we silently
+            -- continue as if we finished normally.
+            -- task_helpers.assert(wb:digDown())
+            -- task_helpers.throw("assumptions not met")
+            break
         end
 
         -- Items take 10 seconds to smelt. We will wake up after the current set

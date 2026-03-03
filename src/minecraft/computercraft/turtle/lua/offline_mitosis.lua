@@ -199,6 +199,12 @@ end
 --- @param wb WalkbackSelf
 --- @return TaskDefinition[]
 local function deduceNextTask(wb)
+
+    -- This is stupid, but we will always break the block above us to be able to
+    -- craft or smelt anywhere
+    wb:digUp()
+
+
     -- A bunch of booleans to gate possible actions to take.
     local knows_y
     local has_disk_drive
@@ -339,9 +345,46 @@ local function deduceNextTask(wb)
 
     local fuel_level = wb:getFuelLevel()
 
-    -- This is stupid, but we will always break the block above us to be able to
-    -- craft or smelt anywhere
-    wb:digUp()
+
+
+    -- Yes re-calculating all of this is very stupid. I dont want to refactor right now.
+    knows_y = wb.cur_position.position.y > -1000
+
+    has_disk_drive = wb:inventoryCountPattern("disk_drive") > 0
+    has_turtle = wb:inventoryCountPattern("turtle") > 0
+    has_computer = wb:inventoryCountPattern("computer_normal") > 0
+    has_diamond_pick = wb:inventoryCountPattern("diamond_pickaxe") > 0
+    stone_count = wb:inventoryCountPattern("minecraft:stone")
+    cobblestone_count = wb:inventoryCountPattern("cobblestone")
+    log_count = wb:inventoryCountPattern("_log")
+    plank_count = wb:inventoryCountPattern("planks")
+    stick_count = wb:inventoryCountPattern(":stick$")
+    redstone_dust_count = wb:inventoryCountPattern("redstone")
+    diamond_count = wb:inventoryCountPattern("diamond")
+    sand_count = wb:inventoryCountPattern("sand$")
+    glass_count = wb:inventoryCountPattern("glass$")
+    glass_pane_count = wb:inventoryCountPattern("glass_pane")
+    -- We make 2 chests, one for making the turtle, one for crafting.
+    chest_count = wb:inventoryCountPattern("chest")
+    raw_iron_count = wb:inventoryCountPattern("raw_iron")
+    iron_ingot_count = wb:inventoryCountPattern("iron_ingot")
+    charcoal_count = wb:inventoryCountPattern("charcoal")
+    -- has_sapling = wb:inventoryCountPattern("sapling") > 0
+    has_furnace = wb:inventoryCountPattern("furnace") > 0
+    crafting_table_count = wb:inventoryCountPattern("crafting_table")
+
+
+    looking_at_log = false
+    front_block = wb:inspect()
+    if front_block ~= nil then
+        looking_at_log = helpers.findString(front_block.name, "log")
+    end
+
+    has_disk_drive_ingredients = (stone_count >= 7) and (redstone_dust_count >= 2)
+    has_turtle_ingredients = (iron_ingot_count >= 7) and has_computer and (chest_count >= 2)
+    has_computer_ingredients = (stone_count >= 7) and (redstone_dust_count >= 1) and (glass_pane_count >= 1)
+    has_diamond_pick_ingredients = (diamond_count >= 3) and (stick_count >= 2)
+
 
     -- Old if chain was stupid. Now we have a slightly less stupid order based on
     -- phases.
@@ -665,6 +708,7 @@ local function deduceNextTask(wb)
                         groups = {
                             {
                                 names_patterns = {
+                                    "(.*)", -- screw it. Mine anything. I dont care.
                                     "stone",
                                     "dirt",
                                     "gravel",
