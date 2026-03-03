@@ -1546,7 +1546,7 @@ function walkback:detect()
 	return true
 end
 
---- Check if there is a solid block in front of the turtle. Solid refers to
+--- Check if there is a solid block above the turtle. Solid refers to
 --- any block that we cannot move into. Unlike the base CC:Tweaked methods, this
 --- will return false on fluids, as we can move through those.
 ---@return boolean
@@ -1565,7 +1565,7 @@ function walkback:detectUp()
 	return true
 end
 
---- Check if there is a solid block in front of the turtle. Solid refers to
+--- Check if there is a solid block below the turtle. Solid refers to
 --- any block that we cannot move into. Unlike the base CC:Tweaked methods, this
 --- will return false on fluids, as we can move through those.
 ---@return boolean

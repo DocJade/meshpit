@@ -349,7 +349,7 @@ local function deduceNextTask(wb)
 
     while true do
         if wb:getFuelLevel() > 640 then break end
-        local fueled = task_helpers.tryRefuelFromInventory(wb, {"coal", "plank", "log", "stick"})
+        local fueled = task_helpers.tryRefuelFromInventory(wb, {"coal", "plank", "stick", "log"})
         if not fueled then break end -- If we have nothing to refuel with then we have to just give up
     end
 
@@ -632,7 +632,7 @@ local function deduceNextTask(wb)
 
 
 
-    if (fuel_level > 500) and (not has_turtle) and (not has_disk_drive) then
+    if (fuel_level > 500) and ((not has_turtle) or (not has_diamond_pick)) then
         -- Deduce if we need to go mining for any of the ingredients for things.
         --- @type { group: BlockGroup, desired_total: number }[]
         local groups_to_use = {}
