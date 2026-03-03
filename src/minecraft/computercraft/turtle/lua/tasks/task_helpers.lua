@@ -291,6 +291,8 @@ function task_helpers.tryRefuelFromInventory(wb, fuel_patterns)
             -- burning it. This quadruples their fuel value.
             -- TODO: Is there a nicer way we can factor this? This feels like a
             -- weird place to put this.
+            -- TODO: this gets eaten if called outside of a task context, and nothing
+            -- happens. Which is fine, but annoying.
             if helpers.findString(pattern, "log") then
                 -- Log. Can we craft it down?
                 -- Need: Room for chest, a chest, and room in our inventory (with safety margin).

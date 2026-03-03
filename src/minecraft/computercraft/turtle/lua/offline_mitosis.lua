@@ -341,10 +341,16 @@ local function deduceNextTask(wb)
 
     -- Refuel if we need to, and if we can.
     -- Try to move upwards so we have an open spot below us for crafting planks.
-    local went_up = false
-    if not wb:detectUp() then
-        wb:up()
-        went_up = true
+
+    -- If we need fuel, dont have charcoal, but do have logs, make 8 planks if
+    -- we don't already have some.
+    if wb:getFuelLevel() < 640 and
+        charcoal_count == 0 and
+        log_count > 0 and
+        plank_count == 0 and
+        not has_furnace -- Dont waste logs on planks if we can make charcoal.
+    then
+        return {craft_eight_planks}
     end
 
     while true do
@@ -354,10 +360,6 @@ local function deduceNextTask(wb)
     end
 
     local fuel_level = wb:getFuelLevel()
-
-    if went_up then
-        wb:down()
-    end
 
 
 
