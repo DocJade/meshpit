@@ -161,9 +161,8 @@ local function treeChop(config)
         sapling_slot = 1
 
         -- Fix the gap that made, even though this does not matter at all lmao
-        ---@type boolean[]
-        reserved_slot = {}
-        reserved_slot[1] = true
+        ---@type number[]
+        reserved_slot = {1}
         task_helpers.pushInventoryBack(wb, reserved_slot)
 
         -- Select the sapling
@@ -176,7 +175,7 @@ local function treeChop(config)
     end
 
     -- There wasn't a sapling or log, was it empty?
-    if not check_block then
+    if check_block then
         -- Invalid position, non-tree block in front of turtle.
         task_helpers.throw("assumptions not met")
     end
