@@ -102,6 +102,7 @@ local function treeChop(config)
         task_helpers.throw("bad config")
     end
 
+
     -- Pre-create all of the locals so goto isn't mad.
     -- TODO: this is stupid
     local check_block
@@ -194,7 +195,7 @@ local function treeChop(config)
     down_block = wb:inspectDown()
     if sapling_slot ~= nil and down_block ~= nil then
         if helpers.arrayContains(down_block.tag, "minecraft:dirt") then
-            task_helpers.assert(wb:stepBack())
+            task_helpers.assert(wb:back())
             -- Place the sapling
             task_helpers.assert(wb:place())
             goto assumptions_met
@@ -214,6 +215,13 @@ local function treeChop(config)
 
     -- If no target is set, we can just set this to a stupidly high number.
     target_logs = task_data.target_logs or 999999999
+
+    -- Add the current amount of logs in the inventory to the goal amount. We
+    -- are trying to mine X number of logs, not _hold_ x number of logs.
+    target_logs = target_logs + wb:inventoryCountPattern("log")
+
+
+
     ---@type number
     ---@diagnostic disable-next-line: undefined-field
     task_end_time = (task_data.timeout * 1000) + os.epoch()
@@ -348,7 +356,7 @@ local function treeChop(config)
             -- This can only happen if we somehow manage to harvest 0 saplings
             -- from a tree several times in a row, or if the max sapling count
             -- was zero.
-            task_helpers.throw("assertion failed")
+            break
         end
         -- We must have a slot with saplings then.
         ---@cast where_sapling number

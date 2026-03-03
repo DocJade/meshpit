@@ -332,7 +332,7 @@ local function setupNewTask(task_definition, is_sub_task)
 
     local new_thread = coroutine.create(the_cooler_function)
     -- Add the debug hook to print line numbers if we are in test mode
-    if test_mode then
+    if true then -- Demo testing
         debug.sethook(new_thread, hook, "l")
     end
 
@@ -446,6 +446,7 @@ local function finishTask(task, result)
     -- task in the queue.
     if test_mode and #task_queue == 1 then
         -- Last test in the queue. Return the result directly.
+        print("Exiting due to test mode.")
         error(result)
     end
 
@@ -975,6 +976,7 @@ function mesh_os.main()
 
         -- Keep going!
     end
+    panic.panic("Escaped the main os loop!")
 end
 
 return mesh_os

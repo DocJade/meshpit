@@ -75,6 +75,7 @@ function task_helpers.assert(assertion)
         reason = "assertion failed",
         stacktrace = debug.traceback(nil, 2)
     }
+    print("Task is throwing due to assertion failure.")
     error(assertion_failure, 0)
 end
 
@@ -94,6 +95,7 @@ function task_helpers.throw(reason)
     }
     -- Doing a throw here stops the subroutine immediately without needing to
     -- propagate this value upwards.
+    print("Task is throwing due to explicit throw.")
     error(task_failure, 0)
 end
 

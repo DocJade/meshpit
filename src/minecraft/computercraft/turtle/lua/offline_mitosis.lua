@@ -4,6 +4,7 @@
 -- Yes this is VERY dumb. But it is simple!
 
 local helpers = require("helpers")
+local panic = require("panic")
 local task_helpers = require("task_helpers")
 
 local finished_bootstrap = false
@@ -164,6 +165,24 @@ local function findAndChopTree(wb, may_fly)
         return {tree_chop}
     end
 
+    -- If we already have a sapling we might not need to go looking for the
+    -- new tree.
+    -- There must not be anything in front of us.
+    if wb:inventoryFindPattern("sapling") ~= nil and not wb:detect() then
+        -- We already have a sapling. Is the spot in front of us a good block?
+        panic.assert(wb:forward())
+        local below = wb:inspectDown()
+        panic.assert(wb:back())
+        if below ~= nil then
+            if helpers.findString(below.name, "grass") or
+            helpers.findString(below.name, "dirt")
+            then
+                -- We can place the sapling there.
+                return {tree_chop}
+            end
+        end
+    end
+
     local tasks = {}
 
     -- Fly up if needed
@@ -171,9 +190,8 @@ local function findAndChopTree(wb, may_fly)
         tasks[#tasks+1] = fly_up
     end
 
-    -- Look for a tree, then chop it
+    -- Look for a tree. We will chop it the next go-around.
     tasks[#tasks+1] = find_log
-    tasks[#tasks+1] = tree_chop
     return tasks
 end
 
@@ -366,7 +384,7 @@ local function deduceNextTask(wb)
             return {up_we_go}
         end
 
-        -- Not enough fuel. Gather an entire stack of logs lol
+        -- Not enough fuel. Keep gathering logs.
         return findAndChopTree(wb, false)
     else
         -- We now know our Y level.
