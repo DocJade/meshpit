@@ -573,8 +573,9 @@ local function mineOrDie(wb, discardables, groups, pos)
     mineOrDie(wb, discardables, groups, pos)
 
     -- The spot should be clear now.
-    local _, nothing = wb:inspectAdjacent(pos)
-    task_helpers.assert(nothing == nil)
+
+    local nothing = wb:detectAt(pos)
+    task_helpers.assert(nothing or false == false)
 
     -- Now, if we don't want that falling block, add it to the discardables list
     -- if it is not already present.

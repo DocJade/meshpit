@@ -358,15 +358,8 @@ local function smeltTask(config)
 
     -- Items
     for _, item in ipairs(task_data.to_smelt) do
-        -- Find the item
-        local found = wb:inventoryFindPattern(item.name_pattern)
-        if found == nil then
-            task_helpers.throw("bad config")
-        end
-        ---@cast found number
-
         -- Do we have enough of that item?
-        if wb:getItemCount(found) < (item.limit or 0) then
+        if wb:inventoryCountPattern(item.name_pattern) < (item.limit or 0) then
             -- Not enough
             task_helpers.throw("bad config")
         end

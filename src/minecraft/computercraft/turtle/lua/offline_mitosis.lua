@@ -33,8 +33,8 @@ local find_log = {
 --- @type TaskDefinition
 local tree_chop = {
     fuel_buffer = 100,
-    return_to_facing = false,
-    return_to_start = false,
+    return_to_facing = true,
+    return_to_start = true,
     --- @type TreeChopTaskData
     task_data = {
         name = "tree_chop",
@@ -48,8 +48,8 @@ local tree_chop = {
 --- @type TaskDefinition
 local craft_eight_planks = {
     fuel_buffer = 0,
-    return_to_facing = false,
-    return_to_start = false,
+    return_to_facing = true,
+    return_to_start = true,
     --- @type CraftingData
     task_data = {
         name = "craft_task",
@@ -91,7 +91,7 @@ local fly_down = {
     --- @type MineToLevelData
     task_data = {
         name = "mine_to_level",
-        level = -50,
+        level = -30,
     }
 }
 
