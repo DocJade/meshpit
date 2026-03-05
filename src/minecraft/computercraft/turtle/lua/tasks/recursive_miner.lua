@@ -550,14 +550,16 @@ local function mineOrDie(wb, discardables, groups, pos)
     end
 
     -- Check if anything fell into that spot.
-    local _, block = wb:inspectAdjacent(pos)
-    if block == nil then
+    -- We check if its solid first, since we need to ignore water.
+    local someone_is_home = wb:detectAt(pos)
+    if someone_is_home or false == false then
         -- Nothing more to do.
         return mine_result
     end
-    --- @cast block Block
 
     -- Something is in the way. Falling blocks?
+    local _, block = wb:inspectAt(pos)
+    --- @cast block Block
 
     -- If it is a falling block, we can mine and toss them to get them out of our way.
     -- This is fairly rare, so we just import the helper in line here.
