@@ -7,9 +7,97 @@ local panic = {}
 -- Keep track if we are already panicking to prevent panic loops.
 CURRENTLY_PANICKING = false
 
+-- Functions for getting local and global variables
+-- https://stackoverflow.com/questions/2834579/print-all-local-variables-accessible-to-the-current-scope-in-lua
+local function panicLocals()
+    local variables = {}
+    local thingy = 1
+    while true do
+        local ln, lv = debug.getlocal(2, thingy)
+        if ln ~= nil then
+            variables[ln] = lv
+        else
+            break
+        end
+        thingy = 1 + thingy
+    end
+    return variables
+end
+
+local function panicUpValues()
+    local variables = {}
+    local thingy = 1
+    local func = debug.getinfo(2, "f").func
+    while true do
+            local ln, lv = debug.getupvalue(func, thingy)
+            if ln ~= nil then
+            variables[ln] = lv
+        else
+            break
+        end
+        thingy = 1 + thingy
+    end
+    return variables
+end
+
+--- Create the panic data with stack trace.
+--- @param message string
+--- @param message_only boolean?
+--- @return PanicData
+local function makePanicData(message, message_only)
+    -- Traceback automatically adds the message to the top.
+    local trace = debug.traceback(message, 3)
+    -- Print that for debugging too
+    print(trace)
+    -- Only grab the variables if needed.
+    local local_vars, the_up_values = {"variables disabled"}, {"variables disabled"}
+    if not message_only then
+        local_vars = panicLocals()
+        the_up_values = panicUpValues()
+    end
+
+    ---@alias PanicData {stack_trace: string, locals: table, up_values: table}
+    ---@type PanicData
+    local panic_data = {
+        -- A stack trace of where the panic was called.
+        stack_trace = trace,
+
+        -- Every local variable.
+        -- In the format of an array of pairs.
+        locals = local_vars,
+
+        -- Every external variable we are referencing. This table has no overlap with locals.
+        -- In the format of an array of pairs.
+        -- up_values = the_up_values,\
+        -- TODO: this is for debugging
+        up_values = {}
+    }
+
+    return panic_data
+end
+
+--- Write down information about a panic into a file.
+--- @param panic_data PanicData
+local function writePanicFile(panic_data)
+    -- Get the current timestamp for the file name
+    ---@diagnostic disable-next-line: undefined-field
+    local da_time = os.epoch("utc")
+
+    ---@diagnostic disable-next-line: undefined-global
+    local file = fs.open("panic_" .. tostring(da_time).. ".json", "a")
+
+    local helpers = require("helpers")
+    local cereal = helpers.serializeJSON(panic_data)
+
+    file.write(cereal)
+    file.flush()
+    file.close()
+end
+
+
 --- The panic method. Takes in a panic message.
 ---
---- Tthe computer is assumed to be in an un-recoverable state,
+--- The computer is assumed to be in an unrecoverable state,
 --- and thus will completely rebooting as soon as it is able
 --- to relay all of its panic data.
 ---
@@ -33,33 +121,11 @@ function panic.panic(message, message_only)
     end
     -- mark the panic as started
     CURRENTLY_PANICKING = true
-    -- Traceback automatically adds the message to the top.
-    local trace = debug.traceback(message, 2)
-    -- Print that for debugging too
-    print(trace)
-    -- Only grab the variables if needed.
-    local local_vars, the_up_values = {"variables disabled"}, {"variables disabled"}
-    if not message_only then
-        local_vars = panicLocals()
-        the_up_values = panicUpValues()
-    end
 
-    ---@alias PanicData {stack_trace: string, locals: table, up_values: table}
-    ---@type PanicData
-    panic_data = {
-        -- A stack trace of where the panic was called.
-        stack_trace = trace,
+    local panic_data = makePanicData(message, message_only)
 
-        -- Every local variable.
-        -- In the format of an array of pairs.
-        locals = local_vars,
-
-        -- Every external variable we are referencing. This table has no overlap with locals.
-        -- In the format of an array of pairs.
-        -- up_values = the_up_values,\
-        -- TODO: this is for debugging
-        up_values = {}
-    }
+    -- Write it down
+    writePanicFile(panic_data)
 
     -- Transmit that table to control.
     -- This will automatically turn the table into json.
@@ -72,8 +138,11 @@ function panic.panic(message, message_only)
     print("Rebooting in 30 seconds.")
     ---@diagnostic disable-next-line: undefined-field
     os.sleep(30)
-    ---@diagnostic disable-next-line: undefined-field
-    os.reboot();
+
+    -- We use the MeshOS reboot here to save our state instead of just forgetting
+    -- everything.
+    local mesh = require("mesh_os")
+    mesh.reboot();
 end
 
 --- Assert a condition to be true, otherwise panic.
@@ -98,39 +167,6 @@ function panic.unwrap(value)
     return value
 end
 
--- Functions for getting local and global variables
--- https://stackoverflow.com/questions/2834579/print-all-local-variables-accessible-to-the-current-scope-in-lua
-function panicLocals()
-    local variables = {}
-    local idx = 1
-    while true do
-        local ln, lv = debug.getlocal(2, idx)
-        if ln ~= nil then
-            variables[ln] = lv
-        else
-            break
-        end
-        idx = 1 + idx
-    end
-    return variables
-end
-
-function panicUpValues()
-    local variables = {}
-    local idx = 1
-    local func = debug.getinfo(2, "f").func
-    while true do
-            local ln, lv = debug.getupvalue(func, idx)
-            if ln ~= nil then
-            variables[ln] = lv
-        else
-            break
-        end
-        idx = 1 + idx
-    end
-    return variables
-end
-
 -- Additionally, it is possible that a failure prevents us from sending anything out the
 -- network. Thus we have a restart panic. TODO: This panic could in theory place a text file
 -- somewhere in the future to report this kind of error again later, but I'm not gonna do that
@@ -140,7 +176,7 @@ end
 ---
 --- Use this when you know the networking is completely unreachable and you cannot recover.
 --- @param message string
-function panic.force_reboot(message)
+function panic.forceReboot(message)
     print("Forced reboot panic! : " .. message)
     -- Not much we can do here, but to prevent fast boot-looping, we will stall for 30 seconds.
     -- We will also shout out the message on as many outputs as we can.
@@ -153,8 +189,11 @@ function panic.force_reboot(message)
 
     ---@diagnostic disable-next-line: undefined-field
     os.sleep(300)
-    ---@diagnostic disable-next-line: undefined-field
-    os.reboot()
+
+    -- We use the MeshOS reboot here to save our state instead of just forgetting
+    -- everything.
+    local mesh = require("mesh_os")
+    mesh.reboot();
 end
 
 return panic

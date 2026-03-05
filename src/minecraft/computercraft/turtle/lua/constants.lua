@@ -66,8 +66,9 @@ constants.WAIT_STEP_TIMEOUT = 15000000 -- 15,000,000
 --- A list of full names.
 --- @type string[]
 constants.OCCUPIABLE_BLOCKS = {
-    "minecraft:water",
-    "minecraft:lava",
+    "minecraft:air",
+    "water$",
+    "lava$",
     "minecraft:short_grass",
     "minecraft:tall_grass",
     "minecraft:fern",
@@ -78,7 +79,7 @@ constants.OCCUPIABLE_BLOCKS = {
     "minecraft:nether_sprouts",
     "minecraft:glow_lichen",
     "minecraft:hanging_roots",
-    "minecraft:vines",
+    "minecraft:vine",
     "minecraft:sea_grass",
 }
 

@@ -98,7 +98,7 @@ local FURNACE_PERIPHERAL = nil
 --- 3: Result
 --- @param slot number
 --- @return number|nil
-function furnace_slot_count(slot)
+local function furnaceSlotCount(slot)
     ---@diagnostic disable-next-line: need-check-nil, undefined-field
     local list = FURNACE_PERIPHERAL.list()
     return (list[slot] or {count = nil}).count
@@ -109,9 +109,9 @@ end
 --- Returns false if the ingredient slot already has items in it.
 --- @param wb WalkbackSelf
 --- @return boolean
-function insert_ingredient(wb)
+local function insertIngredient(wb)
     -- Is the ingredient slot open?
-    if furnace_slot_count(1) ~= nil then
+    if furnaceSlotCount(1) ~= nil then
         return false
     end
 
@@ -130,14 +130,14 @@ end
 ---
 --- @param wb WalkbackSelf
 --- @return boolean
-function pull_result(wb)
+local function pullResult(wb)
     -- Nothing to do if slot is empty
-    if furnace_slot_count(3) == nil then
+    if furnaceSlotCount(3) == nil then
         return false
     end
 
     -- Is there stuff in the ingredient slot?
-    if furnace_slot_count(1) ~= nil then
+    if furnaceSlotCount(1) ~= nil then
         -- Cant.
         return false
     end
@@ -153,12 +153,12 @@ end
 --- Inserts fuel into the furnace from the currently selected slot.
 --- Shuffles items around if needed.
 --- @param wb WalkbackSelf
-function insert_fuel_item(wb)
+local function insertFuelItem(wb)
     local original_slot = wb:getSelectedSlot()
     local ingredient_swap_slot = nil
 
     -- Empty out the ingredient slot if needed.
-    if furnace_slot_count(1) ~= nil then
+    if furnaceSlotCount(1) ~= nil then
         -- We need to store this first. Find a free slot and move it in.
         ingredient_swap_slot = wb:FindEmptySlot()
         if ingredient_swap_slot == nil then
@@ -198,7 +198,7 @@ end
 --- @param task TurtleTask
 --- @param indexes SmeltingIndexes
 --- @return boolean
-function add_next_item(task, indexes)
+local function addNextItem(task, indexes)
     local wb = task.walkback
     local task_data = task.definition.task_data
     local current_index = indexes.current_item_index
@@ -211,7 +211,7 @@ function add_next_item(task, indexes)
     end
 
     -- Can we insert items?
-    if furnace_slot_count(1) ~= nil then
+    if furnaceSlotCount(1) ~= nil then
         -- no
         return false
     end
@@ -260,14 +260,14 @@ end
 --- @param task TurtleTask
 --- @param indexes SmeltingIndexes
 --- @return boolean
-function maybe_refuel(task, indexes)
+local function maybeRefuel(task, indexes)
     local wb = task.walkback
     local task_data = task.definition.task_data
     local current_index = indexes.current_fuel_index
     --- @cast task_data SmeltingData
 
     -- Do we need to add fuel?
-    if furnace_slot_count(2) ~= nil then
+    if furnaceSlotCount(2) ~= nil then
         -- no
         return true
     end
@@ -298,7 +298,7 @@ function maybe_refuel(task, indexes)
         else
             -- Select it and put it in.
             wb:select(slot)
-            insert_fuel_item(wb)
+            insertFuelItem(wb)
             break
         end
         ::continue::
@@ -316,7 +316,7 @@ end
 --- Returns a none result unless it fails.
 --- @param config TurtleTask
 --- @return TaskCompletion|TaskFailure
-local function smelt_task(config)
+local function smeltTask(config)
     local wb = config.walkback
 
     -- Keep track of what inventory slot we started with
@@ -339,7 +339,7 @@ local function smelt_task(config)
 
     -- Need a fuel source
     if #task_data.fuels == 0 then
-        -- Can't smelt nothin!
+        -- Can't smelt nothing!
         task_helpers.throw("bad config")
     end
 
@@ -358,34 +358,33 @@ local function smelt_task(config)
 
     -- Items
     for _, item in ipairs(task_data.to_smelt) do
-        -- Find the item
-        local found = wb:inventoryFindPattern(item.name_pattern)
-        if found == nil then
-            task_helpers.throw("bad config")
-        end
-        ---@cast found number
-
         -- Do we have enough of that item?
-        if wb:getItemCount(found) < (item.limit or 0) then
+        if wb:inventoryCountPattern(item.name_pattern) < (item.limit or 0) then
             -- Not enough
             task_helpers.throw("bad config")
         end
     end
 
-    -- For fuels we have no count, we just check that they exist
+    -- For fuels, make sure we have at least one of the ones passed in.
+    local good_fuel = false
     for _, fuel in ipairs(task_data.fuels) do
-        if not wb:inventoryFindPattern(fuel) then
-           -- Fuel missing. You can only pass fuels you have.
-           task_helpers.throw("bad config")
+        if wb:inventoryFindPattern(fuel) ~= nil then
+            good_fuel = true
+            break
         end
+    end
+
+    if not good_fuel then
+        -- No fuels to use in the furnace.
+        task_helpers.throw("bad config")
     end
 
     -- We have the items and fuel.
     -- Place the furnace. Any movement will be automatically walked if needed
     -- back when the test ends
-    if wb:inspectDown() then
+    if wb:detectDown() then
         -- Need to go up.
-        if wb:inspectUp() then
+        if wb:detectUp() then
             -- ...But we cant.
             task_helpers.throw("assumptions not met")
         end
@@ -419,14 +418,14 @@ local function smelt_task(config)
     -- We do not know the fuel values of items, so we will just add the entire
     -- stack of fuel into the fuel slot
 
-    -- TODO: Check if we are trying to smelt something un-smelt-able.
+    -- TODO: Check if we are trying to smelt an item that cannot be smelt.
 
     -- Now for the fun part.
     while true do
         -- Add the next item if needed
-        if not add_next_item(config, indexes) then
+        if not addNextItem(config, indexes) then
             -- Are we out of things to smelt?
-            local slot_count = furnace_slot_count(1)
+            local slot_count = furnaceSlotCount(1)
             if slot_count == nil then
                 -- All done!
                 break
@@ -435,15 +434,18 @@ local function smelt_task(config)
         end
 
         -- Refuel if needed.
-        if not maybe_refuel(config, indexes) then
+        if not maybeRefuel(config, indexes) then
             -- Out of fuels. We cannot continue.
-            task_helpers.assert(wb:digDown())
-            task_helpers.throw("assumptions not met")
+            -- TODO: Have some nice way to say what failed. For now we silently
+            -- continue as if we finished normally.
+            -- task_helpers.assert(wb:digDown())
+            -- task_helpers.throw("assumptions not met")
+            break
         end
 
         -- Items take 10 seconds to smelt. We will wake up after the current set
         -- of items has finished smelting. (plus a little bit for leeway with lag)
-        local count = furnace_slot_count(1)
+        local count = furnaceSlotCount(1)
         task_helpers.assert(count ~= nil)
 
         task_helpers.taskSleep((count * 10) + 2)
@@ -456,11 +458,11 @@ local function smelt_task(config)
         ---@cast empty_slot number
 
         wb:select(empty_slot)
-        if not pull_result(wb) then
+        if not pullResult(wb) then
             -- Ingredients are still smelting after waiting the full period of time.
             -- If we're lagging maybe? But anyways, if there are no resulting
-            -- items at all, this item is un-smelt-able.
-            local result_count = furnace_slot_count(3)
+            -- items at all, this item cannot be smelted.
+            local result_count = furnaceSlotCount(3)
             if result_count == nil then
                 -- Bad!
                 wb:digDown()
@@ -468,8 +470,15 @@ local function smelt_task(config)
             end
             --- @cast result_count number
             -- There are resulting items.
+
+            -- Did we run out of fuel?
+            if furnaceSlotCount(2) or 0 == 0 then
+                -- Ran out of fuel, need to refuel and continue.
+                goto continue
+            end
+
             -- Maybe we somehow added too many items.
-            if (furnace_slot_count(1) or 0) + result_count > 64 then
+            if (furnaceSlotCount(1) or 0) + result_count > 64 then
                 -- IDK how we did that, but pull out the ingredients then pull
                 -- the results, and put the ingredient back again...
                 wb:suckDown()
@@ -479,7 +488,7 @@ local function smelt_task(config)
                 end
                 --- @cast free_slot_2 number
                 wb:select(free_slot_2)
-                task_helpers.assert(pull_result(wb))
+                task_helpers.assert(pullResult(wb))
                 wb:select(empty_slot)
                 task_helpers.assert(wb:dropDown())
 
@@ -491,7 +500,7 @@ local function smelt_task(config)
             -- ??? no idea
             task_helpers.throw("assumptions not met")
         end
-
+        ::continue::
         -- Loop!
     end
 
@@ -500,7 +509,7 @@ local function smelt_task(config)
     task_helpers.assert(wb:digDown())
 
     -- Return none, since we must have smelted everything.
-    return task_helpers.try_finish_task(config, {name = "none"})
+    return task_helpers.tryFinishTask(config, {name = "none"})
 end
 
-return smelt_task
+return smeltTask

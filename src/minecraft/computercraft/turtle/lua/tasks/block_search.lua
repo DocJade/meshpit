@@ -60,7 +60,7 @@ local found_block = nil
 --- Also returns true if found_block is already set.
 --- @param task TurtleTask
 --- @return boolean
-function check_neighbors(task)
+local function checkNeighbors(task)
     if found_block ~= nil then
         return true
     end
@@ -79,7 +79,7 @@ function check_neighbors(task)
 
     for _, horse in ipairs(neigh) do
         local hay = wb:blockQuery(horse)
-        if helpers.block_wanted(hay, {is_for_horses}) then
+        if helpers.blockWanted(hay, {is_for_horses}) then
             -- Found something!
             found_block = horse
             return true
@@ -96,7 +96,7 @@ end
 --- before we would either have to refuel or take a shortcut.
 --- @param task TurtleTask
 --- @return number
-function get_budget(task)
+local function getBudget(task)
     local wb = task.walkback
     local budget = wb:getFuelLevel()
     local wb_cost = wb:cost()
@@ -118,13 +118,13 @@ end
 --- Returns false if we were unable to refuel or reduce the cost of the walkback.
 --- @param task TurtleTask
 --- @return boolean
-function shortcut_or_refuel(task)
+local function shortcutOrRefuel(task)
     local wb = task.walkback
     local task_data = task.definition.task_data
     --- @cast task_data BlockSearchData
 
     -- Don't do anything if we still have budget left
-    if get_budget(task) > 0 then
+    if getBudget(task) > 0 then
         return true
     end
 
@@ -158,22 +158,22 @@ end
 --- to the floor due to running out of budget, even with refueling and shortcuts.
 --- @param task TurtleTask
 --- @return boolean
-function fall_down(task)
+local function fallDown(task)
     local wb = task.walkback
     while true do
         local pos = wb.cur_position.position
         local fac = wb.cur_position.facing
         local below = helpers.getAdjacentBlock(pos, fac, "d")
-        if helpers.can_stand_in(wb:blockQuery(below)) then
+        if helpers.canStandIn(wb:blockQuery(below)) then
             -- Make sure we can afford this first
-            if not shortcut_or_refuel(task) then
+            if not shortcutOrRefuel(task) then
                 -- Can't afford, we have to give up.
                 return false
             end
             task_helpers.assert(wb:downScan())
 
             -- Check if we found something
-            if check_neighbors(task) then
+            if checkNeighbors(task) then
                 -- We did!
                 return true
             end
@@ -215,7 +215,7 @@ end
 --- out of fuel, even when taking into account automatic refueling and trimming.
 --- @param task TurtleTask
 --- @return boolean
-function forward_step(task)
+local function forwardStep(task)
     local wb = task.walkback
 
     -- We check neighbors as we move and bail early if we find something.
@@ -224,16 +224,16 @@ function forward_step(task)
     local position = wb.cur_position.position
     local facing = wb.cur_position.facing
     local in_front = wb:blockQuery(helpers.getAdjacentBlock(position, facing, "f"))
-    if helpers.can_stand_in(in_front) then
+    if helpers.canStandIn(in_front) then
         -- Yay!
         -- Cancel if we cannot afford it
-        if not shortcut_or_refuel(task) then return false end
+        if not shortcutOrRefuel(task) then return false end
         task_helpers.assert(wb:forwardScan())
-        check_neighbors(task) -- No need to return early here... see next line lmao
+        checkNeighbors(task) -- No need to return early here... see next line lmao
         return true
     end
 
-    -- Something in the way... hnnnNNNNNN
+    -- Something in the way...
     -- Its climbing time
 
     -- How many times we've moved backwards, since we need to compensate by moving
@@ -260,14 +260,14 @@ function forward_step(task)
         -- while backtracking, so if we move down, we also need to know that we
         -- aren't backtracking, otherwise this would cause a loop.
         local still_retreating = back_moves > 0 and last_move == "d"
-        if helpers.can_stand_in(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "f"))) and last_move ~= "b" and not still_retreating then
+        if helpers.canStandIn(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "f"))) and last_move ~= "b" and not still_retreating then
             -- yeah, go forward
             -- Cancel if we cannot afford it
-            if not shortcut_or_refuel(task) then return false end
+            if not shortcutOrRefuel(task) then return false end
             task_helpers.assert(wb:forwardScan())
 
             -- Bail if we found a block we want, don't even care where we end up
-            if check_neighbors(task) then return true end
+            if checkNeighbors(task) then return true end
 
             -- Are we where we want to be?
             if back_moves <= 0 then
@@ -285,33 +285,33 @@ function forward_step(task)
         -- Can we go up?
         -- Skip if we're on our way down already.
         if last_move ~= "d" then
-            if helpers.can_stand_in(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "u"))) then
+            if helpers.canStandIn(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "u"))) then
                 -- Cancel if we cannot afford it
-                if not shortcut_or_refuel(task) then return false end
+                if not shortcutOrRefuel(task) then return false end
                 task_helpers.assert(wb:upScan())
-                if check_neighbors(task) then return true end
+                if checkNeighbors(task) then return true end
                 last_move = "u"
                 goto continue
             end
         end
 
         -- Ceiling hit or already descending, can we go back?
-        if helpers.can_stand_in(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "b"))) then
+        if helpers.canStandIn(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "b"))) then
             -- Cancel if we cannot afford it
-            if not shortcut_or_refuel(task) then return false end
+            if not shortcutOrRefuel(task) then return false end
             task_helpers.assert(wb:backScan())
-            if check_neighbors(task) then return true end
+            if checkNeighbors(task) then return true end
             back_moves = back_moves + 1
             last_move = "b"
             goto continue
         end
 
         -- Shoot, can we go down?
-        if helpers.can_stand_in(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "d"))) then
+        if helpers.canStandIn(wb:blockQuery(helpers.getAdjacentBlock(position, facing, "d"))) then
             -- Cancel if we cannot afford it
-            if not shortcut_or_refuel(task) then return false end
+            if not shortcutOrRefuel(task) then return false end
             task_helpers.assert(wb:downScan())
-            if check_neighbors(task) then return true end
+            if checkNeighbors(task) then return true end
             last_move = "d"
             goto continue
         end
@@ -335,7 +335,7 @@ end
 --- Takes in a TurtleTask. See BranchMinerData for the sub-config.
 --- @param config TurtleTask
 --- @return TaskCompletion|TaskFailure
-local function block_search(config)
+local function blockSearch(config)
     local wb = config.walkback
 
     -- Reset found_block since lua loves caching stuff.
@@ -380,13 +380,13 @@ local function block_search(config)
     -- to look at them
     wb:spinScan()
     -- You never know, we might be right next to what we need.
-    check_neighbors(config)
+    checkNeighbors(config)
 
     while true do
 
         -- Check positions if needed
         if found_block == nil then
-            check_neighbors(config)
+            checkNeighbors(config)
         end
 
         -- Find something?
@@ -415,14 +415,14 @@ local function block_search(config)
         end
 
         -- Have enough fuel?
-        if not shortcut_or_refuel(config) then
+        if not shortcutOrRefuel(config) then
             -- We cannot continue the spiral. We are done without finding
             -- anything :(
             break
         end
 
         -- Move forwards
-        if not forward_step(config) then
+        if not forwardStep(config) then
             -- Ran out of fuel while moving forwards.
             break
         end
@@ -431,7 +431,7 @@ local function block_search(config)
         if found_block ~= nil then break end
 
         -- Fall down if needed
-        if not fall_down(config) then
+        if not fallDown(config) then
             -- Ran out of fuel falling down.
             break
         end
@@ -454,8 +454,8 @@ local function block_search(config)
     end
     found_block = nil
 
-    return task_helpers.try_finish_task(config, result)
+    return task_helpers.tryFinishTask(config, result)
 
 end
 
-return block_search
+return blockSearch

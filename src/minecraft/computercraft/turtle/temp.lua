@@ -1,11 +1,11 @@
-local function local_function()
+local function localFunction()
     local sum = 0
     for i = 1, 100000 do
         sum = sum + i
     end
 end
 
-local function table_function()
+local function tableFunction()
     local table = {
         sum = 0
     }
@@ -19,7 +19,7 @@ local num_iterations = 100000 -- Number of times to run the function
 local start_time = os.clock() -- Get the initial CPU time
 
 for i = 1, num_iterations do
-    table_function()
+    tableFunction()
 end
 
 local end_time = os.clock() -- Get the final CPU time

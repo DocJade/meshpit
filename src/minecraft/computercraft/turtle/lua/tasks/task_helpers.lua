@@ -4,6 +4,17 @@ local task_helpers = {}
 --- We also use the other helpers to help our helper. Yeah.
 local helpers = require("helpers")
 
+--- Queue a event. This is a wrapper around the inner computercraft call, as
+--- it doesn't have the type hinting that we want. You can only queue the
+--- custom events that the OS adds.
+---
+--- This is meant to be a private method, tasks are not to queue events themselves.
+---@param event CustomEvent
+local function taskQueueEvent(event)
+    ---@diagnostic disable-next-line: undefined-field
+    os.queueEvent(table.unpack(event))
+end
+
 --- Attempt to spawn a sub-task from the current task.
 ---
 --- This will yield the current task until the sub-task completes.
@@ -48,17 +59,6 @@ function task_helpers.spawnSubTask(current_task, subtask)
     return true, sub_task_result
 end
 
---- Queue a event. This is a wrapper around the inner computercraft call, as
---- it doesn't have the type hinting that we want. You can only queue the
---- custom events that the OS adds.
----
---- This is meant to be a private method, tasks are not to queue events themselves.
----@param event CustomEvent
-function taskQueueEvent(event)
-    ---@diagnostic disable-next-line: undefined-field
-    os.queueEvent(table.unpack(event))
-end
-
 --- Assert something as true.
 ---
 --- Throws a task failure if this is not the case.
@@ -75,6 +75,7 @@ function task_helpers.assert(assertion)
         reason = "assertion failed",
         stacktrace = debug.traceback(nil, 2)
     }
+    print("Task is throwing due to assertion failure.")
     error(assertion_failure, 0)
 end
 
@@ -94,6 +95,7 @@ function task_helpers.throw(reason)
     }
     -- Doing a throw here stops the subroutine immediately without needing to
     -- propagate this value upwards.
+    print("Task is throwing due to explicit throw.")
     error(task_failure, 0)
 end
 
@@ -112,11 +114,11 @@ function task_helpers.taskSleep(seconds)
     local seconds = helpers.realSecondsToInGameSeconds(seconds * 1000)
 
     ---@diagnostic disable-next-line: undefined-field
-    local wakeup_time = os.epoch() + seconds
+    local wake_time = os.epoch() + seconds
 
     -- Queue the event, and yield.
     ---@diagnostic disable-next-line: undefined-field
-    os.queueEvent("sleep", wakeup_time)
+    os.queueEvent("sleep", wake_time)
     task_helpers.taskYield()
 end
 
@@ -190,12 +192,12 @@ end
 --- !! This will throw if the finish requirements cannot be met. !!
 ---
 --- Returns a boolean TaskCompletion pair. If the task cannot be completed due
---- to some un-met constraint, then this will return false.
+--- to some unmet constraint, then this will return false.
 ---
 ---@param turtle_task TurtleTask
 ---@param result_data TaskResultData
 ---@return TaskCompletion
-function task_helpers.try_finish_task(turtle_task, result_data)
+function task_helpers.tryFinishTask(turtle_task, result_data)
     -- Run walkback if needed.
     local backoff_delay = 1
     if turtle_task.definition.return_to_start then
@@ -255,35 +257,109 @@ end
 --- on string patterns. These patterns only match names. Be careful to not use
 --- patterns that are too broad.
 ---
+--- May spawn a crafting task to make planks.
+---
 --- Iterates the inventory front to back for items to burn, after finding a match,
 --- one item from that matching slot will be consumed as fuel.
 ---
 --- Preserves what inventory slot was selected before the call.
 ---
 --- Returns true if an item was burnt.
---- @param walkback WalkbackSelf
+--- @param wb WalkbackSelf
 --- @param fuel_patterns string[]
 --- @return boolean
-function task_helpers.tryRefuelFromInventory(walkback, fuel_patterns)
+function task_helpers.tryRefuelFromInventory(wb, fuel_patterns)
     -- Can't burn no options!
     if #fuel_patterns == 0 then return false end
 
-    local original_slot = walkback:getSelectedSlot()
+    local original_slot = wb:getSelectedSlot()
 
     -- Front to back since when mining those are the stacks added to first.
     for i = 1, 16 do
-        local item = walkback:getItemDetail(i)
+        local item = wb:getItemDetail(i)
         -- Skip empty slots
         if not item then goto continue end
 
         -- Check if the item matches any pattern
         for _, pattern in pairs(fuel_patterns) do
             if not helpers.findString(item.name, pattern) then goto bad_pattern end
+            local select_me = i
+            local amount_to_burn = 1
 
-            -- Good item, try burning it
-            walkback:select(i)
-            local did_refuel = walkback:refuel(1)
-            walkback:select(original_slot)
+            -- Good item.
+            -- If this is a log, we should craft it into planks first before
+            -- burning it. This quadruples their fuel value.
+            -- TODO: Is there a nicer way we can factor this? This feels like a
+            -- weird place to put this.
+            -- TODO: this gets eaten if called outside of a task context, and nothing
+            -- happens. Which is fine, but annoying.
+            if helpers.findString(pattern, "log") then
+                -- Log. Can we craft it down?
+                -- Need: Room for chest, a chest, and room in our inventory (with safety margin).
+                -- Need the chest as we don't wanna accidentally craft mid-air and drop stuff.
+                if (not wb:detectDown()) and
+                        wb:countEmptySlots() >= 3 and
+                        wb:inventoryCountPattern("chest") > 0
+                    then
+                    -- We can plank it.
+                    --- @type TaskDefinition
+                    local makie_da_plankie = {
+                        fuel_buffer = 0,
+                        return_to_facing = true,
+                        return_to_start = true,
+                        --- @type CraftingData
+                        task_data = {
+                            name = "craft_task",
+                            count = 1,
+                            recipe = {
+                                shape = {
+                                    "log",   "BLANK", "BLANK",
+                                    "BLANK", "BLANK", "BLANK",
+                                    "BLANK", "BLANK", "BLANK"
+                                }
+                            }
+                        }
+                    }
+
+                    -- Since we may not be inside of a task, we need to just spawn the task
+                    -- normally. This is disgusting, but I have no idea how to factor
+                    -- this better right now.
+                    -- We cannot mark this as a sub task, as we may not be currently within a task.
+                    -- Thus we get no result from running this. We will just have to
+                    -- count the plank delta to see if it worked.
+
+                    local pre_craft_planks = wb:inventoryCountPattern("planks")
+
+                    ---@type CustomEventSpawnTask
+                    local sub_task = {"spawn_task", makie_da_plankie, false}
+
+                    taskQueueEvent(sub_task)
+
+                    -- Yield to the OS to run the new task. lol.
+                    task_helpers.taskYield()
+
+                    local worked = pre_craft_planks < wb:inventoryCountPattern("planks")
+                    -- This should always work, but if it didn't, then we will just not change the slot to eat
+                    if worked then
+                        -- Find the planks
+                        local plank_slot = wb:inventoryFindPattern("planks")
+                        -- This should exist.
+                        task_helpers.assert(plank_slot ~= nil)
+                        --- @cast plank_slot number
+                        -- Make sure there are 4 planks in that slot to burn
+                        if wb:getItemCount(plank_slot) >= 4 then
+                            -- Tell the next section to select and burn all 4.
+                            select_me = plank_slot
+                            amount_to_burn = 4
+                        end
+                    end
+                end
+            end
+
+            -- Burn it.
+            wb:select(select_me)
+            local did_refuel = wb:refuel(amount_to_burn)
+            wb:select(original_slot)
 
             -- Did that work?
             if did_refuel then return true end
@@ -294,8 +370,94 @@ function task_helpers.tryRefuelFromInventory(walkback, fuel_patterns)
     end
 
     -- Just in case...
-    walkback:select(original_slot)
+    wb:select(original_slot)
     return false
+end
+
+--- Attempt to compact the inventory by consolidating items.
+---
+--- Returns true if any slots were freed up from compaction
+--- @param wb WalkbackSelf
+--- @return boolean
+function task_helpers.compactInventory(wb)
+    -- Loop over the slots, looking for partial stacks
+    --- @type {count: number, name: string, slot: number}[]
+    local partial_stacks = {}
+    local old_free_slots = wb:countEmptySlots()
+    for slot = 1, 16 do
+        local count = wb:getItemCount(slot)
+        -- Check if the stack can hold more items, and that the stack is not empty.
+        -- We check if we can actually hold more items in the stack directly since
+        -- we need to handle un-stackable items.
+
+        if (count ~= 0) and (wb:getItemSpace(slot) > 0) then
+            -- Partial stack that can hold more items. Worth tracking.
+            local item = wb:getItemDetail(slot)
+            -- This has to have something in it.
+            --- @cast item Item
+            local name = item.name
+            partial_stacks[#partial_stacks+1] = {
+                count = count,
+                name = name,
+                slot = slot
+            }
+        end
+    end
+
+    -- Is there anything to compact?
+    if #partial_stacks == 0 then
+        -- Nothing we can do
+        return false
+    end
+
+    -- Sort the array to put the biggest stacks first
+    table.sort(partial_stacks, function (a, b)
+        -- Group by name first, then by count descending
+        if a.name ~= b.name then return a.name < b.name end
+        return a.count > b.count
+    end)
+
+    -- Merge adjacent same-name stacks
+    local index = 1
+    while index < #partial_stacks do
+        local range_end = index + 1
+        -- Find the range in the array where the names are the same and need to be merged
+        while range_end <= #partial_stacks and partial_stacks[range_end].name == partial_stacks[index].name do
+            range_end = range_end + 1
+        end
+        -- Now [index, range_end - 1] have to have the same name. Which could just
+        -- be one item, but that would be immediately skipped by the while condition.
+        -- Merge items from back to front
+        local low, high = index, range_end - 1
+        while low < high do
+            wb:select(partial_stacks[high].slot)
+            wb:transferTo(partial_stacks[low].slot)
+            -- Now if the slot is full, we move to the next slot to move items
+            -- into.
+            if wb:getItemSpace(partial_stacks[low].slot) == 0 then
+                low = low + 1
+            end
+            -- If the stack we were pulling from is now empty, move back to the
+            -- next stack.
+            if wb:getItemCount(partial_stacks[high].slot) == 0 then
+                high = high - 1
+            end
+        end
+        index = range_end
+    end
+
+    -- Now count up how many items changed and see if we actually made more room.
+    local made_room = old_free_slots < wb:countEmptySlots()
+    -- If we didn't make room, we're immediately done.
+    if not made_room then
+        return false
+    else
+        -- We improved the inventory for sure, but we can run the compaction again
+        -- since the compaction may have made new partial slots to re-compact again.
+        task_helpers.compactInventory(wb)
+    end
+    -- We must have made room at this point!
+    return true
 end
 
 --- Helper function to check that we still have an empty inventory slot, or
@@ -304,9 +466,16 @@ end
 --- Returns a boolean on wether or not the task can continue.
 --- @param wb WalkbackSelf
 --- @param discardables DiscardableItems
-function task_helpers.inventory_check(wb, discardables)
+--- @return boolean
+function task_helpers.inventoryCheck(wb, discardables)
     -- If there's a free slot, nothing to do.
     if wb:haveEmptySlot() then return true end
+
+    -- Try compacting the inventory before discarding stuff
+    if task_helpers.compactInventory(wb) then
+        -- That made room.
+        return true
+    end
 
     local slot_to_discard = nil
 

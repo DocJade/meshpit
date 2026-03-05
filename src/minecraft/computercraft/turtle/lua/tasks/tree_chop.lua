@@ -52,7 +52,7 @@ local stick_name = "minecraft:stick"
 --- @param target_logs number
 --- @param task_end_time number
 --- @return boolean
-local function are_we_there_yet(wb, target_logs, task_end_time)
+local function areWeThereYet(wb, target_logs, task_end_time)
     -- Have we met our log goal?
     if wb:inventoryCountPattern("log") >= target_logs then
         -- Goal met!
@@ -79,7 +79,7 @@ end
 --- Takes in a TurtleTask. see TreeChopTaskData for the sub-config.
 ---@param config TurtleTask
 ---@return TaskCompletion|TaskFailure
-local function tree_chop(config)
+local function treeChop(config)
     local wb = config.walkback
     -- Make sure the task name is correct
     if config.definition.task_data.name ~= "tree_chop" then
@@ -101,6 +101,7 @@ local function tree_chop(config)
         -- Walkback already had data in it.
         task_helpers.throw("bad config")
     end
+
 
     -- Pre-create all of the locals so goto isn't mad.
     -- TODO: this is stupid
@@ -161,9 +162,8 @@ local function tree_chop(config)
         sapling_slot = 1
 
         -- Fix the gap that made, even though this does not matter at all lmao
-        ---@type boolean[]
-        reserved_slot = {}
-        reserved_slot[1] = true
+        ---@type number[]
+        reserved_slot = {1}
         task_helpers.pushInventoryBack(wb, reserved_slot)
 
         -- Select the sapling
@@ -176,7 +176,7 @@ local function tree_chop(config)
     end
 
     -- There wasn't a sapling or log, was it empty?
-    if not check_block then
+    if check_block then
         -- Invalid position, non-tree block in front of turtle.
         task_helpers.throw("assumptions not met")
     end
@@ -195,7 +195,7 @@ local function tree_chop(config)
     down_block = wb:inspectDown()
     if sapling_slot ~= nil and down_block ~= nil then
         if helpers.arrayContains(down_block.tag, "minecraft:dirt") then
-            task_helpers.assert(wb:stepBack())
+            task_helpers.assert(wb:back())
             -- Place the sapling
             task_helpers.assert(wb:place())
             goto assumptions_met
@@ -215,6 +215,13 @@ local function tree_chop(config)
 
     -- If no target is set, we can just set this to a stupidly high number.
     target_logs = task_data.target_logs or 999999999
+
+    -- Add the current amount of logs in the inventory to the goal amount. We
+    -- are trying to mine X number of logs, not _hold_ x number of logs.
+    target_logs = target_logs + wb:inventoryCountPattern("log")
+
+
+
     ---@type number
     ---@diagnostic disable-next-line: undefined-field
     task_end_time = (task_data.timeout * 1000) + os.epoch()
@@ -238,15 +245,22 @@ local function tree_chop(config)
     miner_data = {
         name = "recursive_miner",
         mineable_groups = {
-            {
-                names_patterns = {},
-                tags = {}
-            }
+
         },
         -- These patterns are anchored so we only try to mine items that END with
         -- these names. Otherwise `stick` would match `sticky_piston` for example.
         -- We also want to burn sticks before logs.
-        fuel_patterns = {"stick$", "log$"}
+        fuel_patterns = {"stick$", "log", "planks"}
+    }
+
+    -- The two groups we add later.
+    local log_group = {
+        names_patterns = {},
+        tags = {log_tag},
+    }
+    local leave_group = {
+        names_patterns = {},
+        tags = {leaves_tag},
     }
 
     -- Each tree is expected to give us at least 4 logs, which at 15 fuel per
@@ -255,7 +269,7 @@ local function tree_chop(config)
     -- same as the incoming task.
     ---@type TaskDefinition
     mine_tree_sub_task = {
-        fuel_buffer = config.definition.fuel_buffer,
+        fuel_buffer = config.definition.fuel_buffer - 10,
         return_to_facing = true,
         return_to_start = true,
         task_data = miner_data
@@ -266,8 +280,16 @@ local function tree_chop(config)
         -- Yield to the OS
         task_helpers.taskYield()
 
+        -- Refuel if we need to
+        while config.definition.fuel_buffer + 50 > wb:getFuelLevel() do
+            if not task_helpers.tryRefuelFromInventory(wb, {"coal", "stick", "plank", "log"}) then
+                -- Nothing to burn. We just have to bail and die elsewhere.
+                break
+            end
+        end
+
         -- Bail early if we're already done.
-        if are_we_there_yet(wb, target_logs, task_end_time) then break end
+        if areWeThereYet(wb, target_logs, task_end_time) then break end
 
         -- Is there a log in front of us?
         block = wb:inspect()
@@ -291,13 +313,12 @@ local function tree_chop(config)
         -- A tree is present! Mine it!
 
         -- Only mine leaves if we don't have enough saplings.
-        sapling_count = wb:inventoryCountTag(sapling_tag)
-        if sapling_count <= saplings_low then
+        mine_tree_sub_task.task_data.mineable_groups = {}
+        mine_tree_sub_task.task_data.mineable_groups[1] = log_group
+        sapling_count = wb:inventoryCountPattern("sapling")
+        if sapling_count < saplings_low then
             -- Need more saplings
-            mine_tree_sub_task.task_data.mineable_groups[1].tags = {log_tag, leaves_tag}
-        else
-            -- Logs only
-            mine_tree_sub_task.task_data.mineable_groups[1].tags = {log_tag}
+            mine_tree_sub_task.task_data.mineable_groups[2] = leave_group
         end
 
         mining_worked, mining_result = task_helpers.spawnSubTask(config, mine_tree_sub_task)
@@ -305,8 +326,11 @@ local function tree_chop(config)
 
         -- But did that actually work correctly?
         if mining_worked then
-            -- Make sure we at least mined a log.
+            --- @cast mining_result TaskCompletion
+            mining_result = mining_result.result
             ---@cast mining_result RecursiveMinerResult
+
+            -- Make sure we at least mined a log.
             -- Only one group (right now at least. todo moment), so group 1
             local logs_and_leaves_chopped = mining_result.mined_blocks.counts[1]
             -- We won't use this number at all since the recursive miner may have
@@ -332,7 +356,7 @@ local function tree_chop(config)
             -- This can only happen if we somehow manage to harvest 0 saplings
             -- from a tree several times in a row, or if the max sapling count
             -- was zero.
-            task_helpers.throw("assertion failed")
+            break
         end
         -- We must have a slot with saplings then.
         ---@cast where_sapling number
@@ -381,11 +405,12 @@ local function tree_chop(config)
 
         -- We might be done. Don't place the sapling if we've met the end
         -- criteria.
-        if are_we_there_yet(wb, target_logs, task_end_time) then break end
+        if areWeThereYet(wb, target_logs, task_end_time) then break end
 
         -- Place the next sapling!
         -- We for sure have a sapling at this point, this could only fail if there
         -- is somehow a block in front of us after cutting down the tree.
+        wb:select(1)
         task_helpers.assert(wb:place())
 
         -- Time to wait for the next tree to grow!
@@ -405,7 +430,7 @@ local function tree_chop(config)
     local none_result = {
         name = "none"
     }
-    return task_helpers.try_finish_task(config, none_result)
+    return task_helpers.tryFinishTask(config, none_result)
 end
 
-return tree_chop
+return treeChop

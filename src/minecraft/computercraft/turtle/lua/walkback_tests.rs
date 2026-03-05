@@ -46,26 +46,26 @@ async fn basic_movement_test() {
     local debugging = require("debugging")
 
     walkback:setup(2,1,2,"n")
-    debugging.wait_step()
+    debugging.waitStep()
     panic.assert(walkback:forward())
-    debugging.wait_step()
+    debugging.waitStep()
     panic.assert(walkback:back())
     panic.assert(walkback:back())
-    debugging.wait_step()
+    debugging.waitStep()
     panic.assert(walkback:forward())
     panic.assert(walkback:turnLeft())
     panic.assert(walkback:forward())
-    debugging.wait_step()
+    debugging.waitStep()
     panic.assert(walkback:turnRight())
     panic.assert(walkback:turnRight())
     panic.assert(walkback:forward())
     panic.assert(walkback:forward())
-    debugging.wait_step()
+    debugging.waitStep()
     panic.assert(walkback:back())
     panic.assert(walkback:up())
-    debugging.wait_step()
+    debugging.waitStep()
     panic.assert(walkback:down())
-    debugging.wait_step()
+    debugging.waitStep()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -198,7 +198,7 @@ async fn basic_walkback_tests() {
 
     walkback:setup(2,1,2,"n")
 
-    debugging.wait_step()
+    debugging.waitStep()
     panic.assert(walkback:forward())
     panic.assert(walkback:forward())
     panic.assert(walkback:up())
@@ -206,9 +206,9 @@ async fn basic_walkback_tests() {
     panic.assert(walkback:turnRight())
     panic.assert(walkback:turnRight())
     panic.assert(walkback:forward())
-    debugging.wait_step()
+    debugging.waitStep()
     panic.assert(walkback:rewind())
-    debugging.wait_step()
+    debugging.waitStep()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -306,7 +306,7 @@ async fn basic_block_memorization() {
     local debugging = require("debugging")
     walkback:setup(1,1,1,"n")
     -- handshake
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- inspect
     local _ = walkback:inspect()
@@ -423,7 +423,7 @@ async fn walkback_serialization() {
 
     walkback:setup(1,1,1,"n")
 
-    debugging.wait_step()
+    debugging.waitStep()
     NETWORKING.debugSend(walkback:dataJson())
     "#;
 
@@ -494,7 +494,7 @@ async fn empty_inventory_serialization() {
 
     walkback:setup(1,1,1,"n")
 
-    debugging.wait_step()
+    debugging.waitStep()
     NETWORKING.debugSend(walkback:inventoryJSON())
     "#;
 
@@ -602,7 +602,7 @@ async fn recognize_all_blocks() {
     local walkback = require("walkback")
     local panic = require("panic")
     require("networking")
-    local function wait_step()
+    local function waitStep()
         NETWORKING.debugSend("wait")
         if NETWORKING.waitForPacket(10) then
             return
@@ -620,9 +620,9 @@ async fn recognize_all_blocks() {
     panic.assert(walkback:back())
     local keep_going = true
 
-    wait_step()
+    waitStep()
     while keep_going do
-        wait_step()
+        waitStep()
         local _ = walkback:inspect() -- Load the block
         -- Then actually get the full block info
         local block = walkback:blockQuery(block_pos, true)
@@ -910,7 +910,7 @@ async fn rotation_breaking() {
     local debugging = require("debugging")
 
     walkback:setup(0,0,0,"n")
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- Spins and forwards, walkbacks
     turtle.equipRight()
@@ -969,7 +969,7 @@ async fn rotation_breaking() {
         panic.assert(walkback:moveAdjacent(home))
     end
 
-    debugging.wait_step()
+    debugging.waitStep()
     "#;
 
     let libraries = MeshpitLibraries {
@@ -1063,7 +1063,7 @@ async fn dig_unsafe_block_test() {
 
     walkback:setup(2,1,2,"n")
 
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- equip the pick
     walkback:equipRight()
@@ -1075,7 +1075,7 @@ async fn dig_unsafe_block_test() {
     -- It returned the right string
     panic.assert(reason == "Unsafe", "??? : " .. tostring(reason))
 
-    debugging.wait_step()
+    debugging.waitStep()
 
     -- Not actually mine it
     local actually_okay, nothing = walkback:dig(nil, true)

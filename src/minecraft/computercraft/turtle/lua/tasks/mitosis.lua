@@ -14,7 +14,11 @@ local helpers = require("helpers")
 ---   the new turtle.
 --- - The turtle has all of the required items to create the new turtle in its
 ---   inventory.
----   - A turtle, diamond pickaxe, one of the allowed fuels, a disk drive
+---   - A turtle
+---   - diamond pickaxe
+---   - one of the allowed fuels
+---   - a disk drive
+---   - A spare crafting table (ie more than one)
 --- - The turtle has a tool equipped that can break turtles and disk drives.
 ---
 --- Task completion states:
@@ -96,6 +100,11 @@ local function mitosis(config)
 
     -- Drive?
     if wb:inventoryCountPattern("computercraft:disk_drive") < 1 then
+        task_helpers.throw("assumptions not met")
+    end
+
+    -- Crafting table?
+    if wb:inventoryCountPattern("minecraft:crafting_table") < 2 then
         task_helpers.throw("assumptions not met")
     end
 
@@ -248,6 +257,14 @@ local function mitosis(config)
     wb:select(pick_slot)
     task_helpers.assert(wb:drop())
 
+    -- Put in the crafting table
+    local table_slot = wb:inventoryFindPattern("minecraft:crafting_table")
+    task_helpers.assert(table_slot ~= nil)
+    --- @cast table_slot number
+
+    wb:select(table_slot)
+    task_helpers.assert(wb:drop(1)) -- Don't give em all our tables.
+
     -- Turtle is ready! Turn it on!
     --- @type table|nil
     ---@diagnostic disable-next-line: undefined-global
@@ -258,7 +275,7 @@ local function mitosis(config)
     turtle_peripheral.turnOn()
 
     -- All done!
-    return task_helpers.try_finish_task(config, {name = "none"})
+    return task_helpers.tryFinishTask(config, {name = "none"})
 end
 
 

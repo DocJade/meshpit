@@ -20,7 +20,7 @@ local movement_vectors = constants.movement_vectors
 -- === === ===
 
 --- Yield, does not yield from a coroutine.
-function helpers.quick_yield()
+function helpers.quickYield()
     ---@diagnostic disable-next-line: undefined-field
     os.queueEvent("yield")
     ---@diagnostic disable-next-line: undefined-field
@@ -98,7 +98,7 @@ end
 ---@param slice_start number? Defaults to 1
 ---@param slice_end number? Defaults to the end of the table
 ---@return T[]
-function helpers.slice_array(input_table, slice_start, slice_end)
+function helpers.sliceArray(input_table, slice_start, slice_end)
     local slice = {}
     local slice_start = slice_start or 1
     for i= slice_start, slice_end do
@@ -133,6 +133,18 @@ end
 -- === === ===
 -- === === ===
 
+--- Cast a table into a string, no matter the internal data. Will NOT recurse into
+--- sub tables. Meant for debugging only, as the ordering here is not stable.
+---@param table table
+---@return string
+local function forceStringTable(table)
+    local final_string = "Data of table (" .. tostring(table) .. "): "
+    for key, value in pairs(table) do
+        final_string = final_string .. "[key: (" .. tostring(key) .. "), value: (" .. tostring(value) .. ")]"
+    end
+    return final_string
+end
+
 -- Table types for linting to prevent returning the wrong things.
 
 --- @class SeenCleaned table
@@ -140,7 +152,7 @@ end
 
 
 --- Clean up a type for JSON export. Will panic if the type or any sub-tables
---- contain mixed table types (ie a table that is both an array and kv pairs) and
+--- contain mixed table types (IE a table that is both an array and Key:Value pairs) and
 --- will also panic if any of the keys used are not strings.
 ---
 --- Since mixed table types panic, you make opt-in to completely discarding these
@@ -154,10 +166,10 @@ end
 ---@param seen_cleaned SeenCleaned? an empty table please
 ---@param skip_invalid_tables boolean?
 ---@return any, SeenCleaned
-function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
+local function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     local skip_invalid_tables = skip_invalid_tables or false
     -- This can take a long time, so we yield a lot.
-    helpers.quick_yield()
+    helpers.quickYield()
 
     ---@diagnostic disable-next-line: undefined-global
     local json_null = textutils.json_null
@@ -232,7 +244,7 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     -- cant count the hashmap alone, this will also count the array side.
     local combined_item_count = 0
 
-    helpers.quick_yield()
+    helpers.quickYield()
     for _, _ in ipairs(value) do
         array_item_count = array_item_count + 1
     end
@@ -240,7 +252,7 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     for _, _ in pairs(value) do
         combined_item_count = combined_item_count + 1
     end
-    helpers.quick_yield()
+    helpers.quickYield()
 
     -- Check if table is completely empty, we can skip if so!
     if (array_item_count == 0) and (combined_item_count == 0) then
@@ -281,7 +293,7 @@ function cleanForJSON(value, seen, seen_cleaned, skip_invalid_tables)
     local total_items = 0
 
     for k, v in pairs(value) do
-        helpers.quick_yield()
+        helpers.quickYield()
         total_items = total_items + 1
         if is_array then
             -- Array handling
@@ -334,7 +346,7 @@ end
 
 --- The built-in json serializer is not good enough.
 ---
---- The textutils.serialiseJSON() method does not work with:
+--- The textutils.serializeJSON() method does not work with:
 --- - Mixed tables
 --- - Non-integer keys into tables
 --- - Recursion within tables
@@ -366,7 +378,7 @@ end
 --- It is the Rust-side's job to ensure we never send malformed json.
 ---
 --- Returns a true, any pair when successful.
---- Returns a false, string with an error message from unserializeJSON on failure.
+--- Returns a false, string with an error message from unserializeJSON (sic) on failure.
 ---@param json string
 ---@return boolean, any -- A success / fail, and the result of deserialization. You should hopefully know the type.
 function helpers.deserializeJSON(json)
@@ -394,7 +406,7 @@ end
 ---@return table any a deep copy of the input
 function helpers.deepCopy(input, seen)
     -- Each iteration of the loop yields, as this is an intensive function.
-    helpers.quick_yield()
+    helpers.quickYield()
 
     -- No need to deep copy if this is not a table.
     if type(input) ~= "table" then
@@ -489,18 +501,6 @@ function helpers.keyFromTable(input_table)
     return table.concat(ordered_pairs, "|")
 end
 
---- Cast a table into a string, no matter the internal data. Will NOT recurse into
---- sub tables. Meant for debugging only, as the ordering here is not stable.
----@param table table
----@return string
-function forceStringTable(table)
-    local final_string = "Data of table (" .. tostring(table) .. "): "
-    for key, value in pairs(table) do
-        final_string = final_string .. "[key: (" .. tostring(key) .. "), value: (" .. tostring(value) .. ")]"
-    end
-    return final_string
-end
-
 --- Check if two values are exactly the same by value. Also checks if they are
 --- the same type. This will be very slow on large tables or tables that use
 --- other tables as keys.
@@ -520,7 +520,7 @@ end
 ---@return boolean
 function helpers.deepEquals(a, b, seen)
     -- This is an expensive function.
-    helpers.quick_yield()
+    helpers.quickYield()
 
     -- types are the same
     local t_a = type(a)
@@ -573,37 +573,37 @@ function helpers.deepEquals(a, b, seen)
     --
     -- This also checks if the keys used to index into the tables are the same,
     -- which makes this slow for hashmaps, but this is a deep check after all.
-    for ka, va in pairs(a) do
-        local vb = b[ka]
+    for k_a, v_a in pairs(a) do
+        local v_b = b[k_a]
 
         -- if vb is nil, it could be due to indexing with tables, thus having
         -- different key references while the insides of the keys are actually
         -- still the same. We must recurse into the keys if so.
-        if vb ~= nil then
+        if v_b ~= nil then
             -- Some value, either a non-table index, or a matching reference index.
-            if not helpers.deepEquals(va, vb, seen) then
+            if not helpers.deepEquals(v_a, v_b, seen) then
                 return false
             end
-        elseif type(ka) == "table" then
+        elseif type(k_a) == "table" then
             -- Table did not match on reference, but could still have the
             -- same content deep-down.
 
             -- Need to check if `b` has a key that matches deeply.
             local found_match = false
-            for kb, new_vb in pairs(b) do
+            for k_b, new_v_b in pairs(b) do
                 -- Only need to check table keys
-                if type(kb) ~= "table" then
+                if type(k_b) ~= "table" then
                     goto skip
                 end
 
                 -- New table key, check
-                if not helpers.deepEquals(ka, kb, seen) then
+                if not helpers.deepEquals(k_a, k_b, seen) then
                     -- wrong table
                     goto skip
                 end
 
                 -- Tables match, do keys match?
-                if not helpers.deepEquals(va, new_vb, seen) then
+                if not helpers.deepEquals(v_a, new_v_b, seen) then
                     -- Values did not match! Equal keys, but not equal values
                     -- However, its possible (although very gross) that there
                     -- could be multiple keys with the same underlying values
@@ -611,7 +611,7 @@ function helpers.deepEquals(a, b, seen)
                     goto skip
                 end
 
-                -- Everything checks ou!
+                -- Everything checks out!
                 found_match = true
                 ::skip::
             end
@@ -1003,7 +1003,7 @@ end
 --- @param block Block|nil
 --- @param groups BlockGroup[]
 --- @return boolean, number|nil
-function helpers.block_wanted(block, groups)
+function helpers.blockWanted(block, groups)
     -- If the block is air, we do not care.
     if block == nil then return false, nil end
 
@@ -1036,7 +1036,7 @@ end
 --- Check if a kind of block can be stood in. Accepts nil for air.
 --- @param block Block|nil
 --- @return boolean
-function helpers.can_stand_in(block)
+function helpers.canStandIn(block)
     if block == nil then
         -- Can stand in air
         return true
